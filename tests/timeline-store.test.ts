@@ -1,0 +1,289 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  DEFAULT_VISUAL_TRACK_ID,
+  createDefaultTimeline,
+} from '../src/types';
+import { useTimelineStore } from '../src/store/timeline';
+
+describe('useTimelineStore', () => {
+  beforeEach(() => {
+    useTimelineStore.setState({
+      timeline: createDefaultTimeline(),
+      srtEntries: [],
+      assets: [],
+    });
+  });
+
+  it('sets podcast metadata', () => {
+    useTimelineStore.getState().setPodcast('/tmp/audio.mp3', '/tmp/subtitles.srt', 12000);
+
+    expect(useTimelineStore.getState().timeline.podcast).toEqual({
+      audioPath: '/tmp/audio.mp3',
+      srtPath: '/tmp/subtitles.srt',
+      durationMs: 12000,
+    });
+    expect(useTimelineStore.getState().assets).toEqual([
+      {
+        path: '/tmp/audio.mp3',
+        type: 'audio',
+        name: 'audio.mp3',
+        durationMs: 12000,
+        locked: true,
+      },
+      {
+        path: '/tmp/subtitles.srt',
+        type: 'srt',
+        name: 'subtitles.srt',
+        durationMs: 12000,
+        locked: true,
+      },
+    ]);
+  });
+
+  it('stores imported assets and uses their durations for overlays', () => {
+    const store = useTimelineStore.getState();
+    store.addAsset('/tmp/intro.mp4', 'video', 9000);
+    const overlayId = store.addOverlay({
+      type: 'video',
+      assetPath: '/tmp/intro.mp4',
+      trackId: DEFAULT_VISUAL_TRACK_ID,
+      startMs: 3000,
+      durationMs: 9000,
+      position: { x: 0, y: 0, width: 1920, height: 1080 },
+    });
+
+    expect(useTimelineStore.getState().assets).toEqual([
+      {
+        path: '/tmp/intro.mp4',
+        type: 'video',
+        name: 'intro.mp4',
+        durationMs: 9000,
+      },
+    ]);
+    expect(overlayId).toBeTruthy();
+    expect(useTimelineStore.getState().timeline.overlays[0]?.assetPath).toBe('/tmp/intro.mp4');
+  });
+
+  it('updates and removes overlays', () => {
+    const store = useTimelineStore.getState();
+    const overlayId = store.addOverlay({
+      type: 'image',
+      assetPath: '/tmp/cover.png',
+      trackId: DEFAULT_VISUAL_TRACK_ID,
+      startMs: 0,
+      durationMs: 5000,
+      position: { x: 10, y: 20, width: 300, height: 200 },
+    });
+
+    store.updateOverlay(overlayId, { startMs: 2000, durationMs: 7000 });
+    expect(useTimelineStore.getState().timeline.overlays[0]).toMatchObject({
+      id: overlayId,
+      startMs: 2000,
+      durationMs: 7000,
+    });
+
+    store.removeOverlay(overlayId);
+    expect(useTimelineStore.getState().timeline.overlays).toEqual([]);
+  });
+
+  it('removes dependent overlays when deleting an imported asset', () => {
+    const store = useTimelineStore.getState();
+    store.addAsset('/tmp/cover.png', 'image', 5000);
+    store.addOverlay({
+      type: 'image',
+      assetPath: '/tmp/cover.png',
+      trackId: DEFAULT_VISUAL_TRACK_ID,
+      startMs: 0,
+      durationMs: 5000,
+      position: { x: 10, y: 20, width: 300, height: 200 },
+    });
+
+    store.removeAsset('/tmp/cover.png');
+
+    expect(useTimelineStore.getState().timeline.overlays).toEqual([]);
+    expect(useTimelineStore.getState().assets).toEqual([]);
+  });
+
+  it('undoes and redoes overlay edits', () => {
+    const store = useTimelineStore.getState();
+    const overlayId = store.addOverlay({
+      type: 'image',
+      assetPath: '/tmp/cover.png',
+      trackId: DEFAULT_VISUAL_TRACK_ID,
+      startMs: 0,
+      durationMs: 5000,
+      position: { x: 10, y: 20, width: 300, height: 200 },
+    });
+
+    store.updateOverlay(overlayId, { startMs: 2000, durationMs: 7000 });
+    store.undo();
+
+    expect(useTimelineStore.getState().timeline.overlays[0]).toMatchObject({
+      id: overlayId,
+      startMs: 0,
+      durationMs: 5000,
+    });
+    expect(useTimelineStore.getState().canUndo).toBe(true);
+    expect(useTimelineStore.getState().canRedo).toBe(true);
+
+    store.redo();
+
+    expect(useTimelineStore.getState().timeline.overlays[0]).toMatchObject({
+      id: overlayId,
+      startMs: 2000,
+      durationMs: 7000,
+    });
+  });
+
+  it('migrates legacy timelines without tracks and backfills overlay track ids', () => {
+    useTimelineStore.getState().setTimeline({
+      version: 1,
+      fps: 30,
+      width: 1920,
+      height: 1080,
+      podcast: {
+        audioPath: '/tmp/audio.mp3',
+        srtPath: '/tmp/subtitles.srt',
+        durationMs: 12000,
+      },
+      overlays: [
+        {
+          id: 'legacy-overlay',
+          type: 'image',
+          assetPath: '/tmp/cover.png',
+          startMs: 0,
+          durationMs: 5000,
+          position: { x: 0, y: 0, width: 1920, height: 1080 },
+        },
+      ],
+      subtitle: {
+        fontSize: 48,
+        color: '#FFFFFF',
+        position: 'bottom',
+      },
+    } as never);
+
+    const { assets, timeline } = useTimelineStore.getState();
+
+    expect(timeline.version).toBe(2);
+    expect(timeline.tracks.map((track) => track.id)).toEqual(['audio', 'subtitle', 'visual-1']);
+    expect(timeline.overlays[0]?.trackId).toBe(DEFAULT_VISUAL_TRACK_ID);
+    expect(assets.map((asset) => asset.path)).toEqual([
+      '/tmp/audio.mp3',
+      '/tmp/subtitles.srt',
+      '/tmp/cover.png',
+    ]);
+  });
+
+  it('adds visual tracks and attaches overlays to the chosen track', () => {
+    const store = useTimelineStore.getState();
+    const newTrackId = store.addTrack();
+
+    expect(useTimelineStore.getState().timeline.tracks.find((track) => track.id === newTrackId))
+      .toMatchObject({
+        id: newTrackId,
+        kind: 'visual',
+        order: 2,
+      });
+
+    const overlayId = store.addOverlay({
+      type: 'video',
+      assetPath: '/tmp/intro.mp4',
+      trackId: newTrackId,
+      startMs: 1000,
+      durationMs: 4000,
+      position: { x: 0, y: 0, width: 1920, height: 1080 },
+    });
+
+    expect(useTimelineStore.getState().timeline.overlays.find((overlay) => overlay.id === overlayId))
+      .toMatchObject({
+        trackId: newTrackId,
+      });
+  });
+
+  it('adds ai-card overlays without creating phantom media assets', () => {
+    const store = useTimelineStore.getState();
+
+    store.addAICardsToTimeline([
+      {
+        sourceCardId: 'ai-card-1',
+        startMs: 2_000,
+        durationMs: 5_000,
+        aiCardData: {
+          sourceCardId: 'ai-card-1',
+          cardType: 'summary',
+          title: '总结卡',
+          content: '重点内容',
+          template: 'summary-default',
+          displayMode: 'fullscreen',
+          style: {
+            primaryColor: '#6366f1',
+            backgroundColor: '#0f172a',
+            fontSize: 48,
+          },
+        },
+      },
+    ]);
+
+    expect(useTimelineStore.getState().timeline.overlays[0]).toMatchObject({
+      overlayType: 'ai-card',
+    });
+    expect(useTimelineStore.getState().timeline.overlays[0]?.id).toMatch(/^ai-card-1-/);
+    expect(useTimelineStore.getState().timeline.overlays[0]?.aiCardData?.sourceCardId).toBe(
+      'ai-card-1',
+    );
+    expect(useTimelineStore.getState().assets).toEqual([]);
+  });
+
+  it('updates the existing overlay when applying the same ai card multiple times', () => {
+    const store = useTimelineStore.getState();
+
+    store.addAICardsToTimeline([
+      {
+        sourceCardId: 'ai-card-1',
+        startMs: 2_000,
+        durationMs: 5_000,
+        aiCardData: {
+          sourceCardId: 'ai-card-1',
+          cardType: 'summary',
+          title: '总结卡',
+          content: '重点内容',
+          template: 'summary-default',
+          displayMode: 'fullscreen',
+          style: {
+            primaryColor: '#6366f1',
+            backgroundColor: '#0f172a',
+            fontSize: 48,
+          },
+        },
+      },
+    ]);
+    store.addAICardsToTimeline([
+      {
+        sourceCardId: 'ai-card-1',
+        startMs: 8_000,
+        durationMs: 5_000,
+        aiCardData: {
+          sourceCardId: 'ai-card-1',
+          cardType: 'summary',
+          title: '总结卡',
+          content: '重点内容',
+          template: 'summary-default',
+          displayMode: 'fullscreen',
+          style: {
+            primaryColor: '#6366f1',
+            backgroundColor: '#0f172a',
+            fontSize: 48,
+          },
+        },
+      },
+    ]);
+
+    expect(useTimelineStore.getState().timeline.overlays).toHaveLength(1);
+    expect(useTimelineStore.getState().timeline.overlays[0]).toMatchObject({
+      startMs: 8_000,
+      durationMs: 5_000,
+      overlayType: 'ai-card',
+    });
+  });
+});
