@@ -1,0 +1,2217 @@
+{
+  "version": 2,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "podcast": {
+    "audioPath": "/Users/yoqu/Documents/code/self/self-boke/2026-03/03-30-张雪机车/文案3.30张雪机车-口播稿.mp3",
+    "srtPath": "/Users/yoqu/Documents/code/self/self-boke/2026-03/03-30-张雪机车/文案3.30张雪机车-口播稿.srt",
+    "durationMs": 560571
+  },
+  "overlays": [
+    {
+      "type": "image",
+      "assetPath": "/Users/yoqu/Documents/LWScreenShot 2026-03-20 at 09.22.46.png",
+      "startMs": 0,
+      "durationMs": 560571,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "id": "301ad8cc-3fc0-4564-a43a-148c88d72cd8",
+      "trackId": "visual-1"
+    },
+    {
+      "type": "image",
+      "assetPath": "/Users/yoqu/Documents/LWScreenShot 2026-03-20 at 09.22.46.png",
+      "startMs": 0,
+      "durationMs": 560571,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "id": "562accaf-8c1a-4a31-8755-75757ba9a18a",
+      "trackId": "visual-1"
+    },
+    {
+      "id": "ai-c1-365ef667-4c90-412c-ac80-7e3f24b5d7a3",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 0,
+      "durationMs": 6000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "中国品牌首夺WSBK冠军",
+        "content": "2026年WSBK葡萄牙站，张雪机车连续两回合夺冠，打破国际垄断，标志中国赛车技术迈入世界顶级行列。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 0,
+        "sourceEndMs": 15085
+      }
+    },
+    {
+      "id": "ai-c1-4dbb18e6-392f-42ab-be16-8d6509b309f1",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 0,
+      "durationMs": 6000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "中国品牌首夺WSBK冠军",
+        "content": "2026年WSBK葡萄牙站，张雪机车连续两回合夺冠，打破国际垄断，标志中国赛车技术迈入世界顶级行列。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 0,
+        "sourceEndMs": 15085
+      }
+    },
+    {
+      "id": "ai-c1-948e7330-5cc1-4f42-a5fa-58f71676586f",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 0,
+      "durationMs": 6000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "中国品牌首夺WSBK冠军",
+        "content": "2026年WSBK葡萄牙站，张雪机车连续两回合夺冠，打破国际垄断，标志中国赛车技术迈入世界顶级行列。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 0,
+        "sourceEndMs": 15085
+      }
+    },
+    {
+      "id": "ai-card_1-1ac86dee-6156-4f9f-a834-59da180d46c3",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 0,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "中国品牌首夺WSBK冠",
+        "content": "2026年WSBK葡萄牙站，张雪机车连续两回合夺冠。创始人张雪从14岁修车学徒到世界冠军品牌创始人，历时25年完成逆袭。",
+        "template": "chapter-default",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 0,
+        "sourceEndMs": 37535
+      }
+    },
+    {
+      "id": "ai-card_1-7386f7e3-d7d1-4f6d-b822-08dda4906b32",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 0,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "中国品牌首夺WSBK冠军",
+        "content": "2026年WSBK葡萄牙站，张雪机车连续两回合夺冠。创始人张雪从14岁修车学徒到世界冠军品牌创始人，历时25年完成逆袭。",
+        "template": "chapter",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 0,
+        "sourceEndMs": 37535
+      }
+    },
+    {
+      "id": "ai-card_1-f1e3e39b-1085-4f8e-ad59-5dad0eb9e5c9",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 0,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "中国品牌首夺WSBK冠军",
+        "content": "2026年WSBK葡萄牙站，张雪机车连续两回合夺冠。创始人张雪从14岁修车学徒到世界冠军品牌创始人，历时25年完成逆袭。",
+        "template": "chapter",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 0,
+        "sourceEndMs": 37535
+      }
+    },
+    {
+      "type": "image",
+      "assetPath": "/Users/yoqu/Documents/LWScreenShot 2026-03-20 at 09.22.46 (2).png",
+      "trackId": "visual-2",
+      "startMs": 240,
+      "durationMs": 4011,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "id": "2e08e341-f45f-4740-9ea7-350bed0c86f1"
+    },
+    {
+      "type": "image",
+      "assetPath": "/Users/yoqu/Documents/LWScreenShot 2026-03-20 at 09.22.46 (2).png",
+      "startMs": 69911,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "id": "aae01d81-669d-4a0e-87bc-36efcd2201ca",
+      "trackId": "visual-1"
+    },
+    {
+      "id": "ai-card_2-98a66c79-b97c-47bd-8cea-149fe834f4cc",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 130081,
+      "durationMs": 6000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "data",
+        "title": "硬核研发与供应链数据",
+        "content": {
+          "chartType": "comparison",
+          "items": [
+            {
+              "label": "张雪机车研发占比",
+              "value": 9.33,
+              "highlight": true
+            },
+            {
+              "label": "行业平均研发占比",
+              "value": 4,
+              "highlight": false
+            },
+            {
+              "label": "核心零部件国产化率",
+              "value": 92,
+              "highlight": true
+            }
+          ]
+        },
+        "template": "data",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 133545,
+        "sourceEndMs": 187195
+      }
+    },
+    {
+      "id": "ai-card_2-fa175ee8-963c-49d1-bd17-5277f9ad2822",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 134330,
+      "durationMs": 6000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "data",
+        "title": "硬核研发与供应链数据",
+        "content": {
+          "chartType": "comparison",
+          "items": [
+            {
+              "label": "张雪机车研发占比",
+              "value": 9.33,
+              "highlight": true
+            },
+            {
+              "label": "行业平均研发占比",
+              "value": 4,
+              "highlight": false
+            },
+            {
+              "label": "核心零部件国产化率",
+              "value": 92,
+              "highlight": true
+            }
+          ]
+        },
+        "template": "data",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 133545,
+        "sourceEndMs": 187195
+      }
+    },
+    {
+      "id": "ai-c2-28c918e7-a129-4e91-be06-65776ec9cf97",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 135524,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "data",
+        "title": "硬核研发与供应链数据",
+        "content": {
+          "chartType": "stat",
+          "items": [
+            {
+              "label": "研发销售占比",
+              "value": 9.33,
+              "highlight": true
+            },
+            {
+              "label": "核心零部件国产化率",
+              "value": 92,
+              "highlight": true
+            },
+            {
+              "label": "2025年研发投入(万元)",
+              "value": 6958,
+              "highlight": false
+            }
+          ]
+        },
+        "template": "chart",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 133545,
+        "sourceEndMs": 178892
+      }
+    },
+    {
+      "id": "ai-c2-32a4d945-1417-43ae-a5a4-54ac5be16c71",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 135627,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "data",
+        "title": "硬核研发与供应链数据",
+        "content": {
+          "chartType": "stat",
+          "items": [
+            {
+              "label": "研发销售占比",
+              "value": 9.33,
+              "highlight": true
+            },
+            {
+              "label": "核心零部件国产化率",
+              "value": 92,
+              "highlight": true
+            },
+            {
+              "label": "2025年研发投入(万元)",
+              "value": 6958,
+              "highlight": false
+            }
+          ]
+        },
+        "template": "chart",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 133545,
+        "sourceEndMs": 178892
+      }
+    },
+    {
+      "id": "ai-c2-d00549cf-0f26-4c4b-8403-0ca664c456d5",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 138084,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "data",
+        "title": "硬核研发与供应链数据",
+        "content": {
+          "chartType": "stat",
+          "items": [
+            {
+              "label": "研发销售占比",
+              "value": 9.33,
+              "highlight": true
+            },
+            {
+              "label": "核心零部件国产化率",
+              "value": 92,
+              "highlight": true
+            },
+            {
+              "label": "2025年研发投入(万元)",
+              "value": 6958,
+              "highlight": false
+            }
+          ]
+        },
+        "template": "chart",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 133545,
+        "sourceEndMs": 178892
+      }
+    },
+    {
+      "id": "ai-c2-d148a746-ef67-418c-a479-403257046851",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 139927,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "data",
+        "title": "硬核研发与供应链数据",
+        "content": {
+          "chartType": "stat",
+          "items": [
+            {
+              "label": "研发销售占比",
+              "value": 9.33,
+              "highlight": true
+            },
+            {
+              "label": "核心零部件国产化率",
+              "value": 92,
+              "highlight": true
+            },
+            {
+              "label": "2025年研发投入(万元)",
+              "value": 6958,
+              "highlight": false
+            }
+          ]
+        },
+        "template": "chart",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 133545,
+        "sourceEndMs": 178892
+      }
+    },
+    {
+      "id": "ai-card_2-007c40ff-29d8-438d-9e0f-fc00ba0f4ffc",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 141906,
+      "durationMs": 6000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "data",
+        "title": "硬核研发与供应链数据",
+        "content": {
+          "chartType": "comparison",
+          "items": [
+            {
+              "label": "张雪机车研发占比",
+              "value": 9.33,
+              "highlight": true
+            },
+            {
+              "label": "行业平均研发占比",
+              "value": 4,
+              "highlight": false
+            },
+            {
+              "label": "核心零部件国产化率",
+              "value": 92,
+              "highlight": true
+            }
+          ]
+        },
+        "template": "data",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 133545,
+        "sourceEndMs": 187195
+      }
+    },
+    {
+      "id": "ai-c3-081728f8-b699-47df-b7b3-75c3d3d427d8",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 188449,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "高端制造技术溢出效应",
+        "content": "隆鑫通用、鸿泉技术、长盈精密等配套企业崛起，军工/航天级技术向民用消费领域降维打击，构建完整可控供应链。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 188449,
+        "sourceEndMs": 279501
+      }
+    },
+    {
+      "id": "ai-c3-1fae2c73-4954-4ba8-8d5d-0e13769bc602",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 188449,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "高端制造技术溢出效应",
+        "content": "隆鑫通用、鸿泉技术、长盈精密等配套企业崛起，军工/航天级技术向民用消费领域降维打击，构建完整可控供应链。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 188449,
+        "sourceEndMs": 279501
+      }
+    },
+    {
+      "id": "ai-c3-8037a188-a28f-4aaf-ae8a-313ce37a0d5f",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 188449,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "高端制造技术溢出效应",
+        "content": "隆鑫通用、鸿泉技术、长盈精密等配套企业崛起，军工/航天级技术向民用消费领域降维打击，构建完整可控供应链。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 188449,
+        "sourceEndMs": 279501
+      }
+    },
+    {
+      "id": "ai-c3-b6df8e01-762b-4dc2-b0f5-df11d2e810e5",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 188449,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "高端制造技术溢出效应",
+        "content": "隆鑫通用、鸿泉技术、长盈精密等配套企业崛起，军工/航天级技术向民用消费领域降维打击，构建完整可控供应链。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 188449,
+        "sourceEndMs": 279501
+      }
+    },
+    {
+      "id": "ai-card_3-3c1d8b80-2e57-4107-a4b6-001d8cc932a4",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 188449,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "供应链溢出与技术降维",
+        "content": "隆鑫通用、鸿泉技术等配套企业展现技术溢出效应。中国制造业正从成本优势转向技术创新驱动，具备硬核供应链支撑的产品才是长期赢家。",
+        "template": "insight",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 188449,
+        "sourceEndMs": 279501
+      }
+    },
+    {
+      "id": "ai-card_3-582020f2-b8fa-47fb-b211-173c04115a5f",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 188449,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "供应链溢出与技术降维",
+        "content": "隆鑫通用、鸿泉技术等配套企业展现技术溢出效应。中国制造业正从成本优势转向技术创新驱动，具备硬核供应链支撑的产品才是长期赢家。",
+        "template": "insight",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 188449,
+        "sourceEndMs": 279501
+      }
+    },
+    {
+      "id": "ai-card_3-7cde6da1-1994-4020-8cf9-54825c9cfb29",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 188449,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "供应链溢出与技术降维",
+        "content": "隆鑫通用、鸿泉技术等配套企业展现技术溢出效应。中国制造业正从成本优势转向技术创新驱动，具备硬核供应链支撑的产品才是长期赢家。",
+        "template": "insight",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 188449,
+        "sourceEndMs": 279501
+      }
+    },
+    {
+      "id": "ai-card_4-a6a38541-102f-4e6c-bc93-ad3adaa99e7b",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 284297,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "为什么是现在？三大驱动力",
+        "content": "红利持续释放、本土供应链体系高度成熟、消费市场从代步向玩乐升级，共同促成中国制造业的技术临界点。",
+        "template": "chapter-default",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 284297,
+        "sourceEndMs": 377101
+      }
+    },
+    {
+      "id": "ai-card_4-c6401598-1279-4676-88df-fff1fa13ae87",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 284297,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "为什么是现在？三大驱动力",
+        "content": "红利持续释放、本土供应链体系高度成熟、消费市场从代步向玩乐升级，共同促成中国制造业的技术临界点。",
+        "template": "chapter-default",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 284297,
+        "sourceEndMs": 377101
+      }
+    },
+    {
+      "id": "ai-card_4-dfbc8ab8-f757-4f03-9d12-41aeaf3ba538",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 284297,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "为什么是现在？三大驱动力",
+        "content": "红利持续释放、本土供应链体系高度成熟、消费市场从代步向玩乐升级，共同促成中国制造业的技术临界点。",
+        "template": "chapter-default",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 284297,
+        "sourceEndMs": 377101
+      }
+    },
+    {
+      "id": "ai-c4-883f8b61-f493-4fac-b5df-8547f599574a",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 294732,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "制造业转型三大驱动力",
+        "content": "工程师红利持续释放、本土供应链体系成熟、消费市场向性能与个性化升级，共同推动中国制造从成本优势转向技术创新。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 294732,
+        "sourceEndMs": 377101
+      }
+    },
+    {
+      "id": "ai-c4-8bedf980-5a48-4542-a032-cd1b4d0920ac",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 294732,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "制造业转型三大驱动力",
+        "content": "工程师红利持续释放、本土供应链体系成熟、消费市场向性能与个性化升级，共同推动中国制造从成本优势转向技术创新。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 294732,
+        "sourceEndMs": 377101
+      }
+    },
+    {
+      "id": "ai-c4-91747b60-1405-422f-ae5e-20123faeb6fd",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 294732,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "制造业转型三大驱动力",
+        "content": "工程师红利持续释放、本土供应链体系成熟、消费市场向性能与个性化升级，共同推动中国制造从成本优势转向技术创新。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 294732,
+        "sourceEndMs": 377101
+      }
+    },
+    {
+      "id": "ai-c4-cf0f8982-81b5-4913-97b7-cb6df7f4e526",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 294732,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "制造业转型三大驱动力",
+        "content": "工程师红利持续释放、本土供应链体系成熟、消费市场向性能与个性化升级，共同推动中国制造从成本优势转向技术创新。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 294732,
+        "sourceEndMs": 377101
+      }
+    },
+    {
+      "id": "ai-c6-0323b87c-50e3-4c92-8fb4-397739c52430",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 382212,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "summary",
+        "title": "投资与成长的双重复盘",
+        "content": "投资需摒弃追热点，聚焦有技术壁垒与不可替代性的企业；个人成长应找准赛道，以长期主义死磕细节，时间终会给予回报。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#6366f1",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 382212,
+        "sourceEndMs": 477108
+      }
+    },
+    {
+      "id": "ai-c6-bcce073f-374f-4f6e-9179-aef4ce3975d8",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 382212,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "summary",
+        "title": "投资与成长的双重复盘",
+        "content": "投资需摒弃追热点，聚焦有技术壁垒与不可替代性的企业；个人成长应找准赛道，以长期主义死磕细节，时间终会给予回报。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#6366f1",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 382212,
+        "sourceEndMs": 477108
+      }
+    },
+    {
+      "id": "ai-c6-c6234023-8161-439a-90c8-c3dbbd2e6bce",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 382212,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "summary",
+        "title": "投资与成长的双重复盘",
+        "content": "投资需摒弃追热点，聚焦有技术壁垒与不可替代性的企业；个人成长应找准赛道，以长期主义死磕细节，时间终会给予回报。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#6366f1",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 382212,
+        "sourceEndMs": 477108
+      }
+    },
+    {
+      "id": "ai-c6-eae42d4e-845b-4d24-a112-2f9fcc02bd08",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 382212,
+      "durationMs": 7000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "summary",
+        "title": "投资与成长的双重复盘",
+        "content": "投资需摒弃追热点，聚焦有技术壁垒与不可替代性的企业；个人成长应找准赛道，以长期主义死磕细节，时间终会给予回报。",
+        "template": "standard",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#6366f1",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 382212,
+        "sourceEndMs": 477108
+      }
+    },
+    {
+      "id": "ai-c5-1012941e-3775-4f1c-9f66-e350d52b6f93",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 501300,
+      "durationMs": 8000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "拒绝赚快钱的长期主义",
+        "content": "“如果我们今天放弃研发去赚快钱，那十年后我们还是一家只能做低端车的公司。我们现在砸锅卖铁搞研发，是为了十年后能站在产业链的顶端。”——张雪",
+        "template": "quote",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 501300,
+        "sourceEndMs": 514458
+      }
+    },
+    {
+      "id": "ai-c5-6b01c2b8-af74-4643-9625-792a18dd728b",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 501300,
+      "durationMs": 8000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "拒绝赚快钱的长期主义",
+        "content": "“如果我们今天放弃研发去赚快钱，那十年后我们还是一家只能做低端车的公司。我们现在砸锅卖铁搞研发，是为了十年后能站在产业链的顶端。”——张雪",
+        "template": "quote",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 501300,
+        "sourceEndMs": 514458
+      }
+    },
+    {
+      "id": "ai-c5-8da8344e-ea8c-4016-b70e-b7f854d555fc",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 501300,
+      "durationMs": 8000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "拒绝赚快钱的长期主义",
+        "content": "“如果我们今天放弃研发去赚快钱，那十年后我们还是一家只能做低端车的公司。我们现在砸锅卖铁搞研发，是为了十年后能站在产业链的顶端。”——张雪",
+        "template": "quote",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 501300,
+        "sourceEndMs": 514458
+      }
+    },
+    {
+      "id": "ai-c5-e438331c-dc3f-4b9f-84e3-91491b05ecbe",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 501300,
+      "durationMs": 8000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "拒绝赚快钱的长期主义",
+        "content": "“如果我们今天放弃研发去赚快钱，那十年后我们还是一家只能做低端车的公司。我们现在砸锅卖铁搞研发，是为了十年后能站在产业链的顶端。”——张雪",
+        "template": "quote",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 501300,
+        "sourceEndMs": 514458
+      }
+    },
+    {
+      "id": "ai-card_5-366ae98b-1bdb-4a9c-84a0-ea22df8bbd2e",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 501300,
+      "durationMs": 6000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "拒绝赚快钱的长期主义",
+        "content": "“如果我们今天放弃研发去赚快钱，那十年后我们还是一家只能做低端车的公司。我们现在砸锅卖铁搞研发，是为了十年后能站在产业链的顶端。”",
+        "template": "quote",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 501300,
+        "sourceEndMs": 514458
+      }
+    },
+    {
+      "id": "ai-card_5-908df9b5-f473-423a-ba36-7a88dc4c4317",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 501300,
+      "durationMs": 6000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "拒绝赚快钱的长期主义",
+        "content": "“如果我们今天放弃研发去赚快钱，那十年后我们还是一家只能做低端车的公司。我们现在砸锅卖铁搞研发，是为了十年后能站在产业链的顶端。”",
+        "template": "quote",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 501300,
+        "sourceEndMs": 514458
+      }
+    },
+    {
+      "id": "ai-card_5-e636d17e-e6bb-49e1-975e-99de33291c73",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 501300,
+      "durationMs": 6000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "拒绝赚快钱的长期主义",
+        "content": "“如果我们今天放弃研发去赚快钱，那十年后我们还是一家只能做低端车的公司。我们现在砸锅卖铁搞研发，是为了十年后能站在产业链的顶端。”",
+        "template": "quote",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        },
+        "sourceStartMs": 501300,
+        "sourceEndMs": 514458
+      }
+    },
+    {
+      "id": "ai-card_1-2bfd3cd3-ccfd-4852-94ac-046f4584fc4d",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 527529,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "中国品牌首夺WSBK冠",
+        "content": "2026年WSBK葡萄牙站，张雪机车连续两回合夺冠。创始人张雪从14岁修车学徒到世界冠军品牌创始人，历时25年完成逆袭。",
+        "template": "chapter-default",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#6366f1",
+          "backgroundColor": "#6366f1",
+          "fontSize": 48
+        },
+        "sourceStartMs": 527529,
+        "sourceEndMs": 534131
+      }
+    },
+    {
+      "id": "ai-card_1-91cf4791-fea7-4ae0-8999-e73b903e6853",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 527529,
+      "durationMs": 6602,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "summary",
+        "title": "社群互动与资讯分享",
+        "content": "主播定期分享行业资讯，并邀请听众加入主页群聊交流探讨。",
+        "template": "text_card",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#6366f1",
+          "backgroundColor": "#6366f1",
+          "fontSize": 48
+        },
+        "sourceStartMs": 527529,
+        "sourceEndMs": 534131
+      }
+    },
+    {
+      "id": "ai-card_1-c2c391aa-6a9d-48c1-b694-3de1aea88d36",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 527529,
+      "durationMs": 6602,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "summary",
+        "title": "社群互动与资讯分享",
+        "content": "主播定期分享行业资讯，并邀请听众加入主页群聊交流探讨。",
+        "template": "text_card",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#6366f1",
+          "backgroundColor": "#6366f1",
+          "fontSize": 48
+        },
+        "sourceStartMs": 527529,
+        "sourceEndMs": 534131
+      }
+    },
+    {
+      "id": "ai-card_4-02efb793-0411-4d7c-b085-1ac522e65a52",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 527529,
+      "durationMs": 6602,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "互动与结语",
+        "content": "主播一叶知秋邀请听众加入主页群聊交流，并预告下期节目。",
+        "template": "chapter",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#8b5cf6",
+          "fontSize": 48
+        },
+        "sourceStartMs": 527529,
+        "sourceEndMs": 534131
+      }
+    },
+    {
+      "id": "ai-card_4-36803f41-6537-4047-b0c9-6174f6387e27",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 527529,
+      "durationMs": 6602,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "互动与结语",
+        "content": "主播一叶知秋邀请听众加入主页群聊交流，并预告下期节目。",
+        "template": "chapter",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#8b5cf6",
+          "fontSize": 48
+        },
+        "sourceStartMs": 527529,
+        "sourceEndMs": 534131
+      }
+    },
+    {
+      "id": "ai-card_4-57f530c1-5c05-4595-8a7a-658f4ebcb725",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 527529,
+      "durationMs": 6602,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "互动与结语",
+        "content": "主播一叶知秋邀请听众加入主页群聊交流，并预告下期节目。",
+        "template": "chapter",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#8b5cf6",
+          "fontSize": 48
+        },
+        "sourceStartMs": 527529,
+        "sourceEndMs": 534131
+      }
+    },
+    {
+      "id": "ai-card_4-f15bd257-8ec3-4f6a-b817-bebda0c04a3c",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 527529,
+      "durationMs": 6602,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "互动与结语",
+        "content": "主播一叶知秋邀请听众加入主页群聊交流，并预告下期节目。",
+        "template": "chapter",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#8b5cf6",
+          "fontSize": 48
+        },
+        "sourceStartMs": 527529,
+        "sourceEndMs": 534131
+      }
+    },
+    {
+      "id": "ai-card_1-2579ad74-8431-4753-a235-fe94dc523222",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 534276,
+      "durationMs": 11707,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "张雪的十年愿景",
+        "content": "“十年后，我希望有人提到高端摩托车时，第一个想到的不是本田雅马哈，而是张雪机车。”",
+        "template": "quote",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#ec4899",
+          "fontSize": 48
+        },
+        "sourceStartMs": 534276,
+        "sourceEndMs": 545983
+      }
+    },
+    {
+      "id": "ai-card_1-4e64ed8f-5750-447b-8711-ac24f0327a73",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 534276,
+      "durationMs": 11707,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "张雪的十年愿景",
+        "content": "“十年后，我希望有人提到高端摩托车时，第一个想到的不是本田雅马哈，而是张雪机车。”",
+        "template": "quote",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#ec4899",
+          "fontSize": 48
+        },
+        "sourceStartMs": 534276,
+        "sourceEndMs": 545983
+      }
+    },
+    {
+      "id": "ai-card_1-c1e1b096-d0a5-4f9b-902b-8acf449ab010",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 534276,
+      "durationMs": 11707,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "张雪的十年愿景",
+        "content": "“十年后，我希望有人提到高端摩托车时，第一个想到的不是本田雅马哈，而是张雪机车。”",
+        "template": "quote",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#ec4899",
+          "fontSize": 48
+        },
+        "sourceStartMs": 534276,
+        "sourceEndMs": 545983
+      }
+    },
+    {
+      "id": "ai-card_1-ca8949bc-dbda-4afe-ac51-c4129d38479c",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 534276,
+      "durationMs": 11707,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "张雪的十年愿景",
+        "content": "“十年后，我希望有人提到高端摩托车时，第一个想到的不是本田雅马哈，而是张雪机车。”",
+        "template": "quote",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#ec4899",
+          "fontSize": 48
+        },
+        "sourceStartMs": 534276,
+        "sourceEndMs": 545983
+      }
+    },
+    {
+      "id": "ai-card_2-3c7d6ffe-ae79-490e-a0af-0d5c29773a68",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 534276,
+      "durationMs": 11707,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "张雪机车夺冠宣言",
+        "content": "“这只是开始。十年后，我希望有人提到高端摩托车时，第一个想到的不是本田雅马哈，而是张雪机车。”",
+        "template": "quote_card",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#ec4899",
+          "fontSize": 48
+        },
+        "sourceStartMs": 534276,
+        "sourceEndMs": 545983
+      }
+    },
+    {
+      "id": "ai-card_2-78885b1a-7679-4fed-a3b7-d1bb744b03fe",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 534276,
+      "durationMs": 11707,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "张雪机车夺冠宣言",
+        "content": "“这只是开始。十年后，我希望有人提到高端摩托车时，第一个想到的不是本田雅马哈，而是张雪机车。”",
+        "template": "quote_card",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#ec4899",
+          "fontSize": 48
+        },
+        "sourceStartMs": 534276,
+        "sourceEndMs": 545983
+      }
+    },
+    {
+      "id": "ai-card_2-e129cdbe-8e8f-4fe8-bb96-9bc513ec65c2",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 534276,
+      "durationMs": 11707,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "quote",
+        "title": "张雪机车夺冠宣言",
+        "content": "“这只是开始。十年后，我希望有人提到高端摩托车时，第一个想到的不是本田雅马哈，而是张雪机车。”",
+        "template": "quote_card",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#ec4899",
+          "fontSize": 48
+        },
+        "sourceStartMs": 534276,
+        "sourceEndMs": 545983
+      }
+    },
+    {
+      "id": "ai-card_2-159e4f5d-6637-41c5-85e9-3ab3f23f32d4",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 537649,
+      "durationMs": 8135,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "data",
+        "title": "品牌目标与现状对比",
+        "content": {
+          "chartType": "comparison",
+          "items": [
+            {
+              "label": "当前认知 (本田/雅马哈)",
+              "value": 85,
+              "highlight": false
+            },
+            {
+              "label": "十年目标 (张雪机车)",
+              "value": 100,
+              "highlight": true
+            }
+          ]
+        },
+        "template": "data",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#10b981",
+          "fontSize": 48
+        },
+        "sourceStartMs": 537649,
+        "sourceEndMs": 545784
+      }
+    },
+    {
+      "id": "ai-card_2-414bf9c3-e4db-4a5c-b0c5-ae7e56a85b48",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 537649,
+      "durationMs": 8135,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "data",
+        "title": "品牌目标与现状对比",
+        "content": {
+          "chartType": "comparison",
+          "items": [
+            {
+              "label": "当前认知 (本田/雅马哈)",
+              "value": 85,
+              "highlight": false
+            },
+            {
+              "label": "十年目标 (张雪机车)",
+              "value": 100,
+              "highlight": true
+            }
+          ]
+        },
+        "template": "data",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#10b981",
+          "fontSize": 48
+        },
+        "sourceStartMs": 537649,
+        "sourceEndMs": 545784
+      }
+    },
+    {
+      "id": "ai-card_2-873a4417-a1b3-4368-98d5-f98d2ac899b3",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 537649,
+      "durationMs": 8135,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "data",
+        "title": "品牌目标与现状对比",
+        "content": {
+          "chartType": "comparison",
+          "items": [
+            {
+              "label": "当前认知 (本田/雅马哈)",
+              "value": 85,
+              "highlight": false
+            },
+            {
+              "label": "十年目标 (张雪机车)",
+              "value": 100,
+              "highlight": true
+            }
+          ]
+        },
+        "template": "data",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#10b981",
+          "fontSize": 48
+        },
+        "sourceStartMs": 537649,
+        "sourceEndMs": 545784
+      }
+    },
+    {
+      "id": "ai-card_2-dd817db5-431a-4f97-98da-8272a221038d",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 537649,
+      "durationMs": 8135,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "data",
+        "title": "品牌目标与现状对比",
+        "content": {
+          "chartType": "comparison",
+          "items": [
+            {
+              "label": "当前认知 (本田/雅马哈)",
+              "value": 85,
+              "highlight": false
+            },
+            {
+              "label": "十年目标 (张雪机车)",
+              "value": 100,
+              "highlight": true
+            }
+          ]
+        },
+        "template": "data",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#10b981",
+          "fontSize": 48
+        },
+        "sourceStartMs": 537649,
+        "sourceEndMs": 545784
+      }
+    },
+    {
+      "id": "ai-card_3-00a02a04-fe2f-409e-b3b3-98e2f2b41cfd",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 546120,
+      "durationMs": 9965,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "技术死磕成就高端梦想",
+        "content": "只要持续在研发上投入资金，在技术上死磕到底，超越国际大牌的目标就并非遥不可及。",
+        "template": "insight_card",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#f59e0b",
+          "fontSize": 48
+        },
+        "sourceStartMs": 546120,
+        "sourceEndMs": 556085
+      }
+    },
+    {
+      "id": "ai-card_3-139a5c01-955a-4f02-af07-7f7bc8002742",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 546120,
+      "durationMs": 9965,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "技术死磕成就高端梦想",
+        "content": "只要持续在研发上投入资金，在技术上死磕到底，超越国际大牌的目标就并非遥不可及。",
+        "template": "insight_card",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#f59e0b",
+          "fontSize": 48
+        },
+        "sourceStartMs": 546120,
+        "sourceEndMs": 556085
+      }
+    },
+    {
+      "id": "ai-card_3-2e888822-c401-4aae-9419-fc83c53fbd48",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 546120,
+      "durationMs": 9965,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "技术死磕是破局关键",
+        "content": "只要持续在研发上砸钱、在技术上死磕，国产高端摩托车的目标就绝非遥不可及。",
+        "template": "insight",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#f59e0b",
+          "fontSize": 48
+        },
+        "sourceStartMs": 546120,
+        "sourceEndMs": 556085
+      }
+    },
+    {
+      "id": "ai-card_3-36d11955-9c8d-48c1-8175-b2696ed87d0c",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 546120,
+      "durationMs": 9965,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "技术死磕是破局关键",
+        "content": "只要持续在研发上砸钱、在技术上死磕，国产高端摩托车的目标就绝非遥不可及。",
+        "template": "insight",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#f59e0b",
+          "fontSize": 48
+        },
+        "sourceStartMs": 546120,
+        "sourceEndMs": 556085
+      }
+    },
+    {
+      "id": "ai-card_3-5022cbc7-8ca8-49a8-9462-1ffd6dab2df6",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 546120,
+      "durationMs": 9965,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "技术死磕是破局关键",
+        "content": "只要持续在研发上砸钱、在技术上死磕，国产高端摩托车的目标就绝非遥不可及。",
+        "template": "insight",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#f59e0b",
+          "fontSize": 48
+        },
+        "sourceStartMs": 546120,
+        "sourceEndMs": 556085
+      }
+    },
+    {
+      "id": "ai-card_3-c3efbfdf-0de2-41ca-ad3e-28bac8ca4655",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 546120,
+      "durationMs": 9965,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "技术死磕成就高端梦想",
+        "content": "只要持续在研发上投入资金，在技术上死磕到底，超越国际大牌的目标就并非遥不可及。",
+        "template": "insight_card",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#f59e0b",
+          "fontSize": 48
+        },
+        "sourceStartMs": 546120,
+        "sourceEndMs": 556085
+      }
+    },
+    {
+      "id": "ai-card_3-c60c1de3-5e51-4df5-9f85-6ee82372d84b",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 546120,
+      "durationMs": 9965,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "insight",
+        "title": "技术死磕是破局关键",
+        "content": "只要持续在研发上砸钱、在技术上死磕，国产高端摩托车的目标就绝非遥不可及。",
+        "template": "insight",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#f59e0b",
+          "fontSize": 48
+        },
+        "sourceStartMs": 546120,
+        "sourceEndMs": 556085
+      }
+    },
+    {
+      "id": "ai-card_4-80ce0a06-a4b7-4176-a19e-f0b9c27ea778",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 556236,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "为什么是现在？三大驱动力",
+        "content": "红利持续释放、本土供应链体系高度成熟、消费市场从代步向玩乐升级，共同促成中国制造业的技术临界点。",
+        "template": "chapter-default",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#8b5cf6",
+          "fontSize": 48
+        },
+        "sourceStartMs": 556236,
+        "sourceEndMs": 560571
+      }
+    },
+    {
+      "id": "ai-card_4-acf89fe1-dfbd-4207-8dd8-bc40008753bc",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 556236,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "为什么是现在？三大驱动力",
+        "content": "红利持续释放、本土供应链体系高度成熟、消费市场从代步向玩乐升级，共同促成中国制造业的技术临界点。",
+        "template": "chapter-default",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#8b5cf6",
+          "fontSize": 48
+        },
+        "sourceStartMs": 556236,
+        "sourceEndMs": 560571
+      }
+    },
+    {
+      "id": "ai-card_4-fa55387b-798d-4d9a-b30f-8e9158c8a7af",
+      "type": "image",
+      "assetPath": "",
+      "trackId": "visual-1",
+      "startMs": 556236,
+      "durationMs": 5000,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "overlayType": "ai-card",
+      "aiCardData": {
+        "cardType": "chapter",
+        "title": "为什么是现在？三大驱动力",
+        "content": "红利持续释放、本土供应链体系高度成熟、消费市场从代步向玩乐升级，共同促成中国制造业的技术临界点。",
+        "template": "chapter-default",
+        "displayMode": "fullscreen",
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#8b5cf6",
+          "fontSize": 48
+        },
+        "sourceStartMs": 556236,
+        "sourceEndMs": 560571
+      }
+    }
+  ],
+  "subtitle": {
+    "fontSize": 48,
+    "color": "#FFFFFF",
+    "position": "bottom"
+  },
+  "tracks": [
+    {
+      "id": "audio",
+      "kind": "audio",
+      "label": "口播轨",
+      "order": 0,
+      "locked": true
+    },
+    {
+      "id": "subtitle",
+      "kind": "subtitle",
+      "label": "字幕轨",
+      "order": 0,
+      "locked": true
+    },
+    {
+      "id": "visual-1",
+      "kind": "visual",
+      "label": "轨道 1",
+      "order": 1
+    },
+    {
+      "id": "visual-2",
+      "kind": "visual",
+      "label": "轨道 2",
+      "order": 2
+    },
+    {
+      "id": "visual-3",
+      "kind": "visual",
+      "label": "轨道 3",
+      "order": 3
+    },
+    {
+      "id": "visual-4",
+      "kind": "visual",
+      "label": "轨道 4",
+      "order": 4
+    }
+  ]
+}

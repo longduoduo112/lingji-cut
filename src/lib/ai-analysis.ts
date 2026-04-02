@@ -1,0 +1,436 @@
+import type { SrtEntry } from '../types';
+import {
+  DEFAULT_CARD_DURATION_MS,
+  getDefaultCardStyle,
+  getDefaultTemplate,
+  isAICardType,
+  isDataContent,
+  type AIAnalysisResult,
+  type AICard,
+  type AISettings,
+  type CardStyle,
+  type WebCardPayload,
+} from '../types/ai';
+import { callLLM, parseLLMJsonResponse } from './llm-client';
+
+interface AnalyzeSrtOptions {
+  maxTokens?: number;
+  callModel?: typeof callLLM;
+  globalPrompt?: string;
+}
+
+interface RegenerateCardOptions {
+  callModel?: typeof callLLM;
+  globalPrompt?: string;
+  cardPrompt?: string;
+  contextPaddingMs?: number;
+}
+
+function msToTimestamp(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1_000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const millis = ms % 1_000;
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+}
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length * 1.3);
+}
+
+function normalizeStyle(type: AICard['type'], style: unknown): CardStyle {
+  if (!style || typeof style !== 'object') {
+    return getDefaultCardStyle(type);
+  }
+
+  const candidate = style as Partial<CardStyle>;
+  const defaults = getDefaultCardStyle(type);
+  return {
+    primaryColor: candidate.primaryColor ?? defaults.primaryColor,
+    backgroundColor: candidate.backgroundColor ?? defaults.backgroundColor,
+    fontSize: Number.isFinite(candidate.fontSize) ? Number(candidate.fontSize) : defaults.fontSize,
+  };
+}
+
+function isWebCardPayload(value: unknown): value is WebCardPayload {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      'srcDoc' in value &&
+      typeof (value as { srcDoc?: unknown }).srcDoc === 'string',
+  );
+}
+
+function normalizeWebCardPayload(value: unknown): WebCardPayload | undefined {
+  if (!isWebCardPayload(value)) {
+    return undefined;
+  }
+
+  return {
+    srcDoc: value.srcDoc,
+    runtimeStatus:
+      value.runtimeStatus === 'loading' ||
+      value.runtimeStatus === 'ready' ||
+      value.runtimeStatus === 'error'
+        ? value.runtimeStatus
+        : 'idle',
+    lastGeneratedAt: Number.isFinite(value.lastGeneratedAt) ? Number(value.lastGeneratedAt) : Date.now(),
+  };
+}
+
+function normalizeCard(rawCard: unknown, index: number): AICard | null {
+  if (!rawCard || typeof rawCard !== 'object') {
+    return null;
+  }
+
+  const candidate = rawCard as Record<string, unknown>;
+  if (!isAICardType(candidate.type)) {
+    return null;
+  }
+
+  const startMs = Number(candidate.startMs);
+  const endMs = Number(candidate.endMs);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    return null;
+  }
+
+  const content =
+    typeof candidate.content === 'string' || isDataContent(candidate.content)
+      ? candidate.content
+      : '';
+  const webCard = normalizeWebCardPayload(candidate.webCard);
+  const renderMode =
+    candidate.renderMode === 'web-card' || webCard ? 'web-card' : 'legacy';
+
+  return {
+    id: typeof candidate.id === 'string' && candidate.id ? candidate.id : `card-${index + 1}`,
+    type: candidate.type,
+    title: typeof candidate.title === 'string' ? candidate.title : `卡片 ${index + 1}`,
+    content,
+    startMs,
+    endMs,
+    displayDurationMs:
+      Number.isFinite(candidate.displayDurationMs) && Number(candidate.displayDurationMs) > 0
+        ? Number(candidate.displayDurationMs)
+        : DEFAULT_CARD_DURATION_MS,
+    displayMode: candidate.displayMode === 'pip' ? 'pip' : 'fullscreen',
+    template:
+      typeof candidate.template === 'string' && candidate.template
+        ? candidate.template
+        : getDefaultTemplate(candidate.type),
+    enabled: candidate.enabled !== false,
+    style: normalizeStyle(candidate.type, candidate.style),
+    renderMode,
+    cardPrompt: typeof candidate.cardPrompt === 'string' ? candidate.cardPrompt : undefined,
+    webCard,
+  };
+}
+
+function parsePartialResult(value: unknown): AIAnalysisResult | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const cards = Array.isArray(candidate.cards)
+    ? candidate.cards.map(normalizeCard).filter(Boolean)
+    : [];
+
+  return {
+    cards,
+    coverPrompts: Array.isArray(candidate.coverPrompts)
+      ? candidate.coverPrompts.filter((item): item is string => typeof item === 'string')
+      : [],
+    summary: typeof candidate.summary === 'string' ? candidate.summary : '',
+    keywords: Array.isArray(candidate.keywords)
+      ? candidate.keywords.filter((item): item is string => typeof item === 'string')
+      : [],
+    globalPrompt: typeof candidate.globalPrompt === 'string' ? candidate.globalPrompt : undefined,
+  };
+}
+
+export function buildSrtText(entries: SrtEntry[]): string {
+  return entries
+    .map((entry) => `[${msToTimestamp(entry.startMs)} --> ${msToTimestamp(entry.endMs)}] ${entry.text}`)
+    .join('\n');
+}
+
+export function chunkSrtEntries(
+  entries: SrtEntry[],
+  maxTokens: number,
+  overlapEntries = 1,
+): SrtEntry[][] {
+  if (entries.length === 0) {
+    return [];
+  }
+
+  if (estimateTokens(buildSrtText(entries)) <= maxTokens) {
+    return [entries];
+  }
+
+  const chunks: SrtEntry[][] = [];
+  let currentChunk: SrtEntry[] = [];
+  let currentTokens = 0;
+
+  for (const entry of entries) {
+    const entryTokens = estimateTokens(buildSrtText([entry]));
+    if (currentChunk.length > 0 && currentTokens + entryTokens > maxTokens) {
+      chunks.push(currentChunk);
+      currentChunk = currentChunk.slice(-overlapEntries);
+      currentTokens = estimateTokens(buildSrtText(currentChunk));
+    }
+
+    currentChunk.push(entry);
+    currentTokens += entryTokens;
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
+}
+
+export function buildAnalysisPrompt(globalPrompt?: string): string {
+  const promptLine = globalPrompt?.trim()
+    ? `\n额外创作要求：${globalPrompt.trim()}\n`
+    : '\n';
+
+  return `你是一个播客内容分析助手，同时也是一个网页信息卡设计师。请分析字幕并输出严格 JSON。${promptLine}
+
+输出结构必须包含：
+- cards: 3-8 张卡片，类型只能是 summary、data、insight、chapter、quote
+- coverPrompts: 2-4 组封面提示词
+- summary: 一句话总结
+- keywords: 关键词数组
+- globalPrompt: 沿用输入的整期创作提示词，没有则返回空字符串
+
+cards 中每一项必须包含：
+- id
+- type
+- title
+- content
+- startMs
+- endMs
+- displayDurationMs
+- displayMode
+- template
+- enabled
+- style
+- renderMode
+- webCard
+
+data 类型的 content 使用对象：
+{
+  "chartType": "bar|comparison|ranking|stat",
+  "items": [{ "label": "标签", "value": 72, "highlight": true }]
+}
+
+renderMode 默认输出 "web-card"。
+
+webCard 使用对象：
+{
+  "srcDoc": "<!doctype html>...</html>"
+}
+
+srcDoc 要求：
+- 必须是完整 HTML 文档
+- 允许 HTML/CSS/JS
+- 允许外部图片、脚本、字体和样式
+- 默认 1920x1080 画布
+- 尽量做成信息层级清晰、视觉冲击力强的 16:9 卡片
+- 不要输出 markdown 代码块
+- 内容必须忠于字幕事实，不要编造
+- 请保留 card 的 title/content 作为结构化兜底文本
+
+颜色建议：
+- summary: #6366f1
+- data: #10b981
+- insight: #f59e0b
+- chapter: #8b5cf6
+- quote: #ec4899
+
+请只返回 JSON，不要附加解释。`;
+}
+
+export function buildCardRegenerationPrompt(
+  card: AICard,
+  options: {
+    globalPrompt?: string;
+    cardPrompt?: string;
+  } = {},
+): string {
+  const globalPrompt = options.globalPrompt?.trim();
+  const cardPrompt = options.cardPrompt?.trim();
+
+  return `你要重生成一张播客信息卡，请输出严格 JSON，且只返回单张卡片对象。
+
+当前卡片信息：
+- id: ${card.id}
+- type: ${card.type}
+- title: ${card.title}
+- startMs: ${card.startMs}
+- endMs: ${card.endMs}
+- displayDurationMs: ${card.displayDurationMs}
+
+整期创作提示词：
+${globalPrompt || '无'}
+
+单卡追加提示词：
+${cardPrompt || '无'}
+
+输出字段必须包含：
+- id
+- type
+- title
+- content
+- startMs
+- endMs
+- displayDurationMs
+- displayMode
+- template
+- enabled
+- style
+- renderMode
+- cardPrompt
+- webCard
+
+其中：
+- renderMode 默认输出 "web-card"
+- webCard.srcDoc 必须是完整 HTML 文档
+- 允许 HTML/CSS/JS 和外部资源
+- 内容必须忠于字幕事实，不要编造
+- 允许改变文案组织、视觉结构和表现方式
+- 保留结构化的 title/content 作为兜底文本
+
+请只返回 JSON 对象，不要附加解释。`;
+}
+
+export function mergeAnalysisResults(results: AIAnalysisResult[]): AIAnalysisResult {
+  const seenStartMs = new Set<number>();
+  const cards: AICard[] = [];
+  const keywords = new Set<string>();
+  let coverPrompts: string[] = [];
+  const summaries: string[] = [];
+  let globalPrompt = '';
+
+  for (const result of results) {
+    for (const card of result.cards) {
+      if (seenStartMs.has(card.startMs)) {
+        continue;
+      }
+
+      seenStartMs.add(card.startMs);
+      cards.push(card);
+    }
+
+    for (const keyword of result.keywords) {
+      keywords.add(keyword);
+    }
+
+    if (result.coverPrompts.length > 0) {
+      coverPrompts = result.coverPrompts;
+    }
+
+    if (result.summary) {
+      summaries.push(result.summary);
+    }
+
+    if (result.globalPrompt) {
+      globalPrompt = result.globalPrompt;
+    }
+  }
+
+  return {
+    cards: cards.sort((left, right) => left.startMs - right.startMs),
+    coverPrompts,
+    summary: summaries.join('；'),
+    keywords: [...keywords],
+    globalPrompt: globalPrompt || undefined,
+  };
+}
+
+export function getCardContextEntries(
+  entries: SrtEntry[],
+  card: Pick<AICard, 'startMs' | 'endMs'>,
+  paddingMs = 10_000,
+): SrtEntry[] {
+  const startMs = Math.max(0, card.startMs - paddingMs);
+  const endMs = card.endMs + paddingMs;
+
+  return entries.filter((entry) => entry.endMs >= startMs && entry.startMs <= endMs);
+}
+
+export async function analyzeSrt(
+  entries: SrtEntry[],
+  settings: AISettings,
+  options: AnalyzeSrtOptions = {},
+): Promise<AIAnalysisResult> {
+  const { maxTokens = 8_000, callModel = callLLM, globalPrompt } = options;
+  const chunks = chunkSrtEntries(entries, maxTokens);
+  if (chunks.length === 0) {
+    throw new Error('没有可分析的字幕内容');
+  }
+
+  const systemPrompt = buildAnalysisPrompt(globalPrompt);
+  const partialResults: AIAnalysisResult[] = [];
+
+  for (const chunk of chunks) {
+    const rawResult = await callModel(settings, systemPrompt, buildSrtText(chunk));
+    const parsed = parsePartialResult(parseLLMJsonResponse(rawResult));
+    if (parsed) {
+      partialResults.push(parsed);
+      continue;
+    }
+  }
+
+  if (partialResults.length === 0) {
+    throw new Error('LLM 未返回有效的分析结果');
+  }
+
+  return {
+    ...mergeAnalysisResults(partialResults),
+    globalPrompt: globalPrompt?.trim() || undefined,
+  };
+}
+
+export async function regenerateAICard(
+  entries: SrtEntry[],
+  card: AICard,
+  settings: AISettings,
+  options: RegenerateCardOptions = {},
+): Promise<AICard> {
+  const {
+    callModel = callLLM,
+    globalPrompt,
+    cardPrompt = card.cardPrompt,
+    contextPaddingMs = 10_000,
+  } = options;
+
+  const contextEntries = getCardContextEntries(entries, card, contextPaddingMs);
+  if (contextEntries.length === 0) {
+    throw new Error('未找到与该卡片对应的字幕上下文');
+  }
+
+  const rawResult = await callModel(
+    settings,
+    buildCardRegenerationPrompt(card, {
+      globalPrompt,
+      cardPrompt,
+    }),
+    buildSrtText(contextEntries),
+  );
+  const parsed = normalizeCard(parseLLMJsonResponse(rawResult), 0);
+  if (!parsed) {
+    throw new Error('LLM 未返回有效的卡片结果');
+  }
+
+  return {
+    ...card,
+    ...parsed,
+    id: card.id,
+    enabled: card.enabled,
+    cardPrompt: cardPrompt?.trim() || undefined,
+  };
+}

@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "analysisResult": {
+    "cards": [
+      {
+        "id": "card_1",
+        "type": "chapter",
+        "title": "中国品牌首夺WSBK冠",
+        "content": "2026年WSBK葡萄牙站，张雪机车连续两回合夺冠。创始人张雪从14岁修车学徒到世界冠军品牌创始人，历时25年完成逆袭。",
+        "startMs": 0,
+        "endMs": 37535,
+        "displayDurationMs": 5000,
+        "displayMode": "fullscreen",
+        "template": "chapter-default",
+        "enabled": false,
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        }
+      },
+      {
+        "id": "card_2",
+        "type": "data",
+        "title": "硬核研发与供应链数据",
+        "content": {
+          "chartType": "comparison",
+          "items": [
+            {
+              "label": "张雪机车研发占比",
+              "value": 9.33,
+              "highlight": true
+            },
+            {
+              "label": "行业平均研发占比",
+              "value": 4,
+              "highlight": false
+            },
+            {
+              "label": "核心零部件国产化率",
+              "value": 92,
+              "highlight": true
+            }
+          ]
+        },
+        "startMs": 133545,
+        "endMs": 187195,
+        "displayDurationMs": 6000,
+        "displayMode": "fullscreen",
+        "template": "data",
+        "enabled": false,
+        "style": {
+          "primaryColor": "#10b981",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        }
+      },
+      {
+        "id": "card_3",
+        "type": "insight",
+        "title": "供应链溢出与技术降维",
+        "content": "隆鑫通用、鸿泉技术等配套企业展现技术溢出效应。中国制造业正从成本优势转向技术创新驱动，具备硬核供应链支撑的产品才是长期赢家。",
+        "startMs": 188449,
+        "endMs": 279501,
+        "displayDurationMs": 5000,
+        "displayMode": "fullscreen",
+        "template": "insight",
+        "enabled": true,
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        }
+      },
+      {
+        "id": "card_4",
+        "type": "chapter",
+        "title": "为什么是现在？三大驱动力",
+        "content": "红利持续释放、本土供应链体系高度成熟、消费市场从代步向玩乐升级，共同促成中国制造业的技术临界点。",
+        "startMs": 284297,
+        "endMs": 377101,
+        "displayDurationMs": 5000,
+        "displayMode": "fullscreen",
+        "template": "chapter-default",
+        "enabled": true,
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        }
+      },
+      {
+        "id": "card_5",
+        "type": "quote",
+        "title": "拒绝赚快钱的长期主义",
+        "content": "“如果我们今天放弃研发去赚快钱，那十年后我们还是一家只能做低端车的公司。我们现在砸锅卖铁搞研发，是为了十年后能站在产业链的顶端。”",
+        "startMs": 501300,
+        "endMs": 514458,
+        "displayDurationMs": 6000,
+        "displayMode": "fullscreen",
+        "template": "quote",
+        "enabled": false,
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#0f172a",
+          "fontSize": 48
+        }
+      },
+      {
+        "id": "card_1",
+        "type": "chapter",
+        "title": "中国品牌首夺WSBK冠",
+        "content": "2026年WSBK葡萄牙站，张雪机车连续两回合夺冠。创始人张雪从14岁修车学徒到世界冠军品牌创始人，历时25年完成逆袭。",
+        "startMs": 527529,
+        "endMs": 534131,
+        "displayDurationMs": 5000,
+        "displayMode": "fullscreen",
+        "template": "chapter-default",
+        "enabled": false,
+        "style": {
+          "primaryColor": "#6366f1",
+          "backgroundColor": "#6366f1",
+          "fontSize": 48
+        }
+      },
+      {
+        "id": "card_2",
+        "type": "quote",
+        "title": "张雪机车夺冠宣言",
+        "content": "“这只是开始。十年后，我希望有人提到高端摩托车时，第一个想到的不是本田雅马哈，而是张雪机车。”",
+        "startMs": 534276,
+        "endMs": 545983,
+        "displayDurationMs": 11707,
+        "displayMode": "fullscreen",
+        "template": "quote_card",
+        "enabled": false,
+        "style": {
+          "primaryColor": "#ec4899",
+          "backgroundColor": "#ec4899",
+          "fontSize": 48
+        }
+      },
+      {
+        "id": "card_3",
+        "type": "insight",
+        "title": "技术死磕成就高端梦想",
+        "content": "只要持续在研发上投入资金，在技术上死磕到底，超越国际大牌的目标就并非遥不可及。",
+        "startMs": 546120,
+        "endMs": 556085,
+        "displayDurationMs": 9965,
+        "displayMode": "fullscreen",
+        "template": "insight_card",
+        "enabled": true,
+        "style": {
+          "primaryColor": "#f59e0b",
+          "backgroundColor": "#f59e0b",
+          "fontSize": 48
+        }
+      },
+      {
+        "id": "card_4",
+        "type": "chapter",
+        "title": "为什么是现在？三大驱动力",
+        "content": "红利持续释放、本土供应链体系高度成熟、消费市场从代步向玩乐升级，共同促成中国制造业的技术临界点。",
+        "startMs": 556236,
+        "endMs": 560571,
+        "displayDurationMs": 5000,
+        "displayMode": "fullscreen",
+        "template": "chapter-default",
+        "enabled": true,
+        "style": {
+          "primaryColor": "#8b5cf6",
+          "backgroundColor": "#8b5cf6",
+          "fontSize": 48
+        }
+      }
+    ],
+    "coverPrompts": [
+      "高端摩托车赛道，张雪机车夺冠瞬间，工业科技风，电影质感",
+      "国产机车研发实验室，工程师专注调试引擎，未来感光影",
+      "十年磨一剑，中国智造摩托车驰骋赛道，史诗级构图"
+    ],
+    "summary": "张雪机车WSBK夺冠折射出中国制造业向技术创新驱动的转型，凸显供应链成熟与长期主义在产业升级中的核心价值。；张雪机车夺冠后立志十年内超越本田雅马哈成为高端摩托车首选，主播认为持续研发投入将使其目标可期。",
+    "keywords": [
+      "张雪机车",
+      "WSBK",
+      "中国制造业",
+      "供应链国产化",
+      "长期主义",
+      "研发投入",
+      "产业升级",
+      "高端摩托车",
+      "本田雅马哈",
+      "技术死磕",
+      "国产摩托"
+    ]
+  },
+  "coverCandidates": []
+}
