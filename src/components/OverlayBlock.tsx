@@ -4,6 +4,7 @@ import type { OverlayItem } from '../types';
 import { clamp, getFileNameFromPath } from '../lib/utils';
 import { useTimelineStore } from '../store/timeline';
 import { AssetThumbnail } from './AssetThumbnail';
+import styles from './OverlayBlock.module.css';
 
 interface OverlayBlockProps {
   overlay: OverlayItem;
@@ -11,6 +12,7 @@ interface OverlayBlockProps {
   trackHeight?: number;
   getTrackDragZones?: () => TrackDragZone[];
   onTrackHoverChange?: (trackId: string | null) => void;
+  onSelect?: () => void;
 }
 
 export function OverlayBlock({
@@ -19,6 +21,7 @@ export function OverlayBlock({
   trackHeight = 48,
   getTrackDragZones,
   onTrackHoverChange,
+  onSelect,
 }: OverlayBlockProps) {
   const { assets, removeOverlay, timeline, updateOverlay } = useTimelineStore();
   const asset = assets.find((item) => item.path === overlay.assetPath);
@@ -65,12 +68,21 @@ export function OverlayBlock({
 
     event.preventDefault();
     const startX = event.clientX;
+    const startY = event.clientY;
     const startMs = overlay.startMs;
     let currentTrackId = overlay.trackId;
+    let didMove = false;
 
     onTrackHoverChange?.(overlay.trackId);
 
     const handleMouseMove = (moveEvent: globalThis.MouseEvent) => {
+      if (
+        !didMove &&
+        (Math.abs(moveEvent.clientX - startX) > 3 || Math.abs(moveEvent.clientY - startY) > 3)
+      ) {
+        didMove = true;
+      }
+
       const nextMoveDraft = getOverlayMoveDraft({
         startMs,
         startClientX: startX,
@@ -92,6 +104,9 @@ export function OverlayBlock({
       onTrackHoverChange?.(null);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (!didMove) {
+        onSelect?.();
+      }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -135,61 +150,36 @@ export function OverlayBlock({
         event.preventDefault();
         removeOverlay(overlay.id);
       }}
+      className={[
+        styles.root,
+        isDefaultBackground ? styles.locked : '',
+      ].filter(Boolean).join(' ')}
       style={{
-        position: 'absolute',
         left,
-        top: 3,
         width,
         height: blockHeight,
-        borderRadius: 8,
-        border: `1px solid ${color}cc`,
-        background: `linear-gradient(180deg, ${colorGlow}, rgba(19,24,32,0.92))`,
-        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.18)`,
-        display: 'flex',
-        alignItems: 'center',
-        overflow: 'hidden',
-        cursor: isDefaultBackground ? 'default' : 'grab',
+        ['--overlay-color' as string]: color,
+        ['--overlay-glow' as string]: colorGlow,
       }}
     >
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 2,
-          background: color,
-        }}
-      />
+      <div className={styles.accentLine} />
 
       {showImageThumbnail ? (
         <div
-          style={{
-            width: thumbnailWidth,
-            height: '100%',
-            flex: '0 0 auto',
-            borderRight: `1px solid ${color}44`,
-            background: 'rgba(8, 12, 20, 0.86)',
-          }}
+          className={styles.thumbnail}
+          style={{ width: thumbnailWidth }}
         >
           <AssetThumbnail asset={asset} />
         </div>
       ) : null}
 
       <div
-        style={{
-          padding: showImageThumbnail ? '0 8px' : '0 10px',
-          fontSize: 11,
-          fontWeight: 600,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          color: '#f1f5fb',
-          minWidth: 0,
-          flex: 1,
-        }}
+        className={[
+          styles.content,
+          showImageThumbnail ? styles.contentWithThumbnail : styles.contentStandalone,
+        ].join(' ')}
       >
-        <span style={{ color, marginRight: 6 }}>{badge}</span>
+        <span className={styles.badge}>{badge}</span>
         {label}
       </div>
 
@@ -197,14 +187,7 @@ export function OverlayBlock({
         <div
           data-resize="true"
           onMouseDown={handleResizeMouseDown}
-          style={{
-            marginLeft: 'auto',
-            width: 8,
-            alignSelf: 'stretch',
-            cursor: 'ew-resize',
-            background:
-              'repeating-linear-gradient(180deg, rgba(255,255,255,0.3) 0 2px, transparent 2px 4px)',
-          }}
+          className={styles.resizeHandle}
         />
       )}
     </div>

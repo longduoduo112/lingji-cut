@@ -1,0 +1,66 @@
+.root {
+  position: absolute;
+  top: 3px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--overlay-color, #38bdf8) 80%, transparent);
+  background: linear-gradient(180deg, var(--overlay-glow, rgba(56, 189, 248, 0.2)), rgba(19, 24, 32, 0.92));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 2px 8px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.locked {
+  cursor: default;
+}
+
+.accentLine {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--overlay-color, #38bdf8);
+}
+
+.thumbnail {
+  height: 100%;
+  flex: 0 0 auto;
+  border-right: 1px solid color-mix(in srgb, var(--overlay-color, #38bdf8) 27%, transparent);
+  background: rgba(8, 12, 20, 0.86);
+}
+
+.content {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #f1f5fb;
+  min-width: 0;
+  flex: 1;
+}
+
+.contentWithThumbnail {
+  padding: 0 8px;
+}
+
+.contentStandalone {
+  padding: 0 10px;
+}
+
+.badge {
+  color: var(--overlay-color, #38bdf8);
+  margin-right: 6px;
+}
+
+.resizeHandle {
+  margin-left: auto;
+  width: 8px;
+  align-self: stretch;
+  cursor: ew-resize;
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.3) 0 2px, transparent 2px 4px);
+}

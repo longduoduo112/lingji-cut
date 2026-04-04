@@ -51,7 +51,11 @@ export function PodcastComposition({ timeline, srtEntries }: PodcastCompositionP
             />
           ))}
 
-          <SubtitleTrack entries={srtEntries} style={timeline.subtitle} />
+          <SubtitleTrack
+            entries={srtEntries}
+            style={timeline.subtitle}
+            highlights={timeline.subtitleHighlights}
+          />
         </div>
       </div>
     </AbsoluteFill>

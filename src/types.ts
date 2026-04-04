@@ -43,6 +43,21 @@ export interface SubtitleStyle {
   fontSize: number;
   color: string;
   position: 'top' | 'bottom' | 'center';
+  highlightEnabled: boolean;
+  highlightBackgroundColor: string;
+  highlightTextColor: string;
+  highlightPaddingX: number;
+  highlightPaddingY: number;
+  highlightRadius: number;
+  highlightAnimation: 'pop' | 'wipe' | 'none';
+}
+
+export interface SubtitleHighlight {
+  entryIndex: number;
+  start: number;
+  end: number;
+  highlightText: string;
+  sourceText: string;
 }
 
 export interface TimelineData {
@@ -58,6 +73,7 @@ export interface TimelineData {
   tracks: TimelineTrack[];
   overlays: OverlayItem[];
   subtitle: SubtitleStyle;
+  subtitleHighlights?: SubtitleHighlight[];
 }
 
 export type AssetType = 'video' | 'image' | 'audio' | 'srt';
@@ -117,11 +133,23 @@ export function createDefaultTimeline(): TimelineData {
     },
     tracks: createDefaultTracks(),
     overlays: [],
-    subtitle: {
-      fontSize: 48,
-      color: '#FFFFFF',
-      position: 'bottom',
-    },
+    subtitle: createDefaultSubtitleStyle(),
+    subtitleHighlights: [],
+  };
+}
+
+export function createDefaultSubtitleStyle(): SubtitleStyle {
+  return {
+    fontSize: 48,
+    color: '#FFFFFF',
+    position: 'bottom',
+    highlightEnabled: false,
+    highlightBackgroundColor: '#F8DC48',
+    highlightTextColor: '#111827',
+    highlightPaddingX: 10,
+    highlightPaddingY: 4,
+    highlightRadius: 12,
+    highlightAnimation: 'pop',
   };
 }
 

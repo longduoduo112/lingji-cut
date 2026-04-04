@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toFileSrc } from '../lib/utils';
+import styles from './TimelineAudioWaveform.module.css';
 
 interface TimelineAudioWaveformProps {
   audioPath: string;
@@ -141,23 +142,9 @@ export function TimelineAudioWaveform({
     return (
       <div
         data-waveform-shell="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 8px',
-          boxSizing: 'border-box',
-        }}
+        className={[styles.shell, styles.loadingShell].join(' ')}
       >
-        <div
-          style={{
-            width: '100%',
-            height: 1,
-            background:
-              'linear-gradient(90deg, rgba(56, 189, 248, 0.2), rgba(56, 189, 248, 0.65), rgba(56, 189, 248, 0.2))',
-          }}
-        />
+        <div className={styles.loadingLine} />
       </div>
     );
   }
@@ -165,27 +152,13 @@ export function TimelineAudioWaveform({
   return (
     <div
       data-waveform-shell="true"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        display: 'flex',
-        alignItems: 'flex-end',
-        gap: 1,
-        padding: '5px 0',
-        boxSizing: 'border-box',
-      }}
+      className={[styles.shell, styles.peaksShell].join(' ')}
     >
       {sampledPeaks.map((peak, index) => (
         <span
           key={`wave-peak-${index}`}
-          style={{
-            flex: '1 0 0',
-            minWidth: 1,
-            height: `${Math.max(2, Math.round(peak * maxBarHeight))}px`,
-            background: 'linear-gradient(180deg, rgba(125, 211, 252, 0.95), rgba(14, 165, 233, 0.55))',
-            borderRadius: 999,
-            boxShadow: '0 0 10px rgba(56, 189, 248, 0.2)',
-          }}
+          className={styles.peak}
+          style={{ height: `${Math.max(2, Math.round(peak * maxBarHeight))}px` }}
         />
       ))}
     </div>

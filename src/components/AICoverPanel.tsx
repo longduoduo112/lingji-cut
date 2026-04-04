@@ -3,6 +3,7 @@ import type { CoverCandidate } from '../types/ai';
 import { toFileSrc } from '../lib/utils';
 import { AppIcon } from './AppIcon';
 import { Button, EmptyState, Field, IconButton, Textarea } from '../ui/primitives';
+import styles from './AICoverPanel.module.css';
 
 interface AICoverPanelProps {
   coverPrompts: string[];
@@ -53,10 +54,10 @@ export function AICoverPanel({
   const prompts = prompt.trim() ? [prompt.trim()] : [];
 
   return (
-    <div style={containerStyle}>
-      <div style={sectionHeaderStyle}>
-        <div style={sectionTitleRowStyle}>
-          <div style={sectionTitleStyle}>提示词</div>
+    <div className={styles.root}>
+      <div className={styles.sectionHeader}>
+        <div className={styles.sectionTitleRow}>
+          <div className={styles.sectionTitle}>提示词</div>
           {!isEditing ? (
             <IconButton
               onClick={() => setIsEditing(true)}
@@ -70,7 +71,8 @@ export function AICoverPanel({
           ) : null}
         </div>
       </div>
-      <div style={promptItemStyle}>
+
+      <div className={styles.promptCard}>
         {isEditing ? (
           <Field label="封面提示词">
             <Textarea
@@ -81,14 +83,14 @@ export function AICoverPanel({
           </Field>
         ) : (
           <>
-            <div style={promptTextStyle}>{prompt}</div>
+            <div className={styles.promptText}>{prompt}</div>
             <IconButton
               onClick={onRegeneratePrompt}
               disabled={isRegeneratingPrompt || isGenerating}
               loading={isRegeneratingPrompt}
               variant="brand"
               size="sm"
-              style={promptRegenerateButtonStyle}
+              className={styles.promptRegenerateButton}
               title="AI 重新生成提示词"
               aria-label="AI 重新生成提示词"
             >
@@ -98,7 +100,7 @@ export function AICoverPanel({
         )}
       </div>
 
-      <div style={buttonRowStyle}>
+      <div className={styles.actions}>
         <Button
           onClick={() => {
             onGenerateCovers(prompts);
@@ -109,72 +111,74 @@ export function AICoverPanel({
           variant="primary"
           size="sm"
           fullWidth
+          leadingIcon={isGenerating ? undefined : <AppIcon name="image" size={14} />}
         >
-          <span style={buttonContentStyle}>
-            <AppIcon name="image" size={14} />
-            {isGenerating ? '生成中...' : candidates.length > 0 ? '重新生成' : '生成封面'}
-          </span>
+          {isGenerating ? '生成中...' : candidates.length > 0 ? '重新生成' : '生成封面'}
         </Button>
       </div>
 
       {candidates.length > 0 ? (
         <>
-          <div style={{ ...sectionTitleStyle, marginTop: 8 }}>候选封面</div>
-          <div style={hintTextStyle}>可直接拖到时间轴，也可以一键设为整期背景。</div>
-          <div style={gridStyle}>
-            {candidates.map((candidate) => (
-              <div
-                key={candidate.id}
-                draggable={Boolean(candidate.imageUrl)}
-                onClick={() => onSelectCover(candidate.id)}
-                onDragStart={(event) => {
-                  if (!candidate.imageUrl) {
-                    event.preventDefault();
-                    return;
-                  }
-
-                  event.dataTransfer.effectAllowed = 'copy';
-                  event.dataTransfer.setData(
-                    'application/json',
-                    JSON.stringify({
-                      path: candidate.imageUrl,
-                      type: 'image',
-                      durationMs: 0,
-                      overlayRole: 'default-background',
-                    }),
-                  );
-                }}
-                style={{
-                  ...candidateStyle,
-                  border: candidate.selected
-                    ? '2px solid #6366f1'
-                    : '1px solid rgba(255,255,255,0.08)',
-                  cursor: candidate.imageUrl ? 'grab' : 'pointer',
-                }}
-              >
-                {candidate.imageUrl ? (
-                  <img
-                    src={toFileSrc(candidate.imageUrl)}
-                    alt=""
-                    style={candidateImageStyle}
-                  />
-                ) : (
-                  <div style={candidateFallbackStyle}>{candidate.error ?? '生成失败'}</div>
-                )}
-              </div>
-            ))}
+          <div className={styles.candidateHeader}>
+            <div className={styles.sectionTitle}>候选封面</div>
+            <div className={styles.hint}>可直接拖到时间轴，也可以一键设为整期背景。</div>
           </div>
+
+          <div className={styles.grid}>
+            {candidates.map((candidate) => {
+              const isSelected = candidate.id === selectedCandidate?.id;
+
+              return (
+                <div
+                  key={candidate.id}
+                  draggable={Boolean(candidate.imageUrl)}
+                  onClick={() => onSelectCover(candidate.id)}
+                  onDragStart={(event) => {
+                    if (!candidate.imageUrl) {
+                      event.preventDefault();
+                      return;
+                    }
+
+                    event.dataTransfer.effectAllowed = 'copy';
+                    event.dataTransfer.setData(
+                      'application/json',
+                      JSON.stringify({
+                        path: candidate.imageUrl,
+                        type: 'image',
+                        durationMs: 0,
+                        overlayRole: 'default-background',
+                      }),
+                    );
+                  }}
+                  data-draggable={Boolean(candidate.imageUrl)}
+                  className={joinClassNames(
+                    styles.candidateCard,
+                    isSelected ? styles.candidateSelected : '',
+                  )}
+                >
+                  {candidate.imageUrl ? (
+                    <img
+                      src={toFileSrc(candidate.imageUrl)}
+                      alt=""
+                      className={styles.candidateImage}
+                    />
+                  ) : (
+                    <div className={styles.candidateFallback}>{candidate.error ?? '生成失败'}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
           {selectedCandidate?.imageUrl ? (
             <Button
               onClick={() => onAddToTimeline(selectedCandidate.id)}
               variant="tint"
               size="sm"
               fullWidth
+              leadingIcon={<AppIcon name="send-horizontal" size={14} />}
             >
-              <span style={buttonContentStyle}>
-                <AppIcon name="send-horizontal" size={14} />
-                设为整期背景
-              </span>
+              设为整期背景
             </Button>
           ) : null}
         </>
@@ -183,105 +187,6 @@ export function AICoverPanel({
   );
 }
 
-const containerStyle = {
-  display: 'flex',
-  flexDirection: 'column' as const,
-  gap: 10,
-};
-
-const sectionHeaderStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-};
-
-const sectionTitleRowStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-};
-
-const sectionTitleStyle = {
-  fontSize: 11,
-  color: '#91a2bc',
-  letterSpacing: '0.1em',
-};
-
-const hintTextStyle = {
-  marginTop: -2,
-  color: '#71839a',
-  fontSize: 11,
-  lineHeight: 1.5,
-};
-
-const promptItemStyle = {
-  position: 'relative' as const,
-};
-
-const promptTextStyle = {
-  padding: '8px 40px 8px 8px',
-  borderRadius: 8,
-  background: 'rgba(255,255,255,0.03)',
-  color: '#94a3b8',
-  fontSize: 11,
-  lineHeight: 1.5,
-};
-
-const promptRegenerateButtonStyle = {
-  position: 'absolute' as const,
-  right: 8,
-  bottom: 8,
-  width: 24,
-  height: 24,
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderRadius: 7,
-  border: '1px solid rgba(255,255,255,0.1)',
-  background: 'rgba(99,102,241,0.16)',
-  color: '#eef2ff',
-};
-
-const buttonRowStyle = {
-  display: 'flex',
-  gap: 8,
-};
-
-const buttonContentStyle = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-};
-
-const gridStyle = {
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: 8,
-};
-
-const candidateStyle = {
-  aspectRatio: '16 / 9',
-  borderRadius: 8,
-  overflow: 'hidden',
-  cursor: 'pointer',
-  background: '#1e293b',
-};
-
-const candidateImageStyle = {
-  width: '100%',
-  height: '100%',
-  objectFit: 'cover' as const,
-};
-
-const candidateFallbackStyle = {
-  width: '100%',
-  height: '100%',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: '#64748b',
-  fontSize: 10,
-  textAlign: 'center' as const,
-  padding: 8,
-  boxSizing: 'border-box' as const,
-};
+function joinClassNames(...values: Array<string | undefined>): string {
+  return values.filter(Boolean).join(' ');
+}
