@@ -22,6 +22,10 @@ vi.mock('../src/components/AIPanel', () => ({
   AIPanel: () => <div>ai-panel</div>,
 }));
 
+vi.mock('../src/components/EditorInspector', () => ({
+  EditorInspector: () => <div data-editor-region="inspector-shell">editor-inspector</div>,
+}));
+
 vi.mock('../src/components/ExportProgress', () => ({
   ExportProgress: () => null,
 }));
@@ -44,13 +48,15 @@ vi.mock('../src/store/timeline', () => ({
 }));
 
 describe('Editor', () => {
-  it('renders sidebar tabs for assets and the ai assistant', () => {
+  it('renders a three-pane workspace with left tabs and a right inspector shell on wide screens', () => {
     const html = renderToStaticMarkup(
       <Editor onAddAsset={async () => undefined} exportRequestToken={0} />,
     );
 
     expect(html).toContain('素材');
     expect(html).toContain('AI 助手');
+    expect(html).toContain('data-editor-region="inspector-shell"');
+    expect(html).toContain('minmax(280px, 320px) minmax(0, 1fr) minmax(320px, 360px)');
   });
 
   it('clips the timeline row so the lower panel shadow cannot overlap the sidebar footer', () => {

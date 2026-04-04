@@ -3,6 +3,7 @@ import {
   DEFAULT_SUBTITLE_TRACK_ID,
   DEFAULT_TIMELINE_VERSION,
   DEFAULT_VISUAL_TRACK_ID,
+  createDefaultSubtitleStyle,
   createVisualTrack,
   sortOverlaysByStart,
   type OverlayItem,
@@ -85,11 +86,17 @@ export function normalizeTimelineData(timeline: TimelineData): TimelineData {
   ];
   const visualTrackIds = new Set(normalizedVisualTracks.map((track) => track.id));
   const fallbackTrackId = normalizedVisualTracks[0]?.id ?? DEFAULT_VISUAL_TRACK_ID;
+  const defaultSubtitleStyle = createDefaultSubtitleStyle();
 
   return {
     ...timeline,
     version: DEFAULT_TIMELINE_VERSION,
     tracks: normalizedTracks,
+    subtitle: {
+      ...defaultSubtitleStyle,
+      ...timeline.subtitle,
+    },
+    subtitleHighlights: Array.isArray(timeline.subtitleHighlights) ? timeline.subtitleHighlights : [],
     overlays: sortOverlaysByStart(
       rawOverlays.map((overlay) => ({
         ...overlay,

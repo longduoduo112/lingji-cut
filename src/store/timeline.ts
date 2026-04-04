@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import { v4 as uuid } from 'uuid';
-import type { AssetItem, AssetType, OverlayItem, SrtEntry, TimelineData } from '../types';
+import type {
+  AssetItem,
+  AssetType,
+  OverlayItem,
+  SrtEntry,
+  SubtitleHighlight,
+  SubtitleStyle,
+  TimelineData,
+} from '../types';
 import { DEFAULT_VISUAL_TRACK_ID, createDefaultTimeline } from '../types';
 import type { AICardTimelineDraft } from '../types/ai';
 import { getFileNameFromPath } from '../lib/utils';
@@ -27,6 +35,9 @@ export interface TimelineStore {
   canRedo: boolean;
   setTimeline: (timeline: TimelineData) => void;
   setSrtEntries: (entries: SrtEntry[]) => void;
+  setSubtitleHighlights: (highlights: SubtitleHighlight[]) => void;
+  clearSubtitleHighlights: () => void;
+  updateSubtitleStyle: (updates: Partial<SubtitleStyle>) => void;
   setPodcast: (audioPath: string, srtPath: string, durationMs: number) => void;
   setGlobalBackground: (path: string) => void;
   addAsset: (path: string, type: 'video' | 'image', durationMs?: number) => void;
@@ -270,6 +281,36 @@ export const useTimelineStore = create<TimelineStore>((set) => ({
       };
     }),
   setSrtEntries: (entries) => set({ srtEntries: entries }),
+  setSubtitleHighlights: (highlights) =>
+    set((state) => {
+      const nextTimeline = normalizeTimeline({
+        ...state.timeline,
+        subtitleHighlights: [...highlights],
+      });
+
+      return buildCommittedTimelineState(state, nextTimeline);
+    }),
+  clearSubtitleHighlights: () =>
+    set((state) => {
+      const nextTimeline = normalizeTimeline({
+        ...state.timeline,
+        subtitleHighlights: [],
+      });
+
+      return buildCommittedTimelineState(state, nextTimeline);
+    }),
+  updateSubtitleStyle: (updates) =>
+    set((state) => {
+      const nextTimeline = normalizeTimeline({
+        ...state.timeline,
+        subtitle: {
+          ...state.timeline.subtitle,
+          ...updates,
+        },
+      });
+
+      return buildCommittedTimelineState(state, nextTimeline);
+    }),
   setPodcast: (audioPath, srtPath, durationMs) =>
     set((state) => {
       const nextTimeline = normalizeTimeline({

@@ -14,6 +14,22 @@ describe('useTimelineStore', () => {
     });
   });
 
+  it('creates default subtitle highlight settings', () => {
+    expect(createDefaultTimeline().subtitle).toEqual({
+      fontSize: 48,
+      color: '#FFFFFF',
+      position: 'bottom',
+      highlightEnabled: false,
+      highlightBackgroundColor: '#F8DC48',
+      highlightTextColor: '#111827',
+      highlightPaddingX: 10,
+      highlightPaddingY: 4,
+      highlightRadius: 12,
+      highlightAnimation: 'pop',
+    });
+    expect(createDefaultTimeline().subtitleHighlights).toEqual([]);
+  });
+
   it('sets podcast metadata', () => {
     useTimelineStore.getState().setPodcast('/tmp/audio.mp3', '/tmp/subtitles.srt', 12000);
 
@@ -137,6 +153,62 @@ describe('useTimelineStore', () => {
     });
   });
 
+  it('stores subtitle highlights and keeps them in undo history', () => {
+    const store = useTimelineStore.getState();
+    const highlight = {
+      entryIndex: 1,
+      start: 8,
+      end: 12,
+      highlightText: '世界冠军',
+      sourceText: '中国品牌首次拿下世界冠军',
+    };
+
+    store.setSubtitleHighlights([highlight]);
+
+    expect(useTimelineStore.getState().timeline.subtitleHighlights).toEqual([highlight]);
+
+    store.undo();
+    expect(useTimelineStore.getState().timeline.subtitleHighlights).toEqual([]);
+
+    store.redo();
+    expect(useTimelineStore.getState().timeline.subtitleHighlights).toEqual([highlight]);
+  });
+
+  it('clears subtitle highlights through a committed timeline update', () => {
+    const store = useTimelineStore.getState();
+
+    store.setSubtitleHighlights([
+      {
+        entryIndex: 1,
+        start: 8,
+        end: 12,
+        highlightText: '世界冠军',
+        sourceText: '中国品牌首次拿下世界冠军',
+      },
+    ]);
+
+    store.clearSubtitleHighlights();
+
+    expect(useTimelineStore.getState().timeline.subtitleHighlights).toEqual([]);
+    expect(useTimelineStore.getState().canUndo).toBe(true);
+  });
+
+  it('updates subtitle style through a committed timeline update', () => {
+    const store = useTimelineStore.getState();
+
+    store.updateSubtitleStyle({
+      highlightEnabled: true,
+      highlightBackgroundColor: '#FFD400',
+    });
+
+    expect(useTimelineStore.getState().timeline.subtitle).toMatchObject({
+      highlightEnabled: true,
+      highlightBackgroundColor: '#FFD400',
+      highlightAnimation: 'pop',
+    });
+    expect(useTimelineStore.getState().canUndo).toBe(true);
+  });
+
   it('migrates legacy timelines without tracks and backfills overlay track ids', () => {
     useTimelineStore.getState().setTimeline({
       version: 1,
@@ -170,6 +242,19 @@ describe('useTimelineStore', () => {
     expect(timeline.version).toBe(2);
     expect(timeline.tracks.map((track) => track.id)).toEqual(['audio', 'subtitle', 'visual-1']);
     expect(timeline.overlays[0]?.trackId).toBe(DEFAULT_VISUAL_TRACK_ID);
+    expect(timeline.subtitle).toEqual({
+      fontSize: 48,
+      color: '#FFFFFF',
+      position: 'bottom',
+      highlightEnabled: false,
+      highlightBackgroundColor: '#F8DC48',
+      highlightTextColor: '#111827',
+      highlightPaddingX: 10,
+      highlightPaddingY: 4,
+      highlightRadius: 12,
+      highlightAnimation: 'pop',
+    });
+    expect(timeline.subtitleHighlights).toEqual([]);
     expect(assets.map((asset) => asset.path)).toEqual([
       '/tmp/audio.mp3',
       '/tmp/subtitles.srt',

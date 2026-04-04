@@ -1,12 +1,14 @@
 import { useMemo } from 'react';
 import type { SrtEntry } from '../types';
 import { clamp } from '../lib/utils';
+import styles from './TimelineSubtitleBlocks.module.css';
 
 interface TimelineSubtitleBlocksProps {
   entries: SrtEntry[];
   durationMs: number;
   pxPerMs: number;
   trackHeight: number;
+  highlightHint?: string;
 }
 
 interface SubtitleBlockLayout {
@@ -43,6 +45,7 @@ export function TimelineSubtitleBlocks({
   durationMs,
   pxPerMs,
   trackHeight,
+  highlightHint,
 }: TimelineSubtitleBlocksProps) {
   const layouts = useMemo(
     () => buildSubtitleLayouts(entries, durationMs, pxPerMs),
@@ -50,45 +53,22 @@ export function TimelineSubtitleBlocks({
   );
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        overflow: 'hidden',
-        pointerEvents: 'none',
-      }}
-    >
+    <div className={styles.root}>
+      {highlightHint ? <div className={styles.hint}>{highlightHint}</div> : null}
       {layouts.map((entry) => (
         <span
           key={entry.id}
           data-subtitle-entry={entry.id}
+          className={styles.block}
           style={{
-            position: 'absolute',
             left: entry.left,
             top: Math.max(4, Math.round((trackHeight - 22) / 2)),
             width: entry.width,
-            height: 22,
-            borderRadius: 8,
-            background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.9), rgba(234, 88, 12, 0.72))',
-            boxShadow: '0 4px 12px rgba(249, 115, 22, 0.28)',
-            overflow: 'hidden',
           }}
         >
           <span
-            style={{
-              display: 'block',
-              width: '100%',
-              height: '100%',
-              padding: entry.width >= 24 ? '0 8px' : '0 4px',
-              boxSizing: 'border-box',
-              color: '#fff7ed',
-              fontSize: 10,
-              fontWeight: 700,
-              lineHeight: '22px',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
+            className={styles.text}
+            style={{ padding: entry.width >= 24 ? '0 8px' : '0 4px' }}
           >
             {entry.text}
           </span>

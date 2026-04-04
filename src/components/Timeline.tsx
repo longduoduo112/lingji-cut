@@ -1,8 +1,9 @@
 import type { CSSProperties, DragEvent, MouseEvent, ReactNode, WheelEvent } from 'react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { TrackDragZone } from '../lib/overlay-drag';
 import { getRenderableVisualTracks, getVisualTracks } from '../lib/timeline-tracks';
-import { formatTime, getFileNameFromPath } from '../lib/utils';
+import { filterValidSubtitleHighlights } from '../lib/subtitle-highlights';
+import { clamp, formatTime, getFileNameFromPath } from '../lib/utils';
 import {
   getAnchoredTimelineScrollLeft,
   getFitTimelineZoom,
@@ -15,11 +16,14 @@ import { useTimelineStore } from '../store/timeline';
 import { OverlayBlock } from './OverlayBlock';
 import { TimelineAudioWaveform } from './TimelineAudioWaveform';
 import { TimelineSubtitleBlocks } from './TimelineSubtitleBlocks';
+import styles from './Timeline.module.css';
 
 interface TimelineProps {
   currentTimeMs: number;
   onSeek: (ms: number) => void;
   compact: boolean;
+  onOpenAICardInspector?: (cardId: string) => void;
+  onOpenSubtitleInspector?: () => void;
 }
 
 interface AssetLike {
@@ -29,41 +33,40 @@ interface AssetLike {
   overlayRole?: 'default-background';
 }
 
-const timeActionButtonStyle: CSSProperties = {
-  width: 28,
-  height: 28,
-  borderRadius: 10,
-  border: '1px solid rgba(148, 163, 184, 0.18)',
-  background: 'rgba(15, 23, 42, 0.6)',
-  color: '#e2e8f0',
-  cursor: 'pointer',
-  fontSize: 14,
-  lineHeight: 1,
-  fontWeight: 600,
-  transition: 'all 150ms ease-out',
-};
-
-export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
+export function Timeline({
+  currentTimeMs,
+  onSeek,
+  compact,
+  onOpenAICardInspector,
+  onOpenSubtitleInspector,
+}: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pendingScrollLeftRef = useRef<number | null>(null);
   const trackLaneRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [hoverTrackId, setHoverTrackId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [viewportWidth, setViewportWidth] = useState(0);
-  const { addOverlay, addTrack, setGlobalBackground, srtEntries, timeline } = useTimelineStore();
+  const {
+    addOverlay,
+    addTrack,
+    setGlobalBackground,
+    srtEntries,
+    timeline,
+  } = useTimelineStore();
   const durationMs = Math.max(1000, timeline.podcast.durationMs);
   const outerPadding = compact ? 12 : 16;
   const sidebarWidth = compact ? 100 : 120;
   const toolbarHeight = compact ? 44 : 52;
   const rulerHeight = 28;
-  const lockedTrackHeight = compact ? 34 : 38;
+  const audioTrackHeight = compact ? 34 : 38;
+  const subtitleTrackHeight = compact ? 72 : 86;
   const overlayTrackHeight = compact ? 40 : 44;
-  const trackGap = compact ? 5 : 8;
   const trackWidth = useMemo(
     () => getTimelineTrackWidth(durationMs, zoomLevel, Math.max(480, viewportWidth || 960)),
     [durationMs, viewportWidth, zoomLevel],
   );
   const pxPerMs = trackWidth / durationMs;
+  const trackColumns = `${sidebarWidth}px ${trackWidth}px`;
   const visualTracks = useMemo(() => getVisualTracks(timeline.tracks), [timeline.tracks]);
   const renderableTracks = useMemo(
     () => getRenderableVisualTracks(timeline.tracks),
@@ -111,6 +114,57 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
 
     return groups;
   }, [renderableTracks, timeline.overlays]);
+  const validSubtitleHighlights = useMemo(
+    () => filterValidSubtitleHighlights(srtEntries, timeline.subtitleHighlights ?? []),
+    [srtEntries, timeline.subtitleHighlights],
+  );
+  const storedSubtitleHighlightCount = timeline.subtitleHighlights?.length ?? 0;
+  const expiredSubtitleHighlightCount = Math.max(
+    0,
+    storedSubtitleHighlightCount - validSubtitleHighlights.length,
+  );
+  const subtitleHighlightHint = useMemo(() => {
+    if (!timeline.podcast.srtPath) {
+      return '';
+    }
+
+    if (expiredSubtitleHighlightCount > 0) {
+      return validSubtitleHighlights.length > 0 ? '部分高亮已过期' : '高亮已过期';
+    }
+
+    if (validSubtitleHighlights.length > 0) {
+      return '';
+    }
+
+    return storedSubtitleHighlightCount > 0 ? '高亮已过期' : '未生成高亮';
+  }, [
+    expiredSubtitleHighlightCount,
+    storedSubtitleHighlightCount,
+    timeline.podcast.srtPath,
+    validSubtitleHighlights.length,
+  ]);
+  const subtitleHighlightSummary = useMemo(() => {
+    if (!timeline.podcast.srtPath) {
+      return '等待导入字幕';
+    }
+
+    if (storedSubtitleHighlightCount === 0) {
+      return '尚未生成关键词高亮';
+    }
+
+    if (expiredSubtitleHighlightCount > 0) {
+      return validSubtitleHighlights.length > 0
+        ? `${validSubtitleHighlights.length} 处有效 · ${expiredSubtitleHighlightCount} 处过期`
+        : '当前高亮结果已全部失效';
+    }
+
+    return `${validSubtitleHighlights.length} 处关键词高亮已就绪`;
+  }, [
+    expiredSubtitleHighlightCount,
+    storedSubtitleHighlightCount,
+    timeline.podcast.srtPath,
+    validSubtitleHighlights.length,
+  ]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -284,75 +338,23 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
     title: string;
     subtitle: string;
     label: string;
+    actions?: ReactNode;
   }) => (
     <div
-      style={{
-        position: 'sticky',
-        left: 0,
-        zIndex: 3,
-        height: '100%',
-        borderRight: '1px solid rgba(148, 163, 184, 0.14)',
-        background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.85))',
-        display: 'flex',
-        alignItems: 'center',
-        padding: compact ? '0 10px' : '0 14px',
-        boxSizing: 'border-box',
-      }}
+      className={joinClassNames(
+        styles.trackControls,
+        compact ? styles.trackControlsCompact : styles.trackControlsRegular,
+      )}
     >
-      <div style={{ width: '100%', minWidth: 0 }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <div
-            style={{
-              minWidth: 38,
-              height: 22,
-              borderRadius: 8,
-              background: options.tone,
-              color: '#f8fafc',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: '0.06em',
-              padding: '0 8px',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
-            }}
-          >
+      <div className={styles.trackControlsBody}>
+        <div className={styles.trackBadgeWrap}>
+          <div className={styles.trackBadge} style={{ background: options.tone }}>
             {options.label}
           </div>
         </div>
-        <div
-          style={{
-            marginTop: 5,
-            color: '#e2e8f0',
-            fontSize: 12,
-            fontWeight: 700,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {options.title}
-        </div>
-        <div
-          style={{
-            marginTop: 2,
-            color: '#64748b',
-            fontSize: 10,
-            fontWeight: 500,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {options.subtitle}
-        </div>
+        <div className={styles.trackTitle}>{options.title}</div>
+        <div className={styles.trackSubtitle}>{options.subtitle}</div>
+        {options.actions ? <div className={styles.trackActions}>{options.actions}</div> : null}
       </div>
     </div>
   );
@@ -361,22 +363,19 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
     track: TimelineTrack,
     trackHeight: number,
     children: ReactNode,
+    laneClassName?: string,
     extraStyle?: CSSProperties,
   ) => (
     <div
       key={track.id}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `${sidebarWidth}px ${trackWidth}px`,
-        minHeight: trackHeight,
-      }}
+      className={styles.laneRow}
+      style={{ gridTemplateColumns: trackColumns, minHeight: trackHeight }}
     >
       {children}
       <div
+        className={joinClassNames(styles.laneMain, laneClassName)}
         style={{
-          position: 'relative',
           height: trackHeight,
-          borderBottom: '1px solid rgba(148, 163, 184, 0.08)',
           ...gridBackground,
           ...extraStyle,
         }}
@@ -386,85 +385,39 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
 
   return (
     <div
+      className={styles.root}
       style={{
-        height: '100%',
-        border: '1px solid rgba(148, 163, 184, 0.14)',
-        borderRadius: 24,
-        background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(2, 6, 23, 0.98) 100%)',
-        display: 'grid',
         gridTemplateRows: `${toolbarHeight}px minmax(0, 1fr)`,
-        minHeight: 0,
-        overflow: 'hidden',
-        boxShadow: '0 -20px 60px rgba(0, 0, 0, 0.55)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 14,
-          padding: '0 16px',
-          borderBottom: '1px solid rgba(148, 163, 184, 0.12)',
-          background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(15, 23, 42, 0.82) 100%)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-          <div
-            style={{
-              padding: '5px 12px',
-              borderRadius: 10,
-              background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.18) 0%, rgba(129, 140, 248, 0.12) 100%)',
-              color: '#38bdf8',
-              fontSize: 11,
-              fontWeight: 800,
-              letterSpacing: '0.14em',
-              border: '1px solid rgba(56, 189, 248, 0.25)',
-            }}
-          >
-            TIMELINE
-          </div>
-          <div style={{ color: '#64748b', fontSize: 12, fontWeight: 500 }}>
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarInfo}>
+          <div className={styles.eyebrow}>TIMELINE</div>
+          <div className={styles.toolbarMeta}>
             {visualTracks.length} 条视觉轨 · 拖到指定轨道落片
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => addTrack()} style={toolbarTrackButtonStyle}>
+        <div className={styles.toolbarActions}>
+          <button onClick={() => addTrack()} className={styles.trackButton}>
             + 轨道
           </button>
           <button
             onClick={() => setZoomLevel((current) => getNextTimelineZoom(current, 'out'))}
-            style={timeActionButtonStyle}
+            className={styles.actionButton}
           >
             −
           </button>
-          <div
-            style={{
-              minWidth: 52,
-              textAlign: 'center',
-              color: '#f8fafc',
-              fontSize: 12,
-              fontWeight: 800,
-              background: 'rgba(15, 23, 42, 0.6)',
-              padding: '6px 10px',
-              borderRadius: 10,
-              border: '1px solid rgba(148, 163, 184, 0.15)',
-            }}
-          >
-            {Math.round(zoomLevel * 100)}%
-          </div>
+          <div className={styles.zoomValue}>{Math.round(zoomLevel * 100)}%</div>
           <button
             onClick={() => setZoomLevel((current) => getNextTimelineZoom(current, 'in'))}
-            style={timeActionButtonStyle}
+            className={styles.actionButton}
           >
             +
           </button>
           <button
             onClick={() => setZoomLevel(getFitTimelineZoom(durationMs, Math.max(480, viewportWidth || 960)))}
-            style={toolbarFitButtonStyle}
+            className={styles.fitButton}
           >
             Fit
           </button>
@@ -475,83 +428,31 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
         ref={containerRef}
         onClick={handleSeekClick}
         onWheel={handleWheelZoom}
-        style={{ overflow: 'auto', minHeight: 0 }}
+        className={styles.scrollArea}
       >
         <div
+          className={styles.canvas}
           style={{
             width: contentWidth + outerPadding * 2,
-            minHeight: '100%',
             padding: outerPadding,
-            boxSizing: 'border-box',
           }}
         >
-          <div style={{ width: contentWidth, position: 'relative' }}>
+          <div className={styles.content} style={{ width: contentWidth }}>
             <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: `${sidebarWidth}px ${trackWidth}px`,
-                height: rulerHeight,
-                position: 'relative',
-              }}
+              className={styles.rulerRow}
+              style={{ gridTemplateColumns: trackColumns, height: rulerHeight }}
             >
-              <div
-                style={{
-                  position: 'sticky',
-                  left: 0,
-                  zIndex: 4,
-                  background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.85))',
-                  borderRight: '1px solid rgba(148, 163, 184, 0.14)',
-                  borderBottom: '1px solid rgba(148, 163, 184, 0.10)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0 14px',
-                  color: '#64748b',
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                轨道
-              </div>
+              <div className={styles.rulerSide}>轨道</div>
 
-              <div
-                style={{
-                  position: 'relative',
-                  height: rulerHeight,
-                  borderBottom: '1px solid rgba(148, 163, 184, 0.10)',
-                  background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.65), rgba(15, 23, 42, 0.45))',
-                }}
-              >
+              <div className={styles.rulerMain} style={{ height: rulerHeight }}>
                 {ticks.map((tick) => (
                   <div
                     key={tick}
-                    style={{
-                      position: 'absolute',
-                      left: tick * pxPerMs,
-                      top: 0,
-                      bottom: 0,
-                      transform: 'translateX(-50%)',
-                    }}
+                    className={styles.tick}
+                    style={{ left: tick * pxPerMs }}
                   >
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: 6,
-                        left: '50%',
-                        width: 1,
-                        height: 10,
-                        background: 'rgba(148, 163, 184, 0.25)',
-                      }}
-                    />
-                    <div
-                      style={{
-                        marginTop: 14,
-                        color: '#94a3b8',
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {formatTime(tick)}
-                    </div>
+                    <div className={styles.tickMarker} />
+                    <div className={styles.tickLabel}>{formatTime(tick)}</div>
                   </div>
                 ))}
               </div>
@@ -559,7 +460,7 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
 
             {renderLaneBase(
               timeline.tracks[0],
-              lockedTrackHeight,
+              audioTrackHeight,
               renderTrackControls({
                 tone: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
                 label: 'AUD',
@@ -568,32 +469,31 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
                   ? getFileNameFromPath(timeline.podcast.audioPath)
                   : '等待导入音频',
               }),
+              styles.lockedLane,
               {
                 overflow: 'hidden',
               },
             )}
             <div
+              className={styles.lockedLaneOverlay}
               style={{
-                position: 'relative',
-                marginTop: -lockedTrackHeight,
+                marginTop: -audioTrackHeight,
                 marginLeft: sidebarWidth,
                 width: trackWidth,
-                height: lockedTrackHeight,
-                pointerEvents: 'none',
-                overflow: 'hidden',
+                height: audioTrackHeight,
               }}
             >
               <TimelineAudioWaveform
                 audioPath={timeline.podcast.audioPath}
                 durationMs={durationMs}
                 trackWidth={trackWidth}
-                trackHeight={lockedTrackHeight}
+                trackHeight={audioTrackHeight}
               />
             </div>
 
             {renderLaneBase(
               timeline.tracks[1],
-              lockedTrackHeight,
+              subtitleTrackHeight,
               renderTrackControls({
                 tone: 'linear-gradient(135deg, #f97316, #ea580c)',
                 label: 'TXT',
@@ -601,24 +501,41 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
                 subtitle: timeline.podcast.srtPath
                   ? getFileNameFromPath(timeline.podcast.srtPath)
                   : '等待导入字幕',
+                actions: (
+                  <div className={styles.subtitleTools}>
+                    <div className={styles.subtitleStatus}>{subtitleHighlightSummary}</div>
+                    <div className={styles.subtitleActionRow}>
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onOpenSubtitleInspector?.();
+                        }}
+                        className={styles.subtitleActionButton}
+                        type="button"
+                      >
+                        字幕配置
+                      </button>
+                    </div>
+                  </div>
+                ),
               }),
+              styles.lockedLane,
             )}
             <div
+              className={styles.lockedLaneOverlay}
               style={{
-                position: 'relative',
-                marginTop: -lockedTrackHeight,
+                marginTop: -subtitleTrackHeight,
                 marginLeft: sidebarWidth,
                 width: trackWidth,
-                height: lockedTrackHeight,
-                overflow: 'hidden',
-                pointerEvents: 'none',
+                height: subtitleTrackHeight,
               }}
             >
               <TimelineSubtitleBlocks
                 entries={srtEntries}
                 durationMs={durationMs}
                 pxPerMs={pxPerMs}
-                trackHeight={lockedTrackHeight}
+                trackHeight={subtitleTrackHeight}
+                highlightHint={subtitleHighlightHint}
               />
             </div>
 
@@ -630,9 +547,9 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
               return (
                 <div
                   key={track.id}
+                  className={styles.overlayRow}
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: `${sidebarWidth}px ${trackWidth}px`,
+                    gridTemplateColumns: trackColumns,
                     minHeight: overlayTrackHeight,
                   }}
                 >
@@ -661,16 +578,13 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
                       }
                     }}
                     onDrop={handleTrackDrop(track.id)}
+                    className={joinClassNames(
+                      styles.trackDropLane,
+                      isHover ? styles.trackDropLaneHover : '',
+                    )}
                     style={{
-                      position: 'relative',
                       height: overlayTrackHeight,
-                      borderBottom: '1px solid rgba(148, 163, 184, 0.08)',
                       ...gridBackground,
-                      backgroundColor: isHover ? 'rgba(15, 23, 42, 0.85)' : '#020617',
-                      boxShadow: isHover
-                        ? 'inset 0 0 0 1px rgba(56, 189, 248, 0.35), 0 0 30px rgba(56, 189, 248, 0.15)'
-                        : 'none',
-                      transition: 'all 150ms ease-out',
                     }}
                   >
                     {overlays.map((overlay) => (
@@ -681,22 +595,21 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
                         trackHeight={overlayTrackHeight}
                         getTrackDragZones={getTrackDragZones}
                         onTrackHoverChange={setHoverTrackId}
+                        onSelect={() => {
+                          const sourceCardId = overlay.aiCardData?.sourceCardId;
+                          if (overlay.overlayType === 'ai-card' && sourceCardId) {
+                            onOpenAICardInspector?.(sourceCardId);
+                          }
+                        }}
                       />
                     ))}
 
                     {overlays.length === 0 ? (
                       <div
-                        style={{
-                          position: 'absolute',
-                          left: 14,
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          color: isHover ? '#38bdf8' : '#475569',
-                          fontSize: 12,
-                          fontWeight: 500,
-                          pointerEvents: 'none',
-                          transition: 'color 150ms ease-out',
-                        }}
+                        className={[
+                          styles.emptyHint,
+                          isHover ? styles.emptyHintHover : '',
+                        ].filter(Boolean).join(' ')}
                       >
                         拖入图片或视频到 {track.label}
                       </div>
@@ -707,30 +620,10 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
             })}
 
             <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: sidebarWidth + currentTimeMs * pxPerMs,
-                width: 2,
-                background: 'linear-gradient(180deg, #38bdf8, #0ea5e9)',
-                pointerEvents: 'none',
-                zIndex: 5,
-                boxShadow: '0 0 20px rgba(56, 189, 248, 0.6), 0 0 40px rgba(56, 189, 248, 0.3)',
-              }}
+              className={styles.playhead}
+              style={{ left: sidebarWidth + currentTimeMs * pxPerMs }}
             >
-              <div
-                style={{
-                  position: 'absolute',
-                  top: -2,
-                  left: -6,
-                  width: 14,
-                  height: 14,
-                  borderRadius: '0 0 10px 10px',
-                  background: 'linear-gradient(180deg, #38bdf8, #0ea5e9)',
-                  boxShadow: '0 4px 12px rgba(56, 189, 248, 0.5)',
-                }}
-              />
+              <div className={styles.playheadHandle} />
             </div>
           </div>
         </div>
@@ -739,28 +632,6 @@ export function Timeline({ currentTimeMs, onSeek, compact }: TimelineProps) {
   );
 }
 
-const toolbarTrackButtonStyle: CSSProperties = {
-  height: 30,
-  padding: '0 12px',
-  borderRadius: 10,
-  border: '1px solid rgba(56, 189, 248, 0.35)',
-  background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.22) 0%, rgba(129, 140, 248, 0.14) 100%)',
-  color: '#e0f2fe',
-  cursor: 'pointer',
-  fontSize: 12,
-  fontWeight: 700,
-  transition: 'all 150ms ease-out',
-};
-
-const toolbarFitButtonStyle: CSSProperties = {
-  height: 30,
-  padding: '0 12px',
-  borderRadius: 10,
-  border: '1px solid rgba(148, 163, 184, 0.18)',
-  background: 'rgba(15, 23, 42, 0.6)',
-  color: '#cbd5e1',
-  cursor: 'pointer',
-  fontSize: 12,
-  fontWeight: 700,
-  transition: 'all 150ms ease-out',
-};
+function joinClassNames(...values: Array<string | undefined>): string {
+  return values.filter(Boolean).join(' ');
+}

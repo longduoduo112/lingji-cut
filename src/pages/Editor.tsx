@@ -3,6 +3,7 @@ import { type PlayerRef } from '@remotion/player';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AIPanel } from '../components/AIPanel';
 import { AssetPanel } from '../components/AssetPanel';
+import { EditorInspector, type InspectorSelection } from '../components/EditorInspector';
 import { ExportProgress } from '../components/ExportProgress';
 import { ExportSettingsModal } from '../components/ExportSettingsModal';
 import { PreviewPanel } from '../components/PreviewPanel';
@@ -56,6 +57,7 @@ export function Editor({ onAddAsset, exportRequestToken }: EditorProps) {
   const [outputPath, setOutputPath] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<'assets' | 'ai'>('assets');
+  const [inspectorSelection, setInspectorSelection] = useState<InspectorSelection>({ type: 'empty' });
   const { timeline } = useTimelineStore();
   const fps = timeline.fps || 30;
 
@@ -191,6 +193,19 @@ export function Editor({ onAddAsset, exportRequestToken }: EditorProps) {
     setIsExportSettingsOpen(true);
   }, []);
 
+  const handleOpenAICardInspector = useCallback((cardId: string) => {
+    setInspectorSelection({ type: 'ai-card', cardId });
+    setActivePanel('ai');
+  }, []);
+
+  const handleOpenSubtitleInspector = useCallback(() => {
+    setInspectorSelection({ type: 'subtitle-style' });
+  }, []);
+
+  const handleCloseInspector = useCallback(() => {
+    setInspectorSelection({ type: 'empty' });
+  }, []);
+
   const handleTimelineResizeStart = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -238,51 +253,95 @@ export function Editor({ onAddAsset, exportRequestToken }: EditorProps) {
         className={styles.workspace}
         data-editor-region="workspace"
         style={{
-          gridTemplateColumns: layout.stackSidebar ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(260px, 300px)',
+          gridTemplateColumns: layout.stackSidebar
+            ? 'minmax(0, 1fr)'
+            : 'minmax(280px, 320px) minmax(0, 1fr) minmax(320px, 360px)',
           gridTemplateRows: layout.stackSidebar
             ? `minmax(0, 1fr) ${layout.sidebarRailHeight}px`
             : 'minmax(0, 1fr)',
         }}
       >
-        <div className={styles.previewWrap}>
-          <PreviewPanel
-            playerRef={playerRef}
-            isPlaying={isPlaying}
-            onTogglePlay={handleTogglePlay}
-            onExport={handleExport}
-            currentTimeMs={currentTimeMs}
-            durationMs={timeline.podcast.durationMs}
-            compact={layout.compactToolbar}
-          />
-        </div>
-        <SurfaceCard
-          variant="elevated"
-          padding="none"
-          className={styles.sidebarShell}
-          data-editor-region="sidebar-shell"
-        >
-          <div className={styles.tabStrip}>
-            <TabBar
-              items={[
-                { value: 'assets', label: '素材' },
-                { value: 'ai', label: 'AI 助手' },
-              ]}
-              value={activePanel}
-              onChange={setActivePanel}
-            />
-          </div>
-          <div className={styles.panelBody}>
-            {activePanel === 'assets' ? (
-              <AssetPanel
-                compact={layout.stackSidebar}
-                railHeight={layout.sidebarRailHeight}
-                onAddAsset={onAddAsset}
+        {layout.stackSidebar && inspectorSelection.type !== 'empty' ? (
+          <>
+            <div className={styles.previewWrap}>
+              <PreviewPanel
+                playerRef={playerRef}
+                isPlaying={isPlaying}
+                onTogglePlay={handleTogglePlay}
+                onExport={handleExport}
+                currentTimeMs={currentTimeMs}
+                durationMs={timeline.podcast.durationMs}
+                compact={layout.compactToolbar}
               />
-            ) : (
-              <AIPanel compact={layout.stackSidebar} railHeight={layout.sidebarRailHeight} />
-            )}
-          </div>
-        </SurfaceCard>
+            </div>
+            <div className={styles.inspectorWrap}>
+              <EditorInspector
+                selection={inspectorSelection}
+                timelineWidth={timeline.width}
+                timelineHeight={timeline.height}
+                onClose={handleCloseInspector}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <SurfaceCard
+              variant="elevated"
+              padding="none"
+              className={styles.sidebarShell}
+              data-editor-region="sidebar-shell"
+            >
+              <div className={styles.tabStrip}>
+                <TabBar
+                  items={[
+                    { value: 'assets', label: '素材' },
+                    { value: 'ai', label: 'AI 助手' },
+                  ]}
+                  value={activePanel}
+                  onChange={setActivePanel}
+                />
+              </div>
+              <div className={styles.panelBody}>
+                {activePanel === 'assets' ? (
+                  <AssetPanel
+                    compact={layout.stackSidebar}
+                    railHeight={layout.sidebarRailHeight}
+                    onAddAsset={onAddAsset}
+                  />
+                ) : (
+                  <AIPanel
+                    compact={layout.stackSidebar}
+                    railHeight={layout.sidebarRailHeight}
+                    inspectedCardId={inspectorSelection.type === 'ai-card' ? inspectorSelection.cardId : null}
+                    onClearInspector={handleCloseInspector}
+                    onOpenCardInspector={handleOpenAICardInspector}
+                  />
+                )}
+              </div>
+            </SurfaceCard>
+            <div className={styles.previewWrap}>
+              <PreviewPanel
+                playerRef={playerRef}
+                isPlaying={isPlaying}
+                onTogglePlay={handleTogglePlay}
+                onExport={handleExport}
+                currentTimeMs={currentTimeMs}
+                durationMs={timeline.podcast.durationMs}
+                compact={layout.compactToolbar}
+              />
+            </div>
+            {!layout.stackSidebar ? (
+              <div className={styles.inspectorWrap}>
+                <EditorInspector
+                  selection={inspectorSelection}
+                  timelineWidth={timeline.width}
+                  timelineHeight={timeline.height}
+                  onClose={handleCloseInspector}
+                />
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
 
       <div
@@ -297,7 +356,13 @@ export function Editor({ onAddAsset, exportRequestToken }: EditorProps) {
       </div>
 
       <div className={styles.timelineWrap} data-editor-region="timeline-wrap">
-        <Timeline currentTimeMs={currentTimeMs} onSeek={handleSeek} compact={layout.compactTimeline} />
+        <Timeline
+          currentTimeMs={currentTimeMs}
+          onSeek={handleSeek}
+          compact={layout.compactTimeline}
+          onOpenAICardInspector={handleOpenAICardInspector}
+          onOpenSubtitleInspector={handleOpenSubtitleInspector}
+        />
       </div>
 
       <ExportProgress
