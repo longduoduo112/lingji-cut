@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { FolderOpen } from 'lucide-react';
 import {
   buildExportRenderConfig,
   EXPORT_QUALITY_OPTIONS,
@@ -18,7 +19,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Eyebrow,
   Field,
   ModalFooter,
   Select,
@@ -103,33 +103,26 @@ export function ExportSettingsModal({
     <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <Eyebrow>EXPORT</Eyebrow>
           <DialogTitle>导出设置</DialogTitle>
-          <DialogDescription>
-            首轮导出建议先选择较低分辨率和更快档位，快速检查节奏、字幕和画面排布。
-          </DialogDescription>
+          <DialogDescription>配置视频导出参数</DialogDescription>
         </DialogHeader>
         <DialogBody>
-          <Card className={`${styles.pathCard} p-4`}>
-            <div className={styles.sectionLabel}>输出路径</div>
-            <div className={styles.pathRow}>
-              <div
-                className={[
-                  styles.pathValue,
-                  outputPath ? styles.pathValueFilled : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                {outputPath || "还未选择导出位置"}
-              </div>
-              <Button
-                onClick={() => void handleSelectOutputPath()}
-                variant="secondary"
-              >
-                选择位置
-              </Button>
+          <Card className={styles.pathCard}>
+            <FolderOpen size={14} className={styles.pathIcon} />
+            <div
+              className={[styles.pathValue, outputPath ? styles.pathValueFilled : '']
+                .filter(Boolean)
+                .join(' ')}
+            >
+              {outputPath || '还未选择导出位置'}
             </div>
+            <Button
+              onClick={() => void handleSelectOutputPath()}
+              variant="secondary"
+              size="sm"
+            >
+              选择位置
+            </Button>
           </Card>
 
           <div className={styles.grid}>
@@ -144,15 +137,6 @@ export function ExportSettingsModal({
                   onChange={(event) => setResolution(event.target.value as ExportResolution)}
                 />
               </Field>
-              <Card className={`${styles.summaryCard} p-4`}>
-                <div className={styles.sectionLabel}>当前分辨率说明</div>
-                <div className={styles.column}>
-                  <div>{EXPORT_RESOLUTION_OPTIONS.find((option) => option.value === resolution)?.description}</div>
-                  <div>
-                    {renderConfig.renderWidth} × {renderConfig.renderHeight}
-                  </div>
-                </div>
-              </Card>
             </div>
 
             <div className={styles.column}>
@@ -166,27 +150,17 @@ export function ExportSettingsModal({
                   onChange={(event) => setQuality(event.target.value as ExportQuality)}
                 />
               </Field>
-              <Card className={`${styles.summaryCard} p-4`}>
-                <div className={styles.sectionLabel}>当前导出速度说明</div>
-                <div className={styles.column}>
-                  <div>{EXPORT_QUALITY_OPTIONS.find((option) => option.value === quality)?.description}</div>
-                  <div>{renderConfig.videoBitrate}</div>
-                </div>
-              </Card>
             </div>
           </div>
 
-          <Card className={`${styles.summaryCard} p-4`}>
-            <div className={styles.sectionLabel}>本次导出摘要</div>
-            <div className={styles.summary}>
-              <Badge variant="secondary">
-                {renderConfig.renderWidth} × {renderConfig.renderHeight}
-              </Badge>
-              <Badge variant="secondary">{renderConfig.videoBitrate}</Badge>
-              <Badge variant="secondary">{renderConfig.audioBitrate}</Badge>
-              <Badge variant="secondary">{renderConfig.x264Preset}</Badge>
-            </div>
-          </Card>
+          <div className={styles.summary}>
+            <Badge variant="secondary">
+              {renderConfig.renderWidth} × {renderConfig.renderHeight}
+            </Badge>
+            <Badge variant="secondary">{renderConfig.videoBitrate}</Badge>
+            <Badge variant="secondary">{renderConfig.audioBitrate}</Badge>
+            <Badge variant="secondary">{renderConfig.x264Preset}</Badge>
+          </div>
         </DialogBody>
         <DialogFooter>
           <ModalFooter
