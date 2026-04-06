@@ -4,13 +4,17 @@ import { useViewportSize } from '../hooks/useViewportSize';
 import { getDroppedFilePath, getImportFileError, type ImportKind } from '../lib/import-files';
 import { getSetupLayoutMode } from '../lib/layout';
 import { getFileNameFromPath } from '../lib/utils';
-import { Alert, Badge, Button, Card, FileDropCard } from '../ui';
+import type { RecentProject } from '../store/timeline';
+import { Alert, Button, FileDropCard } from '../ui';
 import styles from './Setup.module.css';
 
 interface SetupProps {
   busy: boolean;
   errorMessage: string | null;
+  recentProjects: RecentProject[];
   onComplete: (audioPath: string, srtPath: string) => Promise<void>;
+  onOpenRecentProject: (projectDir: string) => Promise<void>;
+  onStartScriptWorkbench: () => void;
 }
 
 function ImportCard({
@@ -58,7 +62,14 @@ function ImportCard({
   );
 }
 
-export function Setup({ busy, errorMessage, onComplete }: SetupProps) {
+export function Setup({
+  busy,
+  errorMessage,
+  recentProjects,
+  onComplete,
+  onOpenRecentProject,
+  onStartScriptWorkbench,
+}: SetupProps) {
   const viewport = useViewportSize();
   const layout = getSetupLayoutMode(viewport.width, viewport.height);
   const [audioPath, setAudioPath] = useState<string | null>(null);
@@ -93,7 +104,7 @@ export function Setup({ busy, errorMessage, onComplete }: SetupProps) {
 
       const filePath = getDroppedFilePath(file, window.electronAPI.getPathForFile);
       if (!filePath) {
-        setLocalError('未能读取拖入文件的本地路径，请改用“选择文件”按钮或重试拖拽。');
+        setLocalError('未能读取拖入文件的本地路径，请改用"选择文件"按钮或重试拖拽。');
         return;
       }
 
@@ -114,147 +125,215 @@ export function Setup({ busy, errorMessage, onComplete }: SetupProps) {
     [applyImportPath],
   );
 
+  const compact = layout.compactHero;
+
   return (
     <div className={styles.page}>
-      <div
-        className={styles.content}
-        style={{
-          gridTemplateColumns: layout.stackColumns
-            ? 'minmax(0, 1fr)'
-            : 'minmax(0, 1.08fr) minmax(420px, 0.92fr)',
-          gap: layout.stackColumns ? 24 : 32,
-          padding: `${layout.compactHero ? 22 : 48}px clamp(18px, 4vw, 52px) 24px`,
-        }}
-      >
-        <div
-          className={styles.hero}
-          style={{ order: layout.stackColumns ? 2 : 1 }}
-        >
-          <div>
-            <div className={styles.heroEyebrow}>LOCAL PODCAST VIDEO EDITOR</div>
-            <h1
-              className={styles.heroTitle}
-              style={{ fontSize: layout.compactHero ? 'clamp(26px, 6vw, 34px)' : 'clamp(30px, 4.2vw, 40px)' }}
-            >
-              导入音频与字幕
-            </h1>
-            <p
-              className={styles.heroDescription}
-              style={{
-                maxWidth: layout.stackColumns ? '100%' : 500,
-                fontSize: layout.compactHero ? 15 : 16,
-              }}
-            >
-              先导入 MP3 和匹配的 SRT。准备完成后，直接进入暗黑桌面工作区，在同一条时间线上完成预览、素材叠加和 MP4 导出。
+      <div className={styles.welcomeContent}>
+        {/* Hero 区域 */}
+        <div style={{ textAlign: 'center' }}>
+          <div className={styles.heroEyebrow} style={{ fontSize: 11, letterSpacing: 2 }}>
+            LOCAL PODCAST VIDEO EDITOR
+          </div>
+          <h1 className={styles.heroTitle} style={{ fontSize: 34 }}>
+            选择你的创作方式
+          </h1>
+          <p className={styles.heroDescription} style={{ fontSize: 15, color: '#EBEBF599' }}>
+            AI 智能写稿或直接导入音频字幕，开始制作播客视频
+          </p>
+        </div>
+
+        {/* 双入口卡片 */}
+        <div className={styles.entryCards}>
+          {/* 左侧：AI 写稿创作 */}
+          <div
+            className={styles.entryCard}
+            onClick={onStartScriptWorkbench}
+            style={{ cursor: 'pointer' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  background: '#0A84FF1A',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 18,
+                }}
+              >
+                ✨
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#0A84FF' }}>AI 驱动</span>
+            </div>
+
+            <h3 className={styles.entryCardTitle}>AI 写稿创作</h3>
+            <p className={styles.entryCardDesc}>
+              {'输入主题，AI 帮你生成播客稿件\n自动匹配模板，一键生成视频'}
             </p>
+
+            <div className={styles.entrySteps}>
+              {[
+                ['1', '输入主题或粘贴参考文稿'],
+                ['2', 'AI 生成结构化播客脚本'],
+                ['3', '自动排版并导出视频'],
+              ].map(([num, text]) => (
+                <div key={num} className={styles.entryStep}>
+                  <div
+                    className={styles.entryStepDot}
+                    style={{ background: '#0A84FF1A', color: '#0A84FF' }}
+                  >
+                    {num}
+                  </div>
+                  {text}
+                </div>
+              ))}
+            </div>
+
+            <Button
+              variant="accent"
+              size="lg"
+              style={{ width: '100%', borderRadius: 10 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartScriptWorkbench();
+              }}
+              leftIcon={<span style={{ fontSize: 14 }}>✏️</span>}
+            >
+              开始创作
+            </Button>
           </div>
 
-          <div
-            className={styles.featureGrid}
-            style={{
-              gridTemplateColumns: `repeat(${layout.featureColumns}, minmax(0, 1fr))`,
-              marginTop: layout.compactHero ? 24 : 40,
-            }}
-          >
-            {[
-              ['01', '导入口播', '拖拽 MP3 与 SRT，自动建立时间轴长度'],
-              ['02', '整理画面', '在编辑器里叠加图片、视频、封面与 AI 卡片'],
-              ['03', '导出成片', '预览与导出使用同一份 timeline 数据'],
-            ].map(([index, title, description]) => (
-              <Card
-                key={index}
-                className={`${styles.featureCard} p-4`}
+          {/* 右侧：导入音频与字幕 */}
+          <div className={styles.entryCard}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  background: '#32D74B1A',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 18,
+                }}
               >
-                <div className={styles.featureIndex}>{index}</div>
-                <div className={styles.featureTitle}>{title}</div>
-                <div className={styles.featureDescription}>{description}</div>
-              </Card>
-            ))}
+                🎵
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#32D74B' }}>经典模式</span>
+            </div>
+
+            <h3 className={styles.entryCardTitle}>导入音频与字幕</h3>
+            <p className={styles.entryCardDesc}>
+              {'已有口播录音和字幕文件？\n直接导入，快速进入编辑器'}
+            </p>
+
+            <div className={styles.entrySteps}>
+              {[
+                ['1', '导入 MP3 口播音频文件'],
+                ['2', '导入对应 SRT 字幕文件'],
+                ['3', '进入编辑器叠加素材并导出'],
+              ].map(([num, text]) => (
+                <div key={num} className={styles.entryStep}>
+                  <div
+                    className={styles.entryStepDot}
+                    style={{ background: '#32D74B1A', color: '#32D74B' }}
+                  >
+                    {num}
+                  </div>
+                  {text}
+                </div>
+              ))}
+            </div>
+
+            <div
+              className={styles.importGrid}
+              style={{
+                gridTemplateColumns:
+                  viewport.width < 680 ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))',
+              }}
+            >
+              <ImportCard
+                label="AUDIO"
+                helper="拖入 MP3 口播音频"
+                value={audioPath}
+                accentColor="#79c4ff"
+                icon="🎙"
+                selectLabel="选择 MP3 文件"
+                onPickFile={() => {
+                  void createSelectHandler('audio')();
+                }}
+                onDrop={createDropHandler('audio')}
+                compact={compact}
+              />
+              <ImportCard
+                label="SUBTITLE"
+                helper="拖入对应 SRT 字幕"
+                value={srtPath}
+                accentColor="#ffb547"
+                icon="📝"
+                selectLabel="选择 SRT 文件"
+                onPickFile={() => {
+                  void createSelectHandler('srt')();
+                }}
+                onDrop={createDropHandler('srt')}
+                compact={compact}
+              />
+            </div>
+
+            {errorMessage || localError ? (
+              <Alert variant="destructive">{localError || errorMessage}</Alert>
+            ) : null}
+
+            <Button
+              disabled={!canStart}
+              onClick={() => {
+                if (audioPath && srtPath) {
+                  void onComplete(audioPath, srtPath);
+                }
+              }}
+              variant={canStart ? 'accent' : 'secondary'}
+              size="lg"
+              style={{
+                width: '100%',
+                borderRadius: 10,
+                background: canStart ? undefined : '#3A3A3C',
+              }}
+              leftIcon={<span style={{ fontSize: 14 }}>📤</span>}
+            >
+              {busy ? '正在初始化工程...' : '导入文件'}
+            </Button>
           </div>
         </div>
 
-        <Card
-          className={`${styles.importPanel} p-5`}
-          style={{
-            maxWidth: layout.stackColumns ? 720 : 'none',
-            justifySelf: layout.stackColumns ? 'stretch' : 'auto',
-            order: layout.stackColumns ? 1 : 2,
-            gap: layout.compactHero ? 14 : 18,
-          }}
-        >
-          <div>
-            <Badge variant="secondary">STEP 1</Badge>
-            <h2
-              className={styles.importIntroTitle}
-              style={{ fontSize: layout.compactHero ? 24 : 28 }}
-            >
-              把素材丢进来
-            </h2>
-            <p className={styles.importIntroDescription}>
-              这一步只需要两份基础文件。项目目录会在下一步第一次进入编辑器时选择。
-            </p>
+        {/* 最近项目 */}
+        {recentProjects.length > 0 ? (
+          <div style={{ width: '100%', maxWidth: 960, textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: '#EBEBF54D', marginBottom: 12 }}>最近项目</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+              {recentProjects.map((project) => (
+                <button
+                  key={project.path}
+                  type="button"
+                  className={styles.recentChip}
+                  onClick={() => {
+                    void onOpenRecentProject(project.path);
+                  }}
+                >
+                  📁 {project.name}
+                </button>
+              ))}
+            </div>
           </div>
+        ) : null}
 
-          <div
-            className={styles.importGrid}
-            style={{
-              gridTemplateColumns:
-                viewport.width < 680 ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))',
-            }}
-          >
-            <ImportCard
-              label="AUDIO"
-              helper="拖入 MP3 口播音频"
-              value={audioPath}
-              accentColor="#79c4ff"
-              icon="🎙"
-              selectLabel="选择 MP3 文件"
-              onPickFile={() => {
-                void createSelectHandler('audio')();
-              }}
-              onDrop={createDropHandler('audio')}
-              compact={layout.compactHero}
-            />
-            <ImportCard
-              label="SUBTITLE"
-              helper="拖入对应 SRT 字幕"
-              value={srtPath}
-              accentColor="#ffb547"
-              icon="📝"
-              selectLabel="选择 SRT 文件"
-              onPickFile={() => {
-                void createSelectHandler('srt')();
-              }}
-              onDrop={createDropHandler('srt')}
-              compact={layout.compactHero}
-            />
-          </div>
-
-          {errorMessage || localError ? (
-            <Alert variant="destructive">{localError || errorMessage}</Alert>
-          ) : null}
-
-          <Button
-            disabled={!canStart}
-            onClick={() => {
-              if (audioPath && srtPath) {
-                void onComplete(audioPath, srtPath);
-              }
-            }}
-            variant={canStart ? 'accent' : 'secondary'}
-            size="lg"
-            className={styles.primaryAction}
-          >
-            {busy ? '正在初始化工程...' : '开始编辑'}
-          </Button>
-        </Card>
-      </div>
-
-      <div
-        className={styles.footerNote}
-        style={{ padding: `0 clamp(18px, 4vw, 52px) ${layout.compactHero ? 20 : 28}px` }}
-      >
-        Preview 与导出共享同一份 timeline.json。拖拽失败时，优先从 Finder 直接拖入文件，而不是从浏览器窗口拖入。
+        {/* 底部提示 */}
+        <div className={styles.footerNote} style={{ textAlign: 'center', fontSize: 12, color: '#EBEBF54D' }}>
+          所有文件均在本地处理，不会上传至任何服务器
+        </div>
       </div>
     </div>
   );

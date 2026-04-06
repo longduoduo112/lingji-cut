@@ -5,6 +5,7 @@ import { parsePersistedAIState } from './lib/ai-persistence';
 import { useViewportSize } from './hooks/useViewportSize';
 import { getAppShortcutCommand, isTextEditingTarget } from './lib/native-shortcuts';
 import { Editor } from './pages/Editor';
+import { ScriptWorkbench } from './pages/ScriptWorkbench';
 import { Setup } from './pages/Setup';
 import { getFileNameFromPath } from './lib/utils';
 import { createDefaultTimeline, type TimelineData } from './types';
@@ -13,13 +14,14 @@ import {
   clearCurrentProject,
   getCurrentProjectDir,
   getCurrentSaveStatus,
+  getRecentProjects,
   removeRecentProject,
   setProjectDir,
   subscribeToSaveStatus,
   useTimelineStore,
 } from './store/timeline';
 
-type Page = 'setup' | 'editor';
+type Page = 'welcome' | 'setup' | 'editor' | 'script-workbench';
 
 const APP_FONT_STACK =
   '"SF Pro Text", "SF Pro Display", "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif';
@@ -28,11 +30,12 @@ const APP_WINDOW_BACKGROUND = 'var(--color-window-bg)';
 
 export default function App() {
   const viewport = useViewportSize();
-  const [page, setPage] = useState<Page>('setup');
-  const [isHydrating, setIsHydrating] = useState(true);
+  const [page, setPage] = useState<Page>('welcome');
+  const [isHydrating, setIsHydrating] = useState(() => Boolean(getCurrentProjectDir()));
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [currentProjectDir, setCurrentProjectDir] = useState(() => getCurrentProjectDir());
+  const [recentProjects, setRecentProjects] = useState(() => getRecentProjects());
   const [saveStatus, setSaveStatus] = useState(() => getCurrentSaveStatus());
   const [exportRequestToken, setExportRequestToken] = useState(0);
   const {
@@ -52,13 +55,14 @@ export default function App() {
 
   const syncWorkspaceState = useCallback(() => {
     setCurrentProjectDir(getCurrentProjectDir());
+    setRecentProjects(getRecentProjects());
   }, []);
 
   const resetToSetup = useCallback(() => {
     setTimeline(createDefaultTimeline());
     setSrtEntries([]);
     clearAIAnalysis();
-    setPage('setup');
+    setPage('welcome');
   }, [clearAIAnalysis, setSrtEntries, setTimeline]);
 
   const openProject = useCallback(
@@ -107,7 +111,7 @@ export default function App() {
         syncWorkspaceState();
         setSetupError(null);
         setPage(
-          parsedTimeline.podcast?.audioPath && parsedTimeline.podcast?.srtPath ? 'editor' : 'setup',
+          parsedTimeline.podcast?.audioPath && parsedTimeline.podcast?.srtPath ? 'editor' : 'welcome',
         );
       } catch (error) {
         console.error('恢复工程失败:', error);
@@ -387,7 +391,7 @@ export default function App() {
     >
       <Toolbar
         compact={viewport.width < 960}
-        page={page}
+        page={page === 'editor' ? 'editor' : 'setup'}
         projectName={projectName}
         saveStatus={saveStatus}
         canUndo={canUndo}
@@ -397,12 +401,17 @@ export default function App() {
         }}
       />
       <div style={{ minHeight: 0 }}>
-        {page === 'setup' ? (
+        {page === 'welcome' || page === 'setup' ? (
           <Setup
             busy={isSettingUp}
             errorMessage={setupError}
+            recentProjects={recentProjects}
             onComplete={handleSetupComplete}
+            onOpenRecentProject={openProject}
+            onStartScriptWorkbench={() => setPage('script-workbench')}
           />
+        ) : page === 'script-workbench' ? (
+          <ScriptWorkbench onBack={() => setPage('welcome')} />
         ) : (
           <Editor
             onAddAsset={handleAddAsset}
