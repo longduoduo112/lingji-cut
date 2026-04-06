@@ -15,6 +15,7 @@ interface SetupProps {
   onComplete: (audioPath: string, srtPath: string) => Promise<void>;
   onOpenRecentProject: (projectDir: string) => Promise<void>;
   onStartScriptWorkbench: () => void;
+  onOpenSettings: () => void;
 }
 
 function ImportCard({
@@ -69,6 +70,7 @@ export function Setup({
   onComplete,
   onOpenRecentProject,
   onStartScriptWorkbench,
+  onOpenSettings,
 }: SetupProps) {
   const viewport = useViewportSize();
   const layout = getSetupLayoutMode(viewport.width, viewport.height);
@@ -331,8 +333,24 @@ export function Setup({
         ) : null}
 
         {/* 底部提示 */}
-        <div className={styles.footerNote} style={{ textAlign: 'center', fontSize: 12, color: '#EBEBF54D' }}>
-          所有文件均在本地处理，不会上传至任何服务器
+        <div className={styles.footerNote} style={{ textAlign: 'center', fontSize: 12, color: '#EBEBF54D', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <span>所有文件均在本地处理，不会上传至任何服务器</span>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#EBEBF54D',
+              fontSize: 12,
+            }}
+          >
+            ⚙️ 系统设置
+          </button>
         </div>
       </div>
     </div>
