@@ -42,6 +42,116 @@
   gap: 10px;
 }
 
+.recentPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-brand-accent) 8%, transparent), transparent 34%),
+    transparent;
+}
+
+.recentHeader {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.recentEyebrow {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.18em;
+  color: var(--color-brand-accent);
+}
+
+.recentTitle {
+  margin: 8px 0 0;
+  color: var(--color-text-primary);
+  font-size: clamp(20px, 2.2vw, 24px);
+  letter-spacing: -0.02em;
+}
+
+.recentHint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.05em;
+}
+
+.recentList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recentItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 88%, var(--color-brand-accent));
+  background: color-mix(in srgb, var(--color-panel-muted) 86%, var(--color-brand-accent) 14%);
+  text-align: left;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.recentItem:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--color-border-strong) 68%, var(--color-brand-accent));
+  background: color-mix(in srgb, var(--color-panel-muted) 78%, var(--color-brand-accent) 22%);
+}
+
+.recentItem:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-brand-accent) 65%, white 35%);
+  outline-offset: 2px;
+}
+
+.recentMeta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recentName {
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.recentPath {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.recentAction {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.recentTime {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.recentActionLabel {
+  color: var(--color-brand-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
 .featureCard {
   background: transparent;
 }
@@ -110,4 +220,100 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   letter-spacing: 0.06em;
+}
+
+/* Welcome 双入口布局 */
+
+.welcomeContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  padding: 48px 80px 40px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.entryCards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+  width: 100%;
+  max-width: 960px;
+}
+
+.entryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 32px;
+  border-radius: 16px;
+  background: #2C2C2E;
+  border: 1px solid #38383A;
+  transition: border-color 0.15s;
+}
+
+.entryCard:hover {
+  border-color: #0A84FF;
+}
+
+.entryCardTitle {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.entryCardDesc {
+  font-size: 14px;
+  color: #EBEBF599;
+  line-height: 1.6;
+  white-space: pre-line;
+  margin: 0;
+}
+
+.entrySteps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.entryStep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #EBEBF580;
+}
+
+.entryStepDot {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.recentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: #2C2C2E;
+  border: 1px solid #38383A;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.recentChip:hover {
+  border-color: #0A84FF;
+  background: #3A3A3C;
 }
