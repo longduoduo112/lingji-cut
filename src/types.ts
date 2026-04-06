@@ -28,7 +28,7 @@ export interface TimelineTrack {
 
 export interface OverlayItem {
   id: string;
-  type: 'video' | 'image';
+  type: 'video' | 'image' | 'text';
   assetPath: string;
   trackId: string;
   startMs: number;
@@ -37,6 +37,7 @@ export interface OverlayItem {
   overlayType?: 'media' | 'ai-card';
   overlayRole?: OverlayRole;
   aiCardData?: AICardOverlayData;
+  textData?: TextOverlayData;
 }
 
 export interface SubtitleStyle {
@@ -60,6 +61,50 @@ export interface SubtitleHighlight {
   sourceText: string;
 }
 
+// ── Text Overlay Types ──
+
+export type TextEnterAnimation =
+  | 'none' | 'fadeIn' | 'slideInLeft' | 'slideInRight'
+  | 'slideInUp' | 'slideInDown' | 'scaleIn' | 'bounceIn';
+
+export type TextExitAnimation =
+  | 'none' | 'fadeOut' | 'slideOutLeft' | 'slideOutRight'
+  | 'slideOutUp' | 'slideOutDown' | 'scaleOut' | 'bounceOut';
+
+export type TextLoopAnimation =
+  | 'none' | 'pulse' | 'float' | 'flicker' | 'typewriter';
+
+export interface TextAnimation {
+  enter: TextEnterAnimation;
+  enterDurationMs: number;
+  exit: TextExitAnimation;
+  exitDurationMs: number;
+  loop: TextLoopAnimation;
+}
+
+export interface TextOverlayData {
+  content: string;
+  fontFamily: string;
+  fontSize: number;
+  fontColor: string;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  textAlign: 'left' | 'center' | 'right';
+  backgroundColor: string;
+  strokeColor: string;
+  strokeWidth: number;
+  shadowColor: string;
+  shadowOffsetX: number;
+  shadowOffsetY: number;
+  shadowBlur: number;
+  letterSpacing: number;
+  lineHeight: number;
+  opacity: number;
+  rotation: number;
+  animation: TextAnimation;
+}
+
 export interface TimelineData {
   version: number;
   fps: number;
@@ -76,7 +121,7 @@ export interface TimelineData {
   subtitleHighlights?: SubtitleHighlight[];
 }
 
-export type AssetType = 'video' | 'image' | 'audio' | 'srt';
+export type AssetType = 'video' | 'image' | 'audio' | 'srt' | 'text';
 
 export interface AssetItem {
   path: string;
