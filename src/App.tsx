@@ -6,6 +6,7 @@ import { useViewportSize } from './hooks/useViewportSize';
 import { getAppShortcutCommand, isTextEditingTarget } from './lib/native-shortcuts';
 import { Editor } from './pages/Editor';
 import { ScriptWorkbench } from './pages/ScriptWorkbench';
+import { Settings } from './pages/Settings';
 import { Setup } from './pages/Setup';
 import { getFileNameFromPath } from './lib/utils';
 import { createDefaultTimeline, type TimelineData } from './types';
@@ -21,7 +22,7 @@ import {
   useTimelineStore,
 } from './store/timeline';
 
-type Page = 'welcome' | 'setup' | 'editor' | 'script-workbench';
+type Page = 'welcome' | 'setup' | 'editor' | 'script-workbench' | 'settings';
 
 const APP_FONT_STACK =
   '"SF Pro Text", "SF Pro Display", "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif';
@@ -409,9 +410,12 @@ export default function App() {
             onComplete={handleSetupComplete}
             onOpenRecentProject={openProject}
             onStartScriptWorkbench={() => setPage('script-workbench')}
+            onOpenSettings={() => setPage('settings')}
           />
         ) : page === 'script-workbench' ? (
           <ScriptWorkbench onBack={() => setPage('welcome')} />
+        ) : page === 'settings' ? (
+          <Settings onBack={() => setPage('welcome')} />
         ) : (
           <Editor
             onAddAsset={handleAddAsset}
