@@ -9,6 +9,7 @@ import { ExportSettingsModal } from '../components/ExportSettingsModal';
 import { PreviewPanel } from '../components/PreviewPanel';
 import { Timeline } from '../components/Timeline';
 import type { ExportConfig } from '../lib/export-settings';
+import type { OverlayPosition } from '../types';
 import { useViewportSize } from '../hooks/useViewportSize';
 import { getEditorLayoutMode, getTimelinePanelBounds } from '../lib/layout';
 import { shouldUpdatePlaybackTime } from '../lib/playback';
@@ -206,6 +207,34 @@ export function Editor({ onAddAsset, exportRequestToken }: EditorProps) {
     setInspectorSelection({ type: 'empty' });
   }, []);
 
+  const handleOpenTextInspector = useCallback(
+    (overlayId: string) => {
+      setInspectorSelection({ type: 'text-overlay', overlayId });
+    },
+    [],
+  );
+
+  const handleSelectOverlayOnCanvas = useCallback(
+    (overlayId: string | null) => {
+      if (overlayId) {
+        const overlay = timeline.overlays.find((o) => o.id === overlayId);
+        if (overlay?.type === 'text') {
+          setInspectorSelection({ type: 'text-overlay', overlayId });
+          return;
+        }
+      }
+      setInspectorSelection({ type: 'empty' });
+    },
+    [timeline.overlays],
+  );
+
+  const handleUpdateOverlayPosition = useCallback(
+    (overlayId: string, position: OverlayPosition) => {
+      useTimelineStore.getState().updateOverlay(overlayId, { position });
+    },
+    [],
+  );
+
   const handleTimelineResizeStart = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -272,6 +301,11 @@ export function Editor({ onAddAsset, exportRequestToken }: EditorProps) {
                 currentTimeMs={currentTimeMs}
                 durationMs={timeline.podcast.durationMs}
                 compact={layout.compactToolbar}
+                selectedOverlayId={
+                  inspectorSelection.type === 'text-overlay' ? inspectorSelection.overlayId : null
+                }
+                onSelectOverlay={handleSelectOverlayOnCanvas}
+                onUpdateOverlayPosition={handleUpdateOverlayPosition}
               />
             </div>
             <div className={styles.inspectorWrap}>
@@ -351,6 +385,11 @@ export function Editor({ onAddAsset, exportRequestToken }: EditorProps) {
                 currentTimeMs={currentTimeMs}
                 durationMs={timeline.podcast.durationMs}
                 compact={layout.compactToolbar}
+                selectedOverlayId={
+                  inspectorSelection.type === 'text-overlay' ? inspectorSelection.overlayId : null
+                }
+                onSelectOverlay={handleSelectOverlayOnCanvas}
+                onUpdateOverlayPosition={handleUpdateOverlayPosition}
               />
             </div>
             {!layout.stackSidebar ? (
@@ -385,6 +424,7 @@ export function Editor({ onAddAsset, exportRequestToken }: EditorProps) {
           compact={layout.compactTimeline}
           onOpenAICardInspector={handleOpenAICardInspector}
           onOpenSubtitleInspector={handleOpenSubtitleInspector}
+          onOpenTextInspector={handleOpenTextInspector}
         />
       </div>
 
