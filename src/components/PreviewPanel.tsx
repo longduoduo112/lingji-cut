@@ -15,6 +15,8 @@ import { formatTime, msToFrame } from '../lib/utils';
 import { PodcastComposition } from '../remotion/PodcastComposition';
 import { useTimelineStore } from '../store/timeline';
 import { Button, Card } from '../ui';
+import { CanvasInteractionLayer } from './CanvasInteractionLayer';
+import type { OverlayPosition } from '../types';
 import styles from './PreviewPanel.module.css';
 
 interface PreviewPanelProps {
@@ -25,6 +27,9 @@ interface PreviewPanelProps {
   currentTimeMs: number;
   durationMs: number;
   compact: boolean;
+  selectedOverlayId?: string | null;
+  onSelectOverlay?: (overlayId: string | null) => void;
+  onUpdateOverlayPosition?: (overlayId: string, position: OverlayPosition) => void;
 }
 
 function PreviewPanelComponent({
@@ -34,6 +39,9 @@ function PreviewPanelComponent({
   currentTimeMs,
   durationMs,
   compact,
+  selectedOverlayId,
+  onSelectOverlay,
+  onUpdateOverlayPosition,
 }: PreviewPanelProps) {
   const { timeline, srtEntries } = useTimelineStore();
   const fps = timeline.fps || 30;
@@ -44,6 +52,8 @@ function PreviewPanelComponent({
   const playerInputProps = useMemo(() => ({ timeline, srtEntries }), [srtEntries, timeline]);
   const cardRef = useRef<HTMLDivElement>(null);
   const previewAreaRef = useRef<HTMLDivElement | null>(null);
+  const stageFrameRef = useRef<HTMLDivElement>(null);
+  const [stageFrameRect, setStageFrameRect] = useState<DOMRect | null>(null);
   const [stageSize, setStageSize] = useState(() => ({
     width: timeline.width,
     height: timeline.height,
@@ -80,6 +90,9 @@ function PreviewPanelComponent({
         timeline.height,
       );
       setStageSize(nextStageSize);
+      if (stageFrameRef.current) {
+        setStageFrameRect(stageFrameRef.current.getBoundingClientRect());
+      }
     };
 
     updateStageSize();
@@ -117,6 +130,7 @@ function PreviewPanelComponent({
         style={{ padding: compact ? 10 : 14 }}
       >
         <div
+          ref={stageFrameRef}
           className={styles.stageFrame}
           style={{
             width: Math.max(0, stageSize.width),
@@ -139,6 +153,17 @@ function PreviewPanelComponent({
               background: 'var(--color-preview-bg)',
             }}
           />
+          {onSelectOverlay && (
+            <CanvasInteractionLayer
+              overlays={timeline.overlays}
+              selectedOverlayId={selectedOverlayId ?? null}
+              canvasWidth={timeline.width}
+              canvasHeight={timeline.height}
+              stageRect={stageFrameRect}
+              onSelect={onSelectOverlay}
+              onUpdatePosition={onUpdateOverlayPosition ?? (() => {})}
+            />
+          )}
         </div>
       </div>
 
