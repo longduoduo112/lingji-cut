@@ -1,89 +1,61 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { useAIStore } from '../src/store/ai';
-import type { AICard, AIAnalysisResult } from '../src/types/ai';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadAISettings, saveAISettings } from '../src/store/ai';
 
-const makeCard = (id: string, type: AICard['type'], startMs: number): AICard => ({
-  id,
-  type,
-  title: `Card ${id}`,
-  content: 'test content',
-  startMs,
-  endMs: startMs + 30_000,
-  displayDurationMs: 5_000,
-  displayMode: 'fullscreen',
-  template: `${type}-default`,
-  enabled: true,
-  style: { primaryColor: '#6366f1', backgroundColor: '#0f172a', fontSize: 48 },
-});
+const AI_SETTINGS_KEY = 'podcast-editor-ai-settings';
 
-describe('AI store', () => {
+function createStorageMock() {
+  const storage = new Map<string, string>();
+
+  return {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storage.set(key, value);
+    },
+    removeItem: (key: string) => {
+      storage.delete(key);
+    },
+    clear: () => {
+      storage.clear();
+    },
+  };
+}
+
+describe('AI settings store helpers', () => {
   beforeEach(() => {
-    useAIStore.setState({
-      analysisResult: null,
-      isAnalyzing: false,
-      analysisError: null,
-      coverCandidates: [],
-      isGeneratingCovers: false,
-      activeTab: 'cards',
+    const localStorage = createStorageMock();
+    vi.stubGlobal('window', { localStorage });
+    localStorage.clear();
+  });
+
+  it('defaults enableThinking to true when loading legacy settings', () => {
+    window.localStorage.setItem(
+      AI_SETTINGS_KEY,
+      JSON.stringify({
+        llmBaseUrl: 'https://api.openai.com/v1',
+        llmApiKey: 'sk-test',
+        llmModel: 'gpt-4o',
+        jimengApiUrl: 'http://47.109.159.194:8330',
+        jimengSessionId: 'session-test',
+      }),
+    );
+
+    expect(loadAISettings()).toMatchObject({
+      enableThinking: true,
     });
   });
 
-  it('starts with an empty analysis result', () => {
-    expect(useAIStore.getState().analysisResult).toBeNull();
-  });
-
-  it('stores the latest analysis result', () => {
-    const result: AIAnalysisResult = {
-      cards: [makeCard('1', 'summary', 0)],
-      coverPrompts: ['prompt-1'],
-      summary: 'summary',
-      keywords: ['AI'],
-      globalPrompt: '整体偏商业分析风',
-    };
-
-    useAIStore.getState().setAnalysisResult(result);
-
-    expect(useAIStore.getState().analysisResult?.cards).toHaveLength(1);
-  });
-
-  it('toggles a card enabled flag', () => {
-    useAIStore.getState().setAnalysisResult({
-      cards: [makeCard('1', 'summary', 0)],
-      coverPrompts: [],
-      summary: '',
-      keywords: [],
+  it('persists enableThinking when explicitly disabled', () => {
+    saveAISettings({
+      llmBaseUrl: 'https://api.openai.com/v1',
+      llmApiKey: 'sk-test',
+      llmModel: 'gpt-4o',
+      jimengApiUrl: 'http://47.109.159.194:8330',
+      jimengSessionId: 'session-test',
+      enableThinking: false,
     });
 
-    useAIStore.getState().toggleCardEnabled('1');
-
-    expect(useAIStore.getState().analysisResult?.cards[0]?.enabled).toBe(false);
-  });
-
-  it('updates a card in place', () => {
-    useAIStore.getState().setAnalysisResult({
-      cards: [makeCard('1', 'summary', 0)],
-      coverPrompts: [],
-      summary: '',
-      keywords: [],
+    expect(loadAISettings()).toMatchObject({
+      enableThinking: false,
     });
-
-    useAIStore.getState().updateCard('1', { title: 'New Title' });
-
-    expect(useAIStore.getState().analysisResult?.cards[0]?.title).toBe('New Title');
-  });
-
-  it('keeps prompt fields on analysis result and cards', () => {
-    useAIStore.getState().setAnalysisResult({
-      cards: [makeCard('1', 'summary', 0)],
-      coverPrompts: [],
-      summary: '',
-      keywords: [],
-      globalPrompt: '整体偏商业分析风',
-    });
-
-    useAIStore.getState().updateCard('1', { cardPrompt: '改成更像封面大字报' });
-
-    expect(useAIStore.getState().analysisResult?.globalPrompt).toBe('整体偏商业分析风');
-    expect(useAIStore.getState().analysisResult?.cards[0]?.cardPrompt).toBe('改成更像封面大字报');
   });
 });

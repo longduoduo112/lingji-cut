@@ -11,6 +11,7 @@ import {
   Field,
   Input,
   ModalFooter,
+  Switch,
 } from "../ui";
 import styles from "./AISettingsModal.module.css";
 
@@ -30,6 +31,7 @@ export function AISettingsModal({
   const [llmBaseUrl, setLlmBaseUrl] = useState("");
   const [llmApiKey, setLlmApiKey] = useState("");
   const [llmModel, setLlmModel] = useState("");
+  const [enableThinking, setEnableThinking] = useState(true);
   const [jimengApiUrl, setJimengApiUrl] = useState("");
   const [jimengSessionId, setJimengSessionId] = useState("");
 
@@ -41,6 +43,7 @@ export function AISettingsModal({
     setLlmBaseUrl(settings?.llmBaseUrl ?? "https://api.openai.com/v1");
     setLlmApiKey(settings?.llmApiKey ?? "");
     setLlmModel(settings?.llmModel ?? "gpt-4o");
+    setEnableThinking(settings?.enableThinking ?? true);
     setJimengApiUrl(settings?.jimengApiUrl ?? "http://47.109.159.194:8330");
     setJimengSessionId(settings?.jimengSessionId ?? "");
   }, [settings, visible]);
@@ -76,6 +79,13 @@ export function AISettingsModal({
               onChange={setLlmModel}
             />
 
+            <Field
+              label="开启思考模式"
+              hint="默认开启；关闭后会向兼容 OpenAI 的接口追加 extra_body.enable_thinking=false"
+            >
+              <Switch checked={enableThinking} onChange={setEnableThinking} />
+            </Field>
+
             <Divider label="封面生成（即梦）" />
 
             <SettingsField
@@ -105,6 +115,7 @@ export function AISettingsModal({
                 llmBaseUrl,
                 llmApiKey,
                 llmModel,
+                enableThinking,
                 jimengApiUrl,
                 jimengSessionId,
               });

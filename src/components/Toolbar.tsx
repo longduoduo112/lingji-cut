@@ -50,8 +50,18 @@ export function Toolbar({
   const agentStatus = useAgentStore((s) => s.status);
 
   const isEditorPage = page === 'editor';
-  const visibleProjectName = isEditorPage ? projectName || '未命名工程' : pageTitleMap[page];
-  const statusLabel = isEditorPage ? saveStatusLabelMap[saveStatus] : pageStatusMap[page];
+  // 有项目时所有页面都显示项目名，无项目时显示页面标题
+  const visibleProjectName = projectName
+    ? projectName
+    : isEditorPage
+      ? '未命名工程'
+      : pageTitleMap[page];
+  const hasProject = Boolean(projectName);
+  const statusLabel = isEditorPage
+    ? saveStatusLabelMap[saveStatus]
+    : hasProject && (page === 'welcome' || page === 'setup')
+      ? '选择创作方式'
+      : pageStatusMap[page];
 
   return (
     <header

@@ -1,26 +1,62 @@
 // src/lib/script-persistence.ts
-import type { Annotation, ScriptStep } from '../store/script';
+import type { Annotation, ReviewState } from '../store/script';
 
+// v2 持久化格式
 export interface PersistedScriptState {
-  version: 1;
-  currentStep: ScriptStep;
+  version: 2;
   templateId: string;
   annotations: Annotation[];
+  reviewState: ReviewState;
+  lastReviewedDocVersion: number;
   createdAt: string;
   updatedAt: string;
+  lastOperation?: string;
+}
+
+// --- v1 → v2 迁移 ---
+
+function deriveReviewStateFromV1(
+  currentStep: number,
+  annotations: Annotation[],
+): ReviewState {
+  const pending = annotations.some((a) => a.status === 'pending');
+  const resolved = annotations.length > 0 && annotations.every((a) => a.status !== 'pending');
+
+  if (currentStep === 4 && resolved) return 'clean';
+  if ((currentStep === 3 || currentStep === 4) && pending) return 'issues';
+  return 'idle';
+}
+
+export function migratePersistedState(raw: Record<string, unknown>): PersistedScriptState {
+  if (raw.version === 2) return raw as unknown as PersistedScriptState;
+
+  const annotations = Array.isArray(raw.annotations) ? (raw.annotations as Annotation[]) : [];
+  const reviewState = deriveReviewStateFromV1((raw.currentStep as number) ?? 0, annotations);
+
+  return {
+    version: 2,
+    templateId: (raw.templateId as string) ?? 'news-broadcast',
+    annotations,
+    reviewState,
+    lastReviewedDocVersion: reviewState === 'idle' ? 0 : 1,
+    createdAt: (raw.createdAt as string) ?? new Date().toISOString(),
+    updatedAt: (raw.updatedAt as string) ?? new Date().toISOString(),
+  };
 }
 
 export function createPersistedScriptState(
-  currentStep: ScriptStep,
+  reviewState: ReviewState,
+  scriptDocVersion: number,
   templateId: string,
   annotations: Annotation[],
   createdAt?: string,
 ): PersistedScriptState {
   return {
-    version: 1,
-    currentStep,
+    version: 2,
     templateId,
     annotations,
+    reviewState,
+    lastReviewedDocVersion: scriptDocVersion,
     createdAt: createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -29,49 +65,76 @@ export function createPersistedScriptState(
 export function parsePersistedScriptState(raw: unknown): PersistedScriptState | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
-  if (obj.version !== 1) return null;
-  if (typeof obj.currentStep !== 'number') return null;
 
-  return {
-    version: 1,
-    currentStep: obj.currentStep as ScriptStep,
-    templateId: (obj.templateId as string) ?? 'news-broadcast',
-    annotations: Array.isArray(obj.annotations) ? (obj.annotations as Annotation[]) : [],
-    createdAt: (obj.createdAt as string) ?? new Date().toISOString(),
-    updatedAt: (obj.updatedAt as string) ?? new Date().toISOString(),
-  };
+  // v2 格式直接返回
+  if (obj.version === 2) return obj as unknown as PersistedScriptState;
+
+  // v1 格式迁移到 v2
+  if (obj.version === 1) return migratePersistedState(obj);
+
+  return null;
 }
 
 // --- projectDir 持久化 (localStorage) ---
+// 与 timeline store 共享同一个 key，统一工作目录
 
-const SCRIPT_PROJECT_DIR_KEY = 'podcast-editor-script-project-dir';
+const SHARED_PROJECT_DIR_KEY = 'podcast-editor-project-dir';
+const LEGACY_SCRIPT_DIR_KEY = 'podcast-editor-script-project-dir';
 
 export function persistScriptProjectDir(dir: string | null): void {
   if (dir) {
-    localStorage.setItem(SCRIPT_PROJECT_DIR_KEY, dir);
-  } else {
-    localStorage.removeItem(SCRIPT_PROJECT_DIR_KEY);
+    localStorage.setItem(SHARED_PROJECT_DIR_KEY, dir);
+    // 清理遗留 key
+    localStorage.removeItem(LEGACY_SCRIPT_DIR_KEY);
   }
+  // dir 为 null 时不清除共享 key（Editor 侧可能仍在使用）
 }
 
 export function loadPersistedScriptProjectDir(): string | null {
-  return localStorage.getItem(SCRIPT_PROJECT_DIR_KEY);
+  // 优先读共享 key，兼容读取遗留 key 后自动迁移
+  const shared = localStorage.getItem(SHARED_PROJECT_DIR_KEY);
+  if (shared) return shared;
+
+  const legacy = localStorage.getItem(LEGACY_SCRIPT_DIR_KEY);
+  if (legacy) {
+    localStorage.setItem(SHARED_PROJECT_DIR_KEY, legacy);
+    localStorage.removeItem(LEGACY_SCRIPT_DIR_KEY);
+    return legacy;
+  }
+  return null;
 }
 
-// --- 文件防抖保存 ---
+// --- 保存所有 dirty 文件 ---
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
+const savingFiles = new Set<string>();
 
-export function debouncedSaveFile(
+export function isSavingFile(file: string): boolean {
+  return savingFiles.has(file);
+}
+
+/** 标记文件为"正在保存"状态，抑制文件监听器的冲突检测 */
+export function markFileSaving(file: string, durationMs = 1000): void {
+  savingFiles.add(file);
+  setTimeout(() => savingFiles.delete(file), durationMs);
+}
+
+export async function saveAllDirtyFiles(
   projectDir: string,
-  filename: string,
-  content: string,
-  delayMs = 1000,
-): void {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    void window.electronAPI.saveScriptFile(projectDir, filename, content);
-  }, delayMs);
+  fileDirtyMap: Record<string, boolean>,
+  getText: (file: string) => string,
+): Promise<void> {
+  const dirtyFiles = Object.entries(fileDirtyMap)
+    .filter(([, dirty]) => dirty)
+    .map(([file]) => file);
+
+  for (const file of dirtyFiles) {
+    savingFiles.add(file);
+    try {
+      await window.electronAPI.saveScriptFile(projectDir, file, getText(file));
+    } finally {
+      setTimeout(() => savingFiles.delete(file), 500);
+    }
+  }
 }
 
 // --- script-state.json 防抖保存 ---

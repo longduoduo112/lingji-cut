@@ -118,7 +118,7 @@ export function getTemplateById(id: string): ScriptTemplate | undefined {
   return SCRIPT_TEMPLATES.find((t) => t.id === id);
 }
 
-import { loadCustomTemplates } from './settings-storage';
+import { loadCustomTemplates, loadCustomRoles, NONE_ROLE, type ScriptRole } from './settings-storage';
 
 export interface MergedTemplate {
   id: string;
@@ -145,4 +145,32 @@ export function getAllTemplates(): MergedTemplate[] {
 
 export function getAnyTemplateById(id: string): MergedTemplate | undefined {
   return getAllTemplates().find((t) => t.id === id);
+}
+
+// ── 角色：从口播模板中派生 ──────────────────────────────────
+
+/**
+ * 获取所有可用角色（从口播模板派生 + 自定义角色）
+ * 每个口播模板自动成为一个可选角色，角色的 rolePrompt 即模板的 systemPrompt
+ */
+export function getAllRoles(): ScriptRole[] {
+  const templateRoles: ScriptRole[] = getAllTemplates().map((t) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description,
+    rolePrompt: t.systemPrompt,
+    isBuiltin: t.isBuiltin,
+  }));
+  const customs: ScriptRole[] = loadCustomRoles().map((r) => ({
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    rolePrompt: r.rolePrompt,
+    isBuiltin: false,
+  }));
+  return [NONE_ROLE, ...templateRoles, ...customs];
+}
+
+export function getRoleById(id: string): ScriptRole | undefined {
+  return getAllRoles().find((r) => r.id === id);
 }

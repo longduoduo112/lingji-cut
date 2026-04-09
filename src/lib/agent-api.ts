@@ -11,6 +11,10 @@ import type {
 // ─── 前端使用的消息类型 ────────────────────────────────────
 
 export type ContentBlock =
+  | {
+      type: 'session_started';
+      sessionId: string;
+    }
   | { type: 'text'; text: string }
   | { type: 'thinking'; text: string }
   | {
@@ -62,7 +66,7 @@ export interface AgentCapabilities {
 
 export interface AgentAPI {
   // 连接管理
-  connect(projectDir: string): Promise<void>;
+  connect(projectDir: string, sessionId?: string | null): Promise<void>;
   disconnect(): Promise<void>;
   getStatus(): Promise<string>;
 
@@ -95,6 +99,29 @@ export interface AgentAPI {
   onStatusChanged(callback: (status: ConnectionStatus) => void): () => void;
   onEvent(callback: (block: ContentBlock) => void): () => void;
   onCapabilities(callback: (caps: AgentCapabilities) => void): () => void;
+
+  // 多会话 runtime API
+  connectRuntime(input: {
+    conversationId: number;
+    projectDir: string;
+    sessionId?: string | null;
+    agentType?: string;
+  }): Promise<void>;
+  disconnectRuntime(conversationId: number): Promise<void>;
+  sendPromptToConversation(conversationId: number, contents: PromptInputBlock[]): Promise<void>;
+  cancelConversationTurn(conversationId: number): Promise<void>;
+  setConversationMode(conversationId: number, modeId: string): Promise<void>;
+  setConversationConfigOption(conversationId: number, configId: string, valueId: string): Promise<void>;
+  respondConversationPermission(conversationId: number, requestId: string, optionId: string): Promise<void>;
+  onRuntimeStatusChanged(
+    callback: (payload: { conversationId: number; status: ConnectionStatus }) => void,
+  ): () => void;
+  onRuntimeEvent(
+    callback: (payload: { conversationId: number; event: ContentBlock | Record<string, unknown> }) => void,
+  ): () => void;
+  onRuntimeCapabilities(
+    callback: (payload: { conversationId: number; capabilities: AgentCapabilities | Record<string, unknown> }) => void,
+  ): () => void;
 }
 
 declare global {

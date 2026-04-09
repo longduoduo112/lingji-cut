@@ -1,0 +1,307 @@
+import { useEffect, useState } from 'react';
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Folder,
+  FolderOpen,
+  Settings2,
+} from 'lucide-react';
+import type { CSSProperties, ReactNode } from 'react';
+import type { FileEntry } from '../../lib/electron-api';
+import styles from './FileTreePanel.module.css';
+
+interface FileTreePanelProps {
+  projectDir: string | null;
+  fileEntries: FileEntry[];
+  openedFile: string | null;
+  fileDirtyMap: Record<string, boolean>;
+  fileConflictMap: Record<string, boolean>;
+  onSelectProjectDir: () => void;
+  onOpenFile: (file: string) => void;
+}
+
+interface FileTreeProps {
+  fileEntries: FileEntry[];
+  expandedDirectories: Record<string, boolean>;
+  openedFile: string | null;
+  fileDirtyMap: Record<string, boolean>;
+  fileConflictMap: Record<string, boolean>;
+  onToggleDirectory: (path: string) => void;
+  onOpenFile: (file: string) => void;
+}
+
+function getProjectName(projectDir: string): string {
+  const parts = projectDir.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? projectDir;
+}
+
+function buildRelativePath(pathPrefix: string, name: string): string {
+  return pathPrefix ? `${pathPrefix}/${name}` : name;
+}
+
+const BINARY_EXT = /\.(png|jpe?g|gif|bmp|ico|webp|svg|mp[34]|wav|ogg|avi|mov|mkv|webm|zip|tar|gz|rar|7z|pdf|doc[x]?|xls[x]?|ppt[x]?|exe|dll|so|dylib|woff2?|ttf|eot)$/i;
+
+function isOpenableFile(relativePath: string): boolean {
+  // 排除二进制文件和状态文件
+  if (relativePath === 'script-state.json') return false;
+  return !BINARY_EXT.test(relativePath);
+}
+
+function getFileIcon(entry: FileEntry): ReactNode {
+  if (entry.name === 'script-state.json') {
+    return <Settings2 size={14} strokeWidth={1.8} />;
+  }
+
+  return <FileText size={14} strokeWidth={1.8} />;
+}
+
+function getIndentStyle(depth: number): CSSProperties {
+  return { '--tree-depth': depth } as CSSProperties;
+}
+
+export function collectDirectoryPaths(
+  fileEntries: FileEntry[],
+  pathPrefix = '',
+): string[] {
+  const paths: string[] = [];
+
+  for (const entry of fileEntries) {
+    if (entry.type !== 'directory') {
+      continue;
+    }
+
+    const relativePath = buildRelativePath(pathPrefix, entry.name);
+    paths.push(relativePath);
+
+    if (entry.children?.length) {
+      paths.push(...collectDirectoryPaths(entry.children, relativePath));
+    }
+  }
+
+  return paths;
+}
+
+export function reconcileExpandedDirectories(
+  fileEntries: FileEntry[],
+  previous: Record<string, boolean>,
+): Record<string, boolean> {
+  return collectDirectoryPaths(fileEntries).reduce<Record<string, boolean>>((next, path) => {
+    next[path] = previous[path] ?? true;
+    return next;
+  }, {});
+}
+
+function TreeNode({
+  entry,
+  pathPrefix,
+  depth,
+  expandedDirectories,
+  openedFile,
+  fileDirtyMap,
+  fileConflictMap,
+  onToggleDirectory,
+  onOpenFile,
+}: {
+  entry: FileEntry;
+  pathPrefix: string;
+  depth: number;
+  expandedDirectories: Record<string, boolean>;
+  openedFile: string | null;
+  fileDirtyMap: Record<string, boolean>;
+  fileConflictMap: Record<string, boolean>;
+  onToggleDirectory: (path: string) => void;
+  onOpenFile: (file: string) => void;
+}) {
+  const relativePath = buildRelativePath(pathPrefix, entry.name);
+
+  if (entry.type === 'directory') {
+    const expanded = expandedDirectories[relativePath] ?? true;
+
+    return (
+      <div className={styles.treeBranch}>
+        <button
+          type="button"
+          role="treeitem"
+          aria-expanded={expanded}
+          className={`${styles.treeRow} ${styles.treeRowDirectory}`}
+          style={getIndentStyle(depth)}
+          onClick={() => onToggleDirectory(relativePath)}
+          title={relativePath}
+          data-tree-path={relativePath}
+        >
+          <span className={styles.chevronSlot} aria-hidden="true">
+            {expanded ? <ChevronDown size={14} strokeWidth={2} /> : <ChevronRight size={14} strokeWidth={2} />}
+          </span>
+          <span className={styles.iconSlot} aria-hidden="true">
+            {expanded ? <FolderOpen size={14} strokeWidth={1.8} /> : <Folder size={14} strokeWidth={1.8} />}
+          </span>
+          <span className={styles.treeLabel}>{entry.name}</span>
+          <span className={styles.metaSlot} aria-hidden="true" />
+        </button>
+
+        {expanded
+          ? entry.children?.map((child) => (
+              <TreeNode
+                key={`${relativePath}/${child.name}`}
+                entry={child}
+                pathPrefix={relativePath}
+                depth={depth + 1}
+                expandedDirectories={expandedDirectories}
+                openedFile={openedFile}
+                fileDirtyMap={fileDirtyMap}
+                fileConflictMap={fileConflictMap}
+                onToggleDirectory={onToggleDirectory}
+                onOpenFile={onOpenFile}
+              />
+            ))
+          : null}
+      </div>
+    );
+  }
+
+  const active = openedFile === relativePath;
+  const openable = isOpenableFile(relativePath);
+  const dirty = Boolean(fileDirtyMap[relativePath]);
+  const conflict = Boolean(fileConflictMap[relativePath]);
+  const className = [
+    styles.treeRow,
+    styles.treeRowFile,
+    active ? styles.treeRowActive : '',
+    openable ? styles.treeRowInteractive : styles.treeRowDisabled,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const handleDragStart = (e: React.DragEvent) => {
+    if (!openable) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData('application/x-workbench-file', relativePath);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  return (
+    <button
+      type="button"
+      role="treeitem"
+      aria-selected={active}
+      aria-disabled={!openable}
+      disabled={!openable}
+      className={className}
+      style={getIndentStyle(depth)}
+      onClick={() => onOpenFile(relativePath)}
+      title={relativePath}
+      data-file-path={relativePath}
+      draggable={openable}
+      onDragStart={handleDragStart}
+    >
+      <span className={styles.chevronSlot} aria-hidden="true" />
+      <span className={styles.iconSlot} aria-hidden="true">
+        {getFileIcon(entry)}
+      </span>
+      <span className={styles.treeLabel}>{entry.name}</span>
+      <span className={styles.metaSlot} aria-hidden="true">
+        {dirty ? <span className={styles.dirtyDot} /> : null}
+        {conflict ? <span className={styles.conflictMark}>⚠</span> : null}
+      </span>
+    </button>
+  );
+}
+
+export function FileTree({
+  fileEntries,
+  expandedDirectories,
+  openedFile,
+  fileDirtyMap,
+  fileConflictMap,
+  onToggleDirectory,
+  onOpenFile,
+}: FileTreeProps) {
+  return (
+    <div className={styles.treeList} role="tree" aria-label="工作文件树">
+      {fileEntries.map((entry) => (
+        <TreeNode
+          key={entry.name}
+          entry={entry}
+          pathPrefix=""
+          depth={0}
+          expandedDirectories={expandedDirectories}
+          openedFile={openedFile}
+          fileDirtyMap={fileDirtyMap}
+          fileConflictMap={fileConflictMap}
+          onToggleDirectory={onToggleDirectory}
+          onOpenFile={onOpenFile}
+        />
+      ))}
+    </div>
+  );
+}
+
+export function FileTreePanel({
+  projectDir,
+  fileEntries,
+  openedFile,
+  fileDirtyMap,
+  fileConflictMap,
+  onSelectProjectDir,
+  onOpenFile,
+}: FileTreePanelProps) {
+  const [expandedDirectories, setExpandedDirectories] = useState<Record<string, boolean>>(() =>
+    reconcileExpandedDirectories(fileEntries, {}),
+  );
+
+  useEffect(() => {
+    setExpandedDirectories((previous) => reconcileExpandedDirectories(fileEntries, previous));
+  }, [fileEntries]);
+
+  function handleToggleDirectory(path: string) {
+    setExpandedDirectories((previous) => ({
+      ...previous,
+      [path]: !(previous[path] ?? true),
+    }));
+  }
+
+  return (
+    <aside className={styles.panel}>
+      <div className={styles.header}>
+        <span className={styles.headerTitle}>工作文件</span>
+        <button type="button" className={styles.headerButton} onClick={onSelectProjectDir}>
+          更换目录
+        </button>
+      </div>
+
+      {projectDir ? (
+        <>
+          <div className={styles.projectRoot} title={projectDir}>
+            <span className={styles.rootIcon} aria-hidden="true">
+              <FolderOpen size={14} strokeWidth={1.8} />
+            </span>
+            <span className={styles.rootName}>{getProjectName(projectDir)}</span>
+          </div>
+
+          <FileTree
+            fileEntries={fileEntries}
+            expandedDirectories={expandedDirectories}
+            openedFile={openedFile}
+            fileDirtyMap={fileDirtyMap}
+            fileConflictMap={fileConflictMap}
+            onToggleDirectory={handleToggleDirectory}
+            onOpenFile={onOpenFile}
+          />
+        </>
+      ) : (
+        <div className={styles.empty}>
+          <div className={styles.emptyTitle}>尚未选择工作目录</div>
+          <div className={styles.emptyText}>
+            左侧文件树会显示工作目录中的原稿、口播稿和脚本状态文件。
+          </div>
+          <button type="button" className={styles.primaryButton} onClick={onSelectProjectDir}>
+            选择工作目录
+          </button>
+        </div>
+      )}
+    </aside>
+  );
+}

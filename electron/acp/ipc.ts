@@ -1,20 +1,48 @@
 import { ipcMain, type BrowserWindow } from 'electron';
+import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { AcpClient } from './client';
 import { AgentConfig } from './config';
 import { BinaryManager } from './binary-manager';
-import { TerminalRuntime } from './terminal-runtime';
-import { SessionManager } from './session';
+import { ConnectionRegistry } from './connection-registry';
 import { runPreflight } from './preflight';
+import { McpConfigManager } from '../mcp/config-manager';
+import { getMcpServerStatus } from '../mcp/server';
 import type { PermissionPolicy } from './types';
 
 const CONFIG_PATH = path.join(os.homedir(), '.lingji', 'agent-config.json');
+const LEGACY_CONVERSATION_ID = 0;
 
-let sessionManager: SessionManager | null = null;
 const config = new AgentConfig(CONFIG_PATH);
 const binaryManager = new BinaryManager();
-const terminalRuntime = new TerminalRuntime();
+const connectionRegistry = new ConnectionRegistry();
+
+interface RuntimeConnectPayload {
+  conversationId: number;
+  projectDir: string;
+  sessionId?: string | null;
+  agentType?: string;
+}
+
+function normalizeLegacyConnectArgs(
+  projectDirOrPayload: string | RuntimeConnectPayload,
+  sessionId?: string | null,
+): RuntimeConnectPayload {
+  if (typeof projectDirOrPayload === 'string') {
+    return {
+      conversationId: LEGACY_CONVERSATION_ID,
+      projectDir: projectDirOrPayload,
+      sessionId: sessionId ?? null,
+      agentType: 'claude-acp',
+    };
+  }
+  return {
+    conversationId: projectDirOrPayload.conversationId,
+    projectDir: projectDirOrPayload.projectDir,
+    sessionId: projectDirOrPayload.sessionId ?? null,
+    agentType: projectDirOrPayload.agentType ?? 'claude-acp',
+  };
+}
 
 export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): void {
   // 启动时确保 nvm/fnm/volta 的 node 在 PATH 中
@@ -25,49 +53,23 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
   };
 
   ipcMain.handle('agent:get-status', () => {
-    return sessionManager?.getStatus() ?? 'disconnected';
+    return connectionRegistry.get(LEGACY_CONVERSATION_ID)?.status ?? 'disconnected';
   });
 
-  ipcMain.handle('agent:connect', async (_event, projectDir: string) => {
-    // 防止重复连接：已有活跃会话时同步状态后返回
-    if (sessionManager) {
-      const currentStatus = sessionManager.getStatus();
-      if (currentStatus === 'connected' || currentStatus === 'prompting') {
-        // 组件可能重新挂载后丢失了状态，同步一次
-        sendToRenderer('agent:status', currentStatus);
-        return;
-      }
-      // 非活跃状态，先清理旧会话
-      sessionManager.disconnect();
-      sessionManager = null;
-    }
-
+  async function connectRuntime(payload: RuntimeConnectPayload): Promise<void> {
     const configData = await config.load();
     const agentEntry = configData.agents['claude-acp'];
     const policy = configData.permissionPolicy ?? 'tiered';
 
-    const client = new AcpClient();
-    sessionManager = new SessionManager(client, config, terminalRuntime, policy);
+    // 确保 Claude Code 配置了 MCP Server
+    const mcpConfigMgr = new McpConfigManager();
+    const mcpStatus = getMcpServerStatus();
+    if (mcpStatus.running) {
+      await mcpConfigMgr.registerToApp('claude_code', mcpStatus.port);
+    }
 
-    // 设置权限提示回调 → 转发到 Renderer
-    sessionManager.setPermissionPromptCallback(async (action) => {
-      sendToRenderer('agent:permission-prompt', action);
-      return new Promise((resolve) => {
-        const handler = (_e: unknown, result: 'allow' | 'deny') => {
-          ipcMain.removeHandler('agent:permission-prompt-response');
-          resolve(result);
-        };
-        ipcMain.handleOnce('agent:permission-prompt-response', handler);
-      });
-    });
-
-    // 转发事件到 Renderer
-    sessionManager.on('status', (status) => sendToRenderer('agent:status', status));
-    sessionManager.on('event', (event) => sendToRenderer('agent:event', event));
-    sessionManager.on('capabilities', (caps) => sendToRenderer('agent:capabilities', caps));
-    sessionManager.on('file_changed', (change) =>
-      sendToRenderer('agent:event', { type: 'file_changed', ...change }),
-    );
+    // 在项目目录写入 CLAUDE.md，引导 Claude Code 使用 MCP 工具
+    await ensureProjectClaudeMd(payload.projectDir);
 
     // 构建 env
     const env: Record<string, string> = {};
@@ -89,32 +91,98 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
     const version = agentEntry?.version || '0.25.0';
     const { command, args } = binaryManager.getSpawnCommand(version);
 
-    await sessionManager.connect(projectDir, command, args, env);
+    await connectionRegistry.connect({
+      conversationId: payload.conversationId,
+      projectDir: payload.projectDir,
+      sessionId: payload.sessionId ?? null,
+      agentType: payload.agentType ?? 'claude-acp',
+      permissionPolicy: policy,
+      spawnCommand: command,
+      spawnArgs: args,
+      env,
+    });
+  }
+
+  connectionRegistry.on('status', ({ conversationId, status }) => {
+    sendToRenderer('agent:runtime-status', { conversationId, status });
+    if (conversationId === LEGACY_CONVERSATION_ID) {
+      sendToRenderer('agent:status', status);
+    }
+  });
+  connectionRegistry.on('event', ({ conversationId, event }) => {
+    sendToRenderer('agent:runtime-event', { conversationId, event });
+    if (conversationId === LEGACY_CONVERSATION_ID) {
+      sendToRenderer('agent:event', event);
+    }
+  });
+  connectionRegistry.on('capabilities', ({ conversationId, capabilities }) => {
+    sendToRenderer('agent:runtime-capabilities', { conversationId, capabilities });
+    if (conversationId === LEGACY_CONVERSATION_ID) {
+      sendToRenderer('agent:capabilities', capabilities);
+    }
+  });
+  connectionRegistry.on('file_changed', ({ conversationId, change }) => {
+    const eventPayload = { type: 'file_changed', ...(change as object) };
+    sendToRenderer('agent:runtime-event', { conversationId, event: eventPayload });
+    if (conversationId === LEGACY_CONVERSATION_ID) {
+      sendToRenderer('agent:event', eventPayload);
+    }
+  });
+
+  ipcMain.handle('agent:connect', async (_event, projectDirOrPayload: string | RuntimeConnectPayload, sessionId?: string | null) => {
+    await connectRuntime(normalizeLegacyConnectArgs(projectDirOrPayload, sessionId));
+  });
+
+  ipcMain.handle('agent:connect-runtime', async (_event, payload: RuntimeConnectPayload) => {
+    await connectRuntime(payload);
   });
 
   ipcMain.handle('agent:disconnect', async () => {
-    sessionManager?.disconnect();
-    sessionManager = null;
+    connectionRegistry.disconnect(LEGACY_CONVERSATION_ID);
+  });
+
+  ipcMain.handle('agent:disconnect-runtime', async (_event, conversationId: number) => {
+    connectionRegistry.disconnect(conversationId);
   });
 
   ipcMain.handle('agent:send-prompt', async (_event, contents: unknown[]) => {
-    await sessionManager?.sendPrompt(contents);
+    await connectionRegistry.sendPrompt(LEGACY_CONVERSATION_ID, contents);
+  });
+
+  ipcMain.handle('agent:send-prompt-runtime', async (_event, conversationId: number, contents: unknown[]) => {
+    await connectionRegistry.sendPrompt(conversationId, contents);
   });
 
   ipcMain.handle('agent:cancel-turn', async () => {
-    await sessionManager?.cancelTurn();
+    await connectionRegistry.cancelTurn(LEGACY_CONVERSATION_ID);
+  });
+
+  ipcMain.handle('agent:cancel-turn-runtime', async (_event, conversationId: number) => {
+    await connectionRegistry.cancelTurn(conversationId);
   });
 
   ipcMain.handle('agent:set-mode', async (_event, modeId: string) => {
-    await sessionManager?.setMode(modeId);
+    await connectionRegistry.setMode(LEGACY_CONVERSATION_ID, modeId);
+  });
+
+  ipcMain.handle('agent:set-mode-runtime', async (_event, conversationId: number, modeId: string) => {
+    await connectionRegistry.setMode(conversationId, modeId);
   });
 
   ipcMain.handle('agent:set-config-option', async (_event, configId: string, valueId: string) => {
-    await sessionManager?.setConfigOption(configId, valueId);
+    await connectionRegistry.setConfigOption(LEGACY_CONVERSATION_ID, configId, valueId);
+  });
+
+  ipcMain.handle('agent:set-config-option-runtime', async (_event, conversationId: number, configId: string, valueId: string) => {
+    await connectionRegistry.setConfigOption(conversationId, configId, valueId);
   });
 
   ipcMain.handle('agent:respond-permission', async (_event, requestId: string, optionId: string) => {
-    await sessionManager?.respondPermission(requestId, optionId);
+    await connectionRegistry.respondPermission(LEGACY_CONVERSATION_ID, requestId, optionId);
+  });
+
+  ipcMain.handle('agent:respond-permission-runtime', async (_event, conversationId: number, requestId: string, optionId: string) => {
+    await connectionRegistry.respondPermission(conversationId, requestId, optionId);
   });
 
   // 配置管理
@@ -132,7 +200,6 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
     const data = await config.load();
     data.permissionPolicy = policy;
     await config.save(data);
-    sessionManager?.setPermissionPolicy(policy);
   });
 
   // 预检与安装
@@ -140,4 +207,112 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
   ipcMain.handle('agent:install', async (_event, version: string) => binaryManager.install(version));
   ipcMain.handle('agent:uninstall', () => binaryManager.uninstall());
   ipcMain.handle('agent:get-latest-version', () => binaryManager.getLatestVersion());
+}
+
+// ─── MCP 工具引导指令 ──────────────────────────────────────
+
+const MCP_INSTRUCTIONS_MARKER = '<!-- lingji-mcp-instructions -->';
+
+const MCP_INSTRUCTIONS = `
+${MCP_INSTRUCTIONS_MARKER}
+## 灵几编辑器 MCP 工具使用规范（强制）
+
+你正在灵几视频脚本编辑器中工作。你**必须且只能使用 lingji_* MCP 工具**来操作脚本。
+
+### ⛔ 禁止事项
+
+- **禁止**使用内置 Read 工具读取 original.md、script.md 等脚本文件 → 改用 \`lingji_read_script\`
+- **禁止**使用内置 Write/Edit 工具修改脚本文件 → 改用 \`lingji_update_script\`
+- **禁止**自己直接输出脚本内容给用户 → 必须通过 MCP 工具写入编辑器
+
+### 📋 用户说"写稿"时的完整步骤
+
+1. 调用 \`lingji_get_project_context\` → 获取项目状态、当前选中模板及其写作指令（selectedTemplatePrompt）
+2. 调用 \`lingji_read_script\` 读取 original.md（filePath 传 "original.md"）→ 获取原始素材
+3. **你自己按照模板的 systemPrompt 写作指令来撰写口播稿**
+4. 调用 \`lingji_update_script\` → 将你写好的稿件写入 script.md（filePath 传 "script.md"）
+5. 编辑器会即时显示并高亮变更
+
+> 备选方案：如果用户明确要求使用"内置模板生成"，可调用 \`lingji_write_script\`（需要编辑器内部 AI 已配置）。
+
+### 📋 用户说"审稿"/"审阅"/"检查"时的完整步骤
+
+1. 调用 \`lingji_read_script\` → 获取当前脚本全文
+2. 分析脚本，找出问题（事实错误、表述不清、口语化不足、逻辑跳跃等）
+3. **必须**调用 \`lingji_review_script\` 提交批注，编辑器会在对应位置显示批注卡片
+4. 完成。不要仅用文字回复，**必须调用工具**。
+
+**批注格式要求（重要）：**
+- 使用 \`quotedText\` 精确定位：传入脚本中能精确匹配的原文子串
+- 提供 \`suggestion\`：替换 quotedText 的完整文本，用户可一键采纳
+- \`severity\` 仅支持三个值：\`error\`（事实错误）、\`warning\`（表达问题）、\`info\`（优化建议）
+
+示例：
+\`\`\`json
+{
+  "annotations": [
+    {
+      "quotedText": "据统计有100万人参与",
+      "text": "数据缺少来源，需要补充出处",
+      "suggestion": "据工信部统计，约有100万人参与",
+      "severity": "warning"
+    },
+    {
+      "quotedText": "这个技术非常的先进和领先",
+      "text": "表述冗余，'先进'和'领先'语义重复",
+      "suggestion": "这项技术处于行业领先水平",
+      "severity": "info"
+    }
+  ]
+}
+\`\`\`
+
+### 📋 用户说"修改"/"润色"/"改一下"时的完整步骤
+
+1. 调用 \`lingji_read_script\` → 获取当前内容
+2. 修改内容
+3. 调用 \`lingji_update_script\` → 写入修改后的完整内容
+4. 编辑器会即时更新并高亮变更行
+
+### 可用 MCP 工具速查
+
+| 场景 | 工具 | 关键参数 |
+|------|------|----------|
+| 写稿（推荐） | 读 context → 自己写 → \`lingji_update_script\` | content, filePath |
+| 写稿（内置AI） | \`lingji_write_script\` | templateCode, rawText |
+| 审稿 | \`lingji_review_script\` | annotations[{quotedText, text, suggestion, severity}] |
+| 修改 / 润色 | \`lingji_update_script\` | content, filePath? |
+| 读取 | \`lingji_read_script\` | filePath? |
+| 查项目/模板 | \`lingji_get_project_context\` | — |
+| 查编辑器状态 | \`lingji_get_editor_state\` | — |
+| 查文件列表 | \`lingji_list_project_files\` | directory? |
+`;
+
+/**
+ * 确保脚本项目目录有 CLAUDE.md 且包含 MCP 工具引导指令
+ */
+async function ensureProjectClaudeMd(projectDir: string): Promise<void> {
+  const filePath = path.join(projectDir, 'CLAUDE.md');
+  try {
+    let content = '';
+    try {
+      content = await fs.readFile(filePath, 'utf-8');
+    } catch {
+      // 文件不存在，创建新文件
+    }
+
+    if (content.includes(MCP_INSTRUCTIONS_MARKER)) {
+      // 已有 MCP 指令 → 替换为最新版本
+      const markerIdx = content.indexOf(MCP_INSTRUCTIONS_MARKER);
+      const before = content.slice(0, markerIdx).trimEnd();
+      const newContent = before ? before + '\n' + MCP_INSTRUCTIONS : MCP_INSTRUCTIONS.trimStart();
+      await fs.writeFile(filePath, newContent, 'utf-8');
+    } else {
+      // 首次添加 MCP 指令
+      const newContent = content ? content.trimEnd() + '\n' + MCP_INSTRUCTIONS : MCP_INSTRUCTIONS.trimStart();
+      await fs.writeFile(filePath, newContent, 'utf-8');
+    }
+  } catch (err) {
+    console.warn('[ACP] 写入 CLAUDE.md 失败:', err);
+  }
 }

@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAgentStore } from '../store/agent';
+import { useScriptStore } from '../store/script';
+import { getOriginalStats, getGeneratedScriptStats, getAnnotationSummary } from '../lib/script-utils';
 import styles from './AppStatusBar.module.css';
 
 // ─── 圆形进度图标常量 ──────────────────────────────────────
@@ -142,11 +144,43 @@ function ConnectionIndicator() {
   );
 }
 
+// ─── 写稿工作台统计 ────────────────────────────────────────
+function WorkbenchStatsIndicator() {
+  const mounted = useScriptStore((s) => s.workbenchMounted);
+  const originalText = useScriptStore((s) => s.originalText);
+  const scriptText = useScriptStore((s) => s.scriptText);
+  const annotations = useScriptStore((s) => s.annotations);
+
+  const summary = useMemo(() => {
+    if (!mounted) return null;
+    const parts: string[] = [];
+    const orig = getOriginalStats(originalText);
+    const script = getGeneratedScriptStats(scriptText);
+    const annot = getAnnotationSummary(annotations);
+
+    if (orig.charCount > 0) {
+      parts.push(`原稿 ${orig.charCount.toLocaleString()} 字 · ${orig.paragraphs} 行`);
+    }
+    if (script.charCount > 0) {
+      parts.push(`口播稿 ${script.charCount.toLocaleString()} 字 · 约 ${script.readMinutes} 分钟`);
+    }
+    if (annot.total > 0) {
+      parts.push(`批注 ${annot.total} 条 · 待处理 ${annot.pending}`);
+    }
+    return parts.length > 0 ? parts.join('  |  ') : null;
+  }, [mounted, originalText, scriptText, annotations]);
+
+  if (!summary) return null;
+  return <span>{summary}</span>;
+}
+
 // ─── 主组件 ────────────────────────────────────────────────
 export function AppStatusBar() {
   return (
     <div className={styles.statusBar}>
-      <div className={styles.left} />
+      <div className={styles.left}>
+        <WorkbenchStatsIndicator />
+      </div>
       <div className={styles.right}>
         <ContextWindowIndicator />
         <ConnectionIndicator />

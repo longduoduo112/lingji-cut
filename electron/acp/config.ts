@@ -8,11 +8,6 @@ const DEFAULT_CONFIG: AgentConfigData = {
   permissionPolicy: 'tiered',
 };
 
-export interface SessionData {
-  sessionId: string;
-  lastConnected: string;
-}
-
 export class AgentConfig {
   constructor(private configPath: string) {}
 
@@ -56,24 +51,6 @@ export class AgentConfig {
     } else {
       await fs.writeFile(keyPath, key, 'utf-8');
     }
-  }
-
-  async loadSession(projectDir: string): Promise<SessionData | null> {
-    try {
-      const raw = await fs.readFile(path.join(projectDir, 'agent-session.json'), 'utf-8');
-      return JSON.parse(raw) as SessionData;
-    } catch {
-      return null;
-    }
-  }
-
-  async saveSession(projectDir: string, data: SessionData): Promise<void> {
-    await fs.mkdir(projectDir, { recursive: true });
-    await fs.writeFile(
-      path.join(projectDir, 'agent-session.json'),
-      JSON.stringify(data, null, 2),
-      'utf-8',
-    );
   }
 
   private encryptedKeyPath(agentId: string): string {

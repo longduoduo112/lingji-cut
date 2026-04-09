@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import { loadAISettings, saveAISettings } from '../../store/ai';
-import { Field, Input, Divider } from '../../ui';
+import { Field, Input, Divider, Switch } from '../../ui';
+
+const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1';
+const DEFAULT_OPENAI_MODEL = 'gpt-4o';
 
 export function AIConfigTab() {
   const [llmBaseUrl, setLlmBaseUrl] = useState('');
   const [llmApiKey, setLlmApiKey] = useState('');
   const [llmModel, setLlmModel] = useState('');
+  const [enableThinking, setEnableThinking] = useState(true);
   const [jimengApiUrl, setJimengApiUrl] = useState('');
   const [jimengSessionId, setJimengSessionId] = useState('');
   const [saved, setSaved] = useState(false);
@@ -15,12 +19,20 @@ export function AIConfigTab() {
     setLlmBaseUrl(settings?.llmBaseUrl ?? 'https://api.openai.com/v1');
     setLlmApiKey(settings?.llmApiKey ?? '');
     setLlmModel(settings?.llmModel ?? 'gpt-4o');
+    setEnableThinking(settings?.enableThinking ?? true);
     setJimengApiUrl(settings?.jimengApiUrl ?? 'http://47.109.159.194:8330');
     setJimengSessionId(settings?.jimengSessionId ?? '');
   }, []);
 
   const handleSave = () => {
-    saveAISettings({ llmBaseUrl, llmApiKey, llmModel, jimengApiUrl, jimengSessionId });
+    saveAISettings({
+      llmBaseUrl,
+      llmApiKey,
+      llmModel,
+      enableThinking,
+      jimengApiUrl,
+      jimengSessionId,
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -30,19 +42,34 @@ export function AIConfigTab() {
       <div>
         <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>AI 基础配置</h2>
         <p style={{ fontSize: 13, color: '#EBEBF599', margin: '8px 0 0' }}>
-          配置 LLM API 和即梦图片生成服务
+          配置 OpenAI 兼容接口与即梦图片生成服务
         </p>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <Field label="LLM API Base URL">
-          <Input value={llmBaseUrl} onChange={(e) => setLlmBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
+        <Field label="API Base URL">
+          <Input
+            value={llmBaseUrl}
+            onChange={(e) => setLlmBaseUrl(e.target.value)}
+            placeholder={DEFAULT_OPENAI_BASE_URL}
+          />
         </Field>
-        <Field label="LLM API Key">
+        <Field label="API Key">
           <Input type="password" value={llmApiKey} onChange={(e) => setLlmApiKey(e.target.value)} placeholder="sk-..." />
         </Field>
         <Field label="模型名称">
-          <Input value={llmModel} onChange={(e) => setLlmModel(e.target.value)} placeholder="gpt-4o" />
+          <Input
+            value={llmModel}
+            onChange={(e) => setLlmModel(e.target.value)}
+            placeholder={DEFAULT_OPENAI_MODEL}
+          />
+        </Field>
+
+        <Field
+          label="开启思考模式"
+          hint="默认开启；关闭后会向兼容 OpenAI 的接口追加 extra_body.enable_thinking=false"
+        >
+          <Switch checked={enableThinking} onChange={setEnableThinking} />
         </Field>
 
         <Divider label="封面生成（即梦）" />

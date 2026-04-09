@@ -1,62 +1,156 @@
-/* src/pages/ScriptWorkbench.module.css */
 .page {
   width: 100%;
   height: 100%;
   display: flex;
-  flex-direction: column;
   background: var(--color-window-bg);
   overflow: hidden;
 }
 
-.mainContent {
-  display: flex;
+.workArea {
   flex: 1;
+  min-width: 0;
   min-height: 0;
-}
-
-.editorPanel {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 20px 24px;
-  gap: 16px;
-  min-width: 0;
+  position: relative;
 }
 
-.editorHeader {
+.editorBody {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.conflictBanner {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-danger, #ff453a) 40%, transparent);
+  background: color-mix(in srgb, var(--color-danger, #ff453a) 12%, transparent);
 }
 
-.editorTitle {
-  font-size: 15px;
+.conflictBannerText {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-danger, #ff453a);
+  font-size: 12px;
   font-weight: 600;
 }
 
-.editorSpacer {
+.conflictBannerActions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.conflictBannerActions button {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-primary, #fff);
+  cursor: pointer;
+}
+
+.editorSurface {
   flex: 1;
-}
-
-.panelDivider {
-  width: 1px;
-  background: var(--color-border-subtle);
-}
-
-.sidePanel {
-  width: 360px;
-  flex-shrink: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 20px;
-  background: var(--color-panel-bg);
-  overflow-y: auto;
+  background: var(--color-window-bg);
+  position: relative;
+  border-radius: 6px;
+  transition: box-shadow 0.4s ease;
+}
+
+/* ─── 审稿呼吸光效：暗底 + 高饱和发光色 ─────── */
+.reviewBreathing {
+  animation: reviewGlowBreathing 2.4s ease-in-out infinite;
+  border: 1px solid transparent;
+}
+
+/* 内层辉光覆层 */
+.reviewBreathing::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 5;
+  background:
+    radial-gradient(ellipse 60% 40% at 20% 10%, rgba(0, 210, 255, 0.06), transparent 70%),
+    radial-gradient(ellipse 50% 50% at 80% 90%, rgba(52, 211, 153, 0.05), transparent 70%);
+  animation: reviewInnerGlow 2.4s ease-in-out infinite;
+}
+
+/* 扫描线 — 自上而下来回 */
+.reviewBreathing::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 6;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(52, 211, 153, 0.5) 20%,
+    rgba(0, 210, 255, 0.7) 50%,
+    rgba(52, 211, 153, 0.5) 80%,
+    transparent 100%
+  );
+  box-shadow:
+    0 0 12px 2px rgba(0, 210, 255, 0.35),
+    0 0 30px 4px rgba(52, 211, 153, 0.15);
+  animation: reviewScanLine 2.4s ease-in-out infinite;
+}
+
+@keyframes reviewGlowBreathing {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 30px rgba(52, 211, 153, 0.04),
+      0 0 15px rgba(52, 211, 153, 0.08),
+      0 0 40px rgba(0, 210, 255, 0.04);
+    border-color: rgba(52, 211, 153, 0.12);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 50px rgba(52, 211, 153, 0.08),
+      0 0 25px rgba(52, 211, 153, 0.18),
+      0 0 60px rgba(0, 210, 255, 0.1),
+      0 0 100px rgba(52, 211, 153, 0.04);
+    border-color: rgba(52, 211, 153, 0.28);
+  }
+}
+
+@keyframes reviewInnerGlow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes reviewScanLine {
+  0% { top: -2px; opacity: 0; }
+  10% { opacity: 1; }
+  50% { top: 100%; opacity: 0.8; }
+  90% { opacity: 1; }
+  100% { top: -2px; opacity: 0; }
+}
+
+.thinkingPanel {
+  flex-shrink: 0;
+  padding: 12px 16px 0;
 }
 
 .editorContainer {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  padding: 16px;
 }
 
 .editorContainer [data-color-mode="dark"] {
@@ -65,4 +159,196 @@
 
 .editorContainer :global(.w-md-editor) {
   height: 100% !important;
+}
+
+.centerHint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+/* ─── 审查结果面板 ──────────────────────────────── */
+.annotationPanel {
+  flex-shrink: 0;
+  max-height: 35%;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  background: #1c1c1e;
+}
+.annotationPanelBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px;
+}
+/* 面板内滚动条 macOS 风格 */
+.annotationPanelBody::-webkit-scrollbar {
+  width: 6px;
+}
+.annotationPanelBody::-webkit-scrollbar-track {
+  background: transparent;
+}
+.annotationPanelBody::-webkit-scrollbar-thumb {
+  background: #3a3a3c;
+  border-radius: 3px;
+}
+.annotationPanelBody::-webkit-scrollbar-thumb:hover {
+  background: #48484a;
+}
+
+/* ─── 审稿推荐横幅 ──────────────────────────────── */
+.reviewBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(124, 58, 237, 0.12);
+  border-bottom: 1px solid rgba(124, 58, 237, 0.3);
+  color: #a78bfa;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.reviewBannerBtn {
+  margin-left: auto;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  background: rgba(124, 58, 237, 0.2);
+  color: #a78bfa;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.reviewBannerBtn:hover {
+  background: rgba(124, 58, 237, 0.35);
+}
+
+.reviewBannerClose {
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: rgba(167, 139, 250, 0.5);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.reviewBannerClose:hover {
+  color: #a78bfa;
+}
+
+.agentTypingIndicator {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(124, 58, 237, 0.18);
+  border: 1px solid rgba(124, 58, 237, 0.36);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #a78bfa;
+  z-index: 10;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+
+.agentTypingIndicator::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow:
+    10px 0 0 rgba(167, 139, 250, 0.55),
+    20px 0 0 rgba(167, 139, 250, 0.28);
+  animation: typingPulse 1s ease-in-out infinite;
+}
+
+@keyframes typingPulse {
+  0%, 100% {
+    opacity: 0.45;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}
+
+/* ─── 审稿操作指示器（绿色主题）─────────────── */
+.agentReviewIndicator {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #34d399;
+  z-index: 10;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+
+.agentReviewIndicator::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow:
+    10px 0 0 rgba(52, 211, 153, 0.55),
+    20px 0 0 rgba(52, 211, 153, 0.28);
+  animation: typingPulse 1s ease-in-out infinite;
+}
+
+/* ─── AI 审稿浮动指针 ───────────────────────── */
+.aiReviewCursor {
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  transition: left 0.15s ease-out, top 0.15s ease-out;
+  filter: drop-shadow(0 2px 6px rgba(52, 211, 153, 0.4));
+  animation: cursorFadeIn 0.3s ease-out;
+}
+
+.aiReviewCursorLabel {
+  position: absolute;
+  bottom: -2px;
+  left: 14px;
+  font-size: 8px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(52, 211, 153, 0.85);
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1.2;
+  letter-spacing: 0.5px;
+}
+
+@keyframes cursorFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

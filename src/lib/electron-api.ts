@@ -6,6 +6,12 @@ import type { ImportKind } from './import-files';
 
 export type AppPage = 'welcome' | 'setup' | 'editor' | 'script-workbench' | 'settings';
 
+export interface FileEntry {
+  name: string;
+  type: 'file' | 'directory';
+  children?: FileEntry[];
+}
+
 export const MENU_ACTIONS = [
   'new-project',
   'open-project',
@@ -18,6 +24,8 @@ export const MENU_ACTIONS = [
   'replace-srt',
   'add-asset',
   'export',
+  'save-script',
+  'go-back',
 ] as const;
 
 export type MenuAction = (typeof MENU_ACTIONS)[number];
@@ -104,6 +112,9 @@ export interface ElectronAPI {
     type: 'video' | 'image';
     durationMs: number;
   } | null>;
+  scanProjectAssets: (projectDir: string) => Promise<
+    { path: string; type: 'video' | 'image' | 'audio' | 'srt'; durationMs: number }[]
+  >;
   renderVideo: (args: {
     timeline: string;
     outputPath: string;
@@ -122,9 +133,15 @@ export interface ElectronAPI {
   saveScriptState: (projectDir: string, state: string) => Promise<void>;
   loadScriptState: (projectDir: string) => Promise<string | null>;
   selectTextFile: () => Promise<{ path: string; content: string } | null>;
+  startWatching: (dir: string) => Promise<void>;
+  stopWatching: () => Promise<void>;
+  onFileChanged: (callback: (data: { file: string; content: string }) => void) => () => void;
+  onFileTreeChanged: (callback: (data: { type: string; file: string }) => void) => () => void;
+  readDirectory: (dir: string) => Promise<FileEntry[]>;
   setMenuContext: (context: MenuContext) => Promise<void>;
 
   selectOutputPath: () => Promise<string | null>;
+  showEditorContextMenu: () => Promise<void>;
 }
 
 declare global {

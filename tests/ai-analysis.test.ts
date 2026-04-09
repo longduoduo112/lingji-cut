@@ -13,6 +13,7 @@ import {
 } from '../src/lib/ai-analysis';
 import type { SrtEntry } from '../src/types';
 import type { AIAnalysisResult, AISettings } from '../src/types/ai';
+import { generateStructuredData } from '../src/lib/llm';
 
 const makeSrtEntry = (index: number, startMs: number, endMs: number, text: string): SrtEntry => ({
   index,
@@ -236,11 +237,10 @@ describe('analyzeSrt', () => {
     const entries = Array.from({ length: 40 }, (_, index) =>
       makeSrtEntry(index + 1, index * 1_000, index * 1_000 + 800, `内容段落 ${index + 1}`),
     );
-    const modelCaller = vi
-      .fn<(settings: AISettings, systemPrompt: string, userMessage: string) => Promise<string>>()
+    const modelCaller = vi.fn<typeof generateStructuredData>()
       .mockImplementation(async (_settings, _systemPrompt, userMessage) => {
         if (userMessage.includes('内容段落 1')) {
-          return JSON.stringify({
+          return {
             cards: [
               {
                 id: 'card-1',
@@ -267,10 +267,10 @@ describe('analyzeSrt', () => {
             coverPrompts: [],
             summary: '前半段',
             keywords: ['AI'],
-          });
+          };
         }
 
-        return JSON.stringify({
+        return {
           cards: [
             {
               id: 'card-2',
@@ -297,12 +297,12 @@ describe('analyzeSrt', () => {
           coverPrompts: ['封面提示词'],
           summary: '后半段',
           keywords: ['播客'],
-        });
+        };
       });
 
     const result = await analyzeSrt(entries, settings, {
       maxTokens: 500,
-      callModel: modelCaller,
+      generateStructuredData: modelCaller,
       globalPrompt: '整体偏商业分析风',
     });
 
@@ -319,11 +319,9 @@ describe('analyzeSrt', () => {
 
 describe('regenerateCoverPrompt', () => {
   it('regenerates exactly one cover prompt and trims extra prompts', async () => {
-    const modelCaller = vi.fn().mockResolvedValue(
-      JSON.stringify({
-        coverPrompts: ['新的封面提示词', '不应保留的第二条'],
-      }),
-    );
+    const modelCaller = vi.fn().mockResolvedValue({
+      coverPrompts: ['新的封面提示词', '不应保留的第二条'],
+    });
 
     const result = await regenerateCoverPrompt(
       [
@@ -332,7 +330,7 @@ describe('regenerateCoverPrompt', () => {
       ],
       settings,
       {
-        callModel: modelCaller,
+        generateStructuredData: modelCaller,
         globalPrompt: '整体偏商业媒体封面',
         currentPrompt: '旧提示词',
       },
@@ -365,30 +363,28 @@ describe('regenerateAICard', () => {
       },
       cardPrompt: '做成更像封面',
     };
-    const modelCaller = vi.fn().mockResolvedValue(
-      JSON.stringify({
-        id: 'another-id',
-        type: 'summary',
-        title: '新标题',
-        content: '新内容',
-        startMs: 3_500,
-        endMs: 8_500,
-        displayDurationMs: 6_000,
-        displayMode: 'fullscreen',
-        template: 'summary-default',
-        enabled: true,
-        renderMode: 'web-card',
-        cardPrompt: '做成更像封面',
-        webCard: {
-          srcDoc: '<!doctype html><html><body><h1>新网页卡</h1></body></html>',
-        },
-        style: {
-          primaryColor: '#79c4ff',
-          backgroundColor: '#151922',
-          fontSize: 48,
-        },
-      }),
-    );
+    const modelCaller = vi.fn().mockResolvedValue({
+      id: 'another-id',
+      type: 'summary',
+      title: '新标题',
+      content: '新内容',
+      startMs: 3_500,
+      endMs: 8_500,
+      displayDurationMs: 6_000,
+      displayMode: 'fullscreen',
+      template: 'summary-default',
+      enabled: true,
+      renderMode: 'web-card',
+      cardPrompt: '做成更像封面',
+      webCard: {
+        srcDoc: '<!doctype html><html><body><h1>新网页卡</h1></body></html>',
+      },
+      style: {
+        primaryColor: '#79c4ff',
+        backgroundColor: '#151922',
+        fontSize: 48,
+      },
+    });
 
     const result = await regenerateAICard(
       [
@@ -398,7 +394,7 @@ describe('regenerateAICard', () => {
       card,
       settings,
       {
-        callModel: modelCaller,
+        generateStructuredData: modelCaller,
         globalPrompt: '整体偏商业分析风',
       },
     );

@@ -1,10 +1,10 @@
 // src/lib/script-review.ts
 import type { AISettings } from '../types/ai';
-import { callLLM, parseLLMJsonResponse } from './llm-client';
+import { generateStructuredData } from './llm';
 import type { Annotation, AnnotationSeverity } from '../store/script';
 import { loadReviewCriteria } from './settings-storage';
 
-const REVIEW_SYSTEM_PROMPT = `你是一位专业的口播稿审查编辑。请审查用户提供的口播稿，从以下维度给出批注：
+export const REVIEW_SYSTEM_PROMPT = `你是一位专业的口播稿审查编辑。请审查用户提供的口播稿，从以下维度给出批注：
 
 1. **事实准确性**（severity: error）：数据是否有来源、表述是否可能有误
 2. **表达流畅性**（severity: warning）：是否有书面化表达、长句、不适合口播的措辞
@@ -40,19 +40,15 @@ function isValidSeverity(value: unknown): value is AnnotationSeverity {
   return value === 'error' || value === 'warning' || value === 'info';
 }
 
-export function parseAnnotations(
-  jsonContent: string,
-  scriptText: string,
-): Annotation[] {
-  const parsed = parseLLMJsonResponse(jsonContent);
-  if (!parsed || !Array.isArray(parsed.annotations)) {
+export function parseAnnotations(payload: unknown, scriptText: string): Annotation[] {
+  if (!payload || typeof payload !== 'object' || !Array.isArray((payload as { annotations?: unknown[] }).annotations)) {
     return [];
   }
 
   const annotations: Annotation[] = [];
   let counter = 0;
 
-  for (const raw of parsed.annotations as RawAnnotation[]) {
+  for (const raw of (payload as { annotations: RawAnnotation[] }).annotations) {
     if (!raw.originalText || !raw.issue || !raw.suggestion) continue;
     if (!isValidSeverity(raw.severity)) continue;
 
@@ -84,6 +80,6 @@ export async function reviewScript(
     ? `${REVIEW_SYSTEM_PROMPT}\n\n用户补充的审查要求：\n${userCriteria}`
     : REVIEW_SYSTEM_PROMPT;
 
-  const response = await callLLM(settings, fullPrompt, scriptText);
-  return parseAnnotations(response, scriptText);
+  const payload = await generateStructuredData(settings, fullPrompt, scriptText);
+  return parseAnnotations(payload, scriptText);
 }

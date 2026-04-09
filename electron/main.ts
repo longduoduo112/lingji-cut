@@ -1,10 +1,12 @@
 import { bundle } from '@remotion/bundler';
 import { getVideoMetadata, renderMedia, selectComposition } from '@remotion/renderer';
+import chokidar from 'chokidar';
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { FSWatcher } from 'chokidar';
 import type { MenuContext, MenuEvent, ProjectMetadata } from '../src/lib/electron-api';
 import { addAppLog, getAppLogFilePath, getAppLogs } from './app-logger';
 import { analyzeSrt, regenerateAICard, regenerateCoverPrompt } from '../src/lib/ai-analysis';
@@ -19,6 +21,9 @@ import { createApplicationMenuTemplate } from './app-menu';
 import { toRendererConsoleLog } from './console-message';
 import { materializePersistedAIState, materializeTimelineWebCards } from './web-card-storage';
 import { registerAgentIpc } from './acp/ipc';
+import { registerConversationIpc } from './conversations/ipc';
+import { registerMcpIpc } from './mcp/ipc';
+import { startMcpServer, stopMcpServer } from './mcp/server';
 
 let mainWindow: BrowserWindow | null = null;
 let menuContext: MenuContext = {
@@ -26,6 +31,7 @@ let menuContext: MenuContext = {
   hasProject: false,
   recentProjects: [],
 };
+let fileWatcher: FSWatcher | null = null;
 
 function sendMenuEvent(event: MenuEvent) {
   mainWindow?.webContents.send('menu-action', event);
@@ -377,8 +383,22 @@ ipcMain.handle('set-menu-context', async (_event, context: MenuContext) => {
   refreshApplicationMenu();
 });
 
+ipcMain.handle('show-editor-context-menu', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  const menu = Menu.buildFromTemplate([
+    { label: '剪切', role: 'cut' },
+    { label: '复制', role: 'copy' },
+    { label: '粘贴', role: 'paste' },
+    { type: 'separator' },
+    { label: '全选', role: 'selectAll' },
+  ]);
+  menu.popup({ window: win });
+});
+
 ipcMain.handle('select-project-directory', async () => {
-  const result = await dialog.showOpenDialog({
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory', 'createDirectory'],
   });
 
@@ -386,7 +406,8 @@ ipcMain.handle('select-project-directory', async () => {
 });
 
 ipcMain.handle('select-setup-file', async (_event, kind: 'audio' | 'srt') => {
-  const result = await dialog.showOpenDialog({
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters:
       kind === 'audio'
@@ -398,7 +419,8 @@ ipcMain.handle('select-setup-file', async (_event, kind: 'audio' | 'srt') => {
 });
 
 ipcMain.handle('select-media-file', async (_event, kind: 'audio' | 'srt') => {
-  const result = await dialog.showOpenDialog({
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters:
       kind === 'audio'
@@ -410,7 +432,8 @@ ipcMain.handle('select-media-file', async (_event, kind: 'audio' | 'srt') => {
 });
 
 ipcMain.handle('add-asset', async () => {
-  const result = await dialog.showOpenDialog({
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
       {
@@ -443,6 +466,69 @@ ipcMain.handle('add-asset', async () => {
     type: isVideo ? 'video' : 'image',
     durationMs,
   };
+});
+
+// ── 自动扫描项目目录下的媒体素材 ──
+
+const VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm', '.m4v']);
+const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+const AUDIO_EXTS = new Set(['.mp3', '.wav', '.aac', '.m4a', '.flac', '.ogg']);
+const SRT_EXTS = new Set(['.srt']);
+
+type ScannedAssetType = 'video' | 'image' | 'audio' | 'srt';
+
+function classifyExtension(ext: string): ScannedAssetType | null {
+  if (VIDEO_EXTS.has(ext)) return 'video';
+  if (IMAGE_EXTS.has(ext)) return 'image';
+  if (AUDIO_EXTS.has(ext)) return 'audio';
+  if (SRT_EXTS.has(ext)) return 'srt';
+  return null;
+}
+
+ipcMain.handle('scan-project-assets', async (_event, projectDir: string) => {
+  const results: { path: string; type: ScannedAssetType; durationMs: number }[] = [];
+
+  async function scanDir(dir: string, depth: number) {
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory() && depth < 2) {
+        await scanDir(fullPath, depth + 1);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+
+      const ext = path.extname(entry.name).toLowerCase();
+      const assetType = classifyExtension(ext);
+      if (!assetType) continue;
+
+      let durationMs = assetType === 'image' ? 5000 : 10000;
+
+      if (assetType === 'video') {
+        try {
+          const metadata = await getVideoMetadata(fullPath);
+          durationMs = Math.max(1000, Math.round((metadata.durationInSeconds ?? 10) * 1000));
+        } catch {
+          durationMs = 10000;
+        }
+      }
+
+      results.push({ path: fullPath, type: assetType, durationMs });
+    }
+  }
+
+  await scanDir(projectDir, 0);
+  return results;
 });
 
 ipcMain.handle(
@@ -494,8 +580,83 @@ ipcMain.handle('select-text-file', async () => {
   return { path: filePath, content };
 });
 
+ipcMain.handle('start-watching', async (_event, dir: string) => {
+  await fileWatcher?.close();
+
+  fileWatcher = chokidar.watch(dir, {
+    depth: 1,
+    ignoreInitial: true,
+    ignored: /(^|[/\\])\../,
+  });
+
+  fileWatcher.on('change', async (filePath: string) => {
+    const relative = path.relative(dir, filePath);
+    if (!relative.endsWith('.md')) return;
+
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      mainWindow?.webContents.send('file-changed', { file: relative, content });
+    } catch {
+      // 文件可能已被删除，直接忽略。
+    }
+  });
+
+  fileWatcher.on('add', (filePath: string) => {
+    const relative = path.relative(dir, filePath);
+    mainWindow?.webContents.send('file-tree-changed', { type: 'add', file: relative });
+  });
+
+  fileWatcher.on('unlink', (filePath: string) => {
+    const relative = path.relative(dir, filePath);
+    mainWindow?.webContents.send('file-tree-changed', { type: 'unlink', file: relative });
+  });
+});
+
+ipcMain.handle('stop-watching', async () => {
+  await fileWatcher?.close();
+  fileWatcher = null;
+});
+
+ipcMain.handle('read-directory', async (_event, dir: string) => {
+  interface DirectoryEntry {
+    name: string;
+    type: 'file' | 'directory';
+    children?: DirectoryEntry[];
+  }
+
+  async function readDir(dirPath: string, currentDepth: number): Promise<DirectoryEntry[]> {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    const result: DirectoryEntry[] = [];
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+
+      if (entry.isDirectory() && currentDepth < 1) {
+        const children = await readDir(path.join(dirPath, entry.name), currentDepth + 1);
+        result.push({ name: entry.name, type: 'directory', children });
+        continue;
+      }
+
+      if (entry.isFile()) {
+        result.push({ name: entry.name, type: 'file' });
+      }
+    }
+
+    return result.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === 'directory' ? -1 : 1;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  return readDir(dir, 0);
+});
+
 ipcMain.handle('select-output-path', async () => {
-  const result = await dialog.showSaveDialog({
+  if (!mainWindow) return null;
+  const result = await dialog.showSaveDialog(mainWindow, {
     defaultPath: 'podcast-export.mp4',
     filters: [{ name: 'MP4 Video', extensions: ['mp4'] }],
   });
@@ -557,7 +718,7 @@ ipcMain.handle(
         inputProps,
         x264Preset: renderConfig.x264Preset,
         videoBitrate: renderConfig.videoBitrate,
-        audioBitrate: renderConfig.audioBitrate,
+        audioBitrate: renderConfig.audioBitrate as `${number}k` | `${number}K` | `${number}M`,
         onProgress: ({ progress }) => {
           mainWindow?.webContents.send('render-progress', progress);
         },
@@ -577,8 +738,18 @@ if (process.env.NODE_ENV_ELECTRON_VITE === 'development') {
 }
 
 registerAgentIpc(() => mainWindow);
+registerConversationIpc(() => mainWindow);
+registerMcpIpc(() => mainWindow);
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  createWindow();
+  // 启动 MCP Server
+  try {
+    await startMcpServer(19820, () => mainWindow);
+  } catch (err) {
+    console.error('[MCP] Failed to start server:', err);
+  }
+});
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
@@ -586,6 +757,8 @@ app.on('activate', () => {
   }
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
+  fileWatcher?.close();
+  await stopMcpServer();
   app.quit();
 });

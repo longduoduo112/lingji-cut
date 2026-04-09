@@ -49,7 +49,8 @@ export interface TimelineStore {
   updateSubtitleStyle: (updates: Partial<SubtitleStyle>) => void;
   setPodcast: (audioPath: string, srtPath: string, durationMs: number) => void;
   setGlobalBackground: (path: string) => void;
-  addAsset: (path: string, type: 'video' | 'image' | 'text', durationMs?: number) => void;
+  addAsset: (path: string, type: AssetType, durationMs?: number) => void;
+  addAssets: (items: { path: string; type: AssetType; durationMs?: number }[]) => void;
   removeAsset: (path: string) => void;
   addTrack: () => string;
   removeTrack: (id: string) => void;
@@ -432,6 +433,13 @@ export const useTimelineStore = create<TimelineStore>((set) => ({
   addAsset: (path, type, durationMs) =>
     set((state) => ({
       assets: dedupeAssets([...state.assets, buildAsset(path, type, durationMs)]),
+    })),
+  addAssets: (items) =>
+    set((state) => ({
+      assets: dedupeAssets([
+        ...state.assets,
+        ...items.map((i) => buildAsset(i.path, i.type, i.durationMs)),
+      ]),
     })),
   removeAsset: (path) =>
     set((state) => {

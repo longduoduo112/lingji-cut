@@ -4,6 +4,8 @@
 const CUSTOM_TEMPLATES_KEY = 'podcast-editor-custom-templates';
 const REVIEW_CRITERIA_KEY = 'podcast-editor-review-criteria';
 const TTS_SETTINGS_KEY = 'podcast-editor-tts-settings';
+const SELECTED_ROLE_KEY = 'podcast-editor-selected-role';
+const CUSTOM_ROLES_KEY = 'podcast-editor-custom-roles';
 
 // ── Custom Templates ──
 export interface CustomScriptTemplate {
@@ -99,4 +101,64 @@ export function loadTTSSettings(): TTSSettings {
 
 export function saveTTSSettings(settings: TTSSettings): void {
   localStorage.setItem(TTS_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+// ── Script Roles (口播角色) ──
+
+export interface ScriptRole {
+  id: string;
+  name: string;
+  description: string;
+  /** 注入到 systemPrompt 中的角色指令 */
+  rolePrompt: string;
+  isBuiltin: boolean;
+}
+
+/** "不指定角色"占位项 */
+export const NONE_ROLE: ScriptRole = {
+  id: 'none',
+  name: '不指定角色',
+  description: '不附加角色设定，完全由模板决定风格',
+  rolePrompt: '',
+  isBuiltin: true,
+};
+
+export interface CustomRole {
+  id: string;
+  name: string;
+  description: string;
+  rolePrompt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function loadCustomRoles(): CustomRole[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_ROLES_KEY);
+    return raw ? (JSON.parse(raw) as CustomRole[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomRoles(roles: CustomRole[]): void {
+  localStorage.setItem(CUSTOM_ROLES_KEY, JSON.stringify(roles));
+}
+
+// getAllRoles / getRoleById 已移至 script-templates.ts，从口播模板中派生角色
+
+export function loadSelectedRole(): string {
+  try {
+    return localStorage.getItem(SELECTED_ROLE_KEY) ?? 'none';
+  } catch {
+    return 'none';
+  }
+}
+
+export function saveSelectedRole(roleId: string): void {
+  try {
+    localStorage.setItem(SELECTED_ROLE_KEY, roleId);
+  } catch {
+    // localStorage 不可用时忽略
+  }
 }

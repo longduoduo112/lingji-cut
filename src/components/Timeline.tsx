@@ -202,21 +202,33 @@ export function Timeline({
       return;
     }
 
+    let rafId = 0;
     const updateWidth = () => {
-      setViewportWidth(container.clientWidth - outerPadding * 2 - sidebarWidth);
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const next = container.clientWidth - outerPadding * 2 - sidebarWidth;
+        // 仅在宽度实际变化时更新，避免 ResizeObserver → state → layout 振荡
+        setViewportWidth((prev) => (prev === next ? prev : next));
+      });
     };
 
     updateWidth();
 
     if (typeof ResizeObserver === 'undefined') {
       window.addEventListener('resize', updateWidth);
-      return () => window.removeEventListener('resize', updateWidth);
+      return () => {
+        cancelAnimationFrame(rafId);
+        window.removeEventListener('resize', updateWidth);
+      };
     }
 
     const observer = new ResizeObserver(updateWidth);
     observer.observe(container);
 
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(rafId);
+      observer.disconnect();
+    };
   }, [outerPadding, sidebarWidth]);
 
   useLayoutEffect(() => {

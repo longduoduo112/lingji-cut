@@ -1,9 +1,7 @@
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import type { AcpClient } from './client';
-import type { AgentConfig, SessionData } from './config';
-import type { FileSystemRuntime } from './fs-runtime';
-import type { TerminalRuntime } from './terminal-runtime';
-import { PermissionHandler } from './permission';
 import type {
   AcpEvent,
   ConnectionStatus,
@@ -19,10 +17,6 @@ interface PendingPermission {
 
 export class SessionManager extends EventEmitter {
   private client: AcpClient;
-  private config: AgentConfig;
-  private fsRuntime: FileSystemRuntime | null = null;
-  private terminalRuntime: TerminalRuntime;
-  private permissionHandler: PermissionHandler;
   private pendingPermissions = new Map<number, PendingPermission>();
   private permissionSeq = 0;
 
@@ -33,15 +27,10 @@ export class SessionManager extends EventEmitter {
 
   constructor(
     client: AcpClient,
-    config: AgentConfig,
-    terminalRuntime: TerminalRuntime,
-    permissionPolicy: PermissionPolicy,
+    _permissionPolicy: PermissionPolicy,
   ) {
     super();
     this.client = client;
-    this.config = config;
-    this.terminalRuntime = terminalRuntime;
-    this.permissionHandler = new PermissionHandler(permissionPolicy);
 
     // 监听 client 通知 — ACP 协议中所有事件均通过 session/update 通知传递
     this.client.on('notification', (method: string, params: unknown) => {
@@ -57,7 +46,6 @@ export class SessionManager extends EventEmitter {
         pending.resolve({ outcome: { outcome: 'cancelled' } });
       }
       this.pendingPermissions.clear();
-      this.terminalRuntime.killAll();
     });
   }
 
@@ -73,14 +61,8 @@ export class SessionManager extends EventEmitter {
     return this.initializeResult;
   }
 
-  setPermissionPolicy(policy: PermissionPolicy): void {
-    this.permissionHandler.setPolicy(policy);
-  }
-
-  setPermissionPromptCallback(
-    cb: (action: { type: string; path?: string; command?: string }) => Promise<'allow' | 'deny'>,
-  ): void {
-    this.permissionHandler.setPromptCallback(cb);
+  setPermissionPolicy(_policy: PermissionPolicy): void {
+    // 权限策略现在由 MCP Server 侧管理，此处保留接口兼容性
   }
 
   async connect(
@@ -88,14 +70,12 @@ export class SessionManager extends EventEmitter {
     spawnCommand: string,
     spawnArgs: string[],
     env?: Record<string, string>,
+    sessionId?: string | null,
   ): Promise<void> {
     this.projectDir = projectDir;
     this.setStatus('connecting');
 
-    const { FileSystemRuntime } = await import('./fs-runtime');
-    this.fsRuntime = new FileSystemRuntime(projectDir);
-
-    // 注册 runtime handlers
+    // 注册 runtime handlers（仅保留 elicitation 和权限请求）
     this.registerRuntimeHandlers();
 
     // spawn agent 进程
@@ -110,19 +90,17 @@ export class SessionManager extends EventEmitter {
       },
     })) as InitializeResult;
 
-    // 尝试恢复会话
-    const savedSession = await this.config.loadSession(projectDir);
     let sessionResult: NewSessionResult;
 
-    if (savedSession?.sessionId) {
+    if (sessionId) {
       try {
         sessionResult = (await this.client.sendRequest('session/load', {
-          sessionId: savedSession.sessionId,
+          sessionId,
           cwd: projectDir,
           mcpServers: [],
         })) as NewSessionResult;
       } catch {
-        // 恢复失败，创建新会话
+        // 指定会话恢复失败，回退为新会话
         sessionResult = (await this.client.sendRequest('session/new', {
           cwd: projectDir,
           mcpServers: [],
@@ -137,11 +115,10 @@ export class SessionManager extends EventEmitter {
 
     this.sessionId = sessionResult.sessionId;
 
-    // 保存会话 ID
     if (this.sessionId) {
-      await this.config.saveSession(projectDir, {
+      this.handleEvent({
+        type: 'session_started',
         sessionId: this.sessionId,
-        lastConnected: new Date().toISOString(),
       });
     }
 
@@ -165,19 +142,32 @@ export class SessionManager extends EventEmitter {
   async sendPrompt(contents: PromptInputBlock[] | unknown[]): Promise<void> {
     if (!this.sessionId) throw new Error('No active session');
     this.setStatus('prompting');
-    const result = await this.client.sendRequest('session/prompt', {
-      sessionId: this.sessionId,
-      prompt: contents,
-    });
-    // session/prompt 返回 { stopReason, usage? } — 表示 turn 结束
-    const res = result as { stopReason?: string; usage?: { used: number; size: number } } | undefined;
-    this.handleEvent({
-      type: 'turn_complete',
-      sessionId: this.sessionId!,
-      stopReason: res?.stopReason ?? 'end_turn',
-      agentType: 'claude-acp',
-      usage: res?.usage,
-    });
+    let stopReason = 'end_turn';
+    let usage: { used: number; size: number } | undefined;
+    try {
+      // session/prompt 阻塞到 turn 结束，可能需要数分钟，不设超时
+      const result = await this.client.sendRequest('session/prompt', {
+        sessionId: this.sessionId,
+        prompt: contents,
+      }, 0);
+      const res = result as { stopReason?: string; usage?: { used: number; size: number } } | undefined;
+      stopReason = res?.stopReason ?? 'end_turn';
+      usage = res?.usage;
+    } catch (err) {
+      stopReason = 'error';
+      this.emit('event', {
+        type: 'error' as const,
+        message: err instanceof Error ? err.message : 'Prompt request failed',
+      });
+    } finally {
+      this.handleEvent({
+        type: 'turn_complete',
+        sessionId: this.sessionId!,
+        stopReason,
+        agentType: 'claude-acp',
+        usage,
+      });
+    }
   }
 
   async cancelTurn(): Promise<void> {
@@ -217,72 +207,39 @@ export class SessionManager extends EventEmitter {
 
   disconnect(): void {
     this.client.disconnect();
-    this.terminalRuntime.killAll();
     this.sessionId = null;
-    this.fsRuntime = null;
     this.setStatus('disconnected');
   }
 
   private registerRuntimeHandlers(): void {
-    // 文件操作 — ACP 方法: fs/read_text_file, fs/write_text_file
+    // ─── 文件系统 handlers ─────────────────────────────────────
+    // Claude Code 内置工具的文件操作通过 ACP 协议路由到这些 handler
     this.client.onRequest('fs/read_text_file', async (params) => {
       const { path: filePath } = params as { path: string };
-      const allowed = await this.permissionHandler.check({ type: 'fs.read', path: filePath });
-      if (allowed === 'deny') throw new Error('Permission denied: fs/read_text_file');
-      return this.fsRuntime!.readTextFile({ path: filePath });
+      const resolved = path.isAbsolute(filePath) ? filePath : path.join(this.projectDir ?? '', filePath);
+      try {
+        const content = await fs.readFile(resolved, 'utf-8');
+        return { content };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Read failed' };
+      }
     });
 
     this.client.onRequest('fs/write_text_file', async (params) => {
       const { path: filePath, content } = params as { path: string; content: string };
-      const allowed = await this.permissionHandler.check({ type: 'fs.write', path: filePath });
-      if (allowed === 'deny') throw new Error('Permission denied: fs/write_text_file');
-      const result = await this.fsRuntime!.writeTextFile({ path: filePath, content });
-      // 通知前端文件变更（用于 diff 展示）
-      this.emit('file_changed', { path: filePath, before: result.before, after: result.after });
-      return {};
-    });
-
-    // 终端操作 — ACP 方法: terminal/create, terminal/output, terminal/kill, terminal/wait_for_exit, terminal/release
-    this.client.onRequest('terminal/create', async (params) => {
-      const { command, args, cwd } = params as { command: string; args?: string[]; cwd?: string; sessionId?: string };
-      const allowed = await this.permissionHandler.check({ type: 'terminal.create', cwd });
-      if (allowed === 'deny') throw new Error('Permission denied: terminal/create');
-      const result = await this.terminalRuntime.createTerminal({
-        cwd: cwd || this.projectDir || undefined,
-      });
-      // ACP 中 terminal/create 自带命令执行
-      if (command) {
-        const fullCmd = args?.length ? `${command} ${args.join(' ')}` : command;
-        await this.terminalRuntime.executeCommand({ terminalId: result.terminalId, command: fullCmd });
+      const resolved = path.isAbsolute(filePath) ? filePath : path.join(this.projectDir ?? '', filePath);
+      try {
+        await fs.mkdir(path.dirname(resolved), { recursive: true });
+        await fs.writeFile(resolved, content, 'utf-8');
+        // 通知前端文件已变更
+        this.emit('file_changed', { path: resolved, before: null, after: content });
+        return { success: true };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Write failed' };
       }
-      return { terminalId: result.terminalId };
     });
 
-    this.client.onRequest('terminal/output', async (params) => {
-      const { terminalId } = params as { terminalId: string };
-      const result = this.terminalRuntime.getOutput({ terminalId });
-      return { output: result.output, truncated: false };
-    });
-
-    this.client.onRequest('terminal/kill', async (params) => {
-      const { terminalId } = params as { terminalId: string };
-      this.terminalRuntime.killTerminal({ terminalId });
-      return {};
-    });
-
-    this.client.onRequest('terminal/wait_for_exit', async (params) => {
-      const { terminalId } = params as { terminalId: string };
-      // 等待终端命令完成（轮询输出稳定）
-      const result = await this.terminalRuntime.executeCommand({ terminalId, command: '' });
-      return { exitCode: 0 };
-    });
-
-    this.client.onRequest('terminal/release', async (params) => {
-      const { terminalId } = params as { terminalId: string };
-      this.terminalRuntime.killTerminal({ terminalId });
-      return {};
-    });
-
+    // ─── 权限请求 ─────────────────────────────────────────────
     // 权限请求 — Agent 发送 session/request_permission 请求，Client 异步返回用户决定
     this.client.onRequest('session/request_permission', async (params) => {
       const { toolCall, options, sessionId } = params as {
@@ -299,6 +256,7 @@ export class SessionManager extends EventEmitter {
         requestId: String(seq),
         toolCall,
         options,
+        sessionId,
       });
 
       // 等待用户响应（通过 respondPermission 方法 resolve）
@@ -308,7 +266,7 @@ export class SessionManager extends EventEmitter {
     });
 
     // session/elicitation — Agent 询问用户输入
-    this.client.onRequest('session/elicitation', async (params) => {
+    this.client.onRequest('session/elicitation', async (_params) => {
       // 暂不支持 elicitation，直接返回取消
       return { action: 'dismiss' };
     });
@@ -333,19 +291,20 @@ export class SessionManager extends EventEmitter {
     if (!data?.update) return;
 
     const { sessionUpdate } = data.update;
+    const resolvedSessionId = data.sessionId ?? this.sessionId ?? undefined;
 
     switch (sessionUpdate) {
       case 'agent_message_chunk': {
         const content = data.update.content as { type: string; text?: string } | undefined;
         if (content?.text) {
-          this.handleEvent({ type: 'content_delta', text: content.text });
+          this.handleEvent({ type: 'content_delta', text: content.text, sessionId: resolvedSessionId });
         }
         break;
       }
       case 'agent_thought_chunk': {
         const content = data.update.content as { type: string; text?: string } | undefined;
         if (content?.text) {
-          this.handleEvent({ type: 'thinking', text: content.text });
+          this.handleEvent({ type: 'thinking', text: content.text, sessionId: resolvedSessionId });
         }
         break;
       }
@@ -368,6 +327,7 @@ export class SessionManager extends EventEmitter {
           content: typeof tc.content === 'string' ? tc.content : undefined,
           rawInput: tc.rawInput != null ? JSON.stringify(tc.rawInput) : undefined,
           rawOutput: tc.rawOutput != null ? JSON.stringify(tc.rawOutput) : undefined,
+          sessionId: resolvedSessionId,
         });
         break;
       }
@@ -388,18 +348,25 @@ export class SessionManager extends EventEmitter {
           content: typeof tcu.content === 'string' ? tcu.content : undefined,
           rawInput: tcu.rawInput != null ? JSON.stringify(tcu.rawInput) : undefined,
           rawOutput: tcu.rawOutput != null ? JSON.stringify(tcu.rawOutput) : undefined,
+          sessionId: resolvedSessionId,
         });
         break;
       }
       case 'usage_update': {
         const usage = data.update as { used: number; size: number };
-        this.handleEvent({ type: 'usage', used: usage.used, size: usage.size });
+        this.handleEvent({
+          type: 'usage',
+          used: usage.used,
+          size: usage.size,
+          sessionId: resolvedSessionId,
+        });
         break;
       }
       case 'current_mode_update': {
         this.emit('event', {
           type: 'mode_update',
           currentModeId: data.update.currentModeId,
+          sessionId: resolvedSessionId,
         });
         break;
       }
@@ -407,6 +374,7 @@ export class SessionManager extends EventEmitter {
         this.emit('event', {
           type: 'available_commands',
           commands: data.update.availableCommands,
+          sessionId: resolvedSessionId,
         });
         break;
       }
@@ -414,6 +382,7 @@ export class SessionManager extends EventEmitter {
         this.emit('event', {
           type: 'config_update',
           configOptions: data.update.configOptions,
+          sessionId: resolvedSessionId,
         });
         break;
       }
@@ -421,6 +390,7 @@ export class SessionManager extends EventEmitter {
         this.emit('event', {
           type: 'plan_update',
           entries: data.update.entries,
+          sessionId: resolvedSessionId,
         });
         break;
       }

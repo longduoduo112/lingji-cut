@@ -149,6 +149,33 @@ export function createApplicationMenuTemplate(
     }
   }
 
+  // 写稿工作台：在项目菜单顶部插入保存和返回
+  if (context.activePage === 'script-workbench') {
+    const projectMenu = template.find((item) => item.label === '项目');
+    if (projectMenu && Array.isArray(projectMenu.submenu)) {
+      (projectMenu.submenu as MenuItemConstructorOptions[]).unshift(
+        {
+          label: '保存',
+          accelerator: 'CmdOrCtrl+S',
+          click: () =>
+            sendMenuEvent({
+              type: 'command',
+              action: 'save-script',
+            }),
+        },
+        {
+          label: '返回主页',
+          click: () =>
+            sendMenuEvent({
+              type: 'command',
+              action: 'go-back',
+            }),
+        },
+        { type: 'separator' },
+      );
+    }
+  }
+
   if (context.isDevelopment) {
     template.push({
       label: '开发',

@@ -1,4 +1,5 @@
 // tests/script-workbench.test.tsx
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { OverlayProvider } from '../src/ui';
@@ -27,8 +28,8 @@ describe('ScriptWorkbench', () => {
     useScriptStore.getState().reset();
   });
 
-  it('renders step 1 placeholder when no file is loaded', () => {
-    useScriptStore.setState({ currentStep: 1, originalText: '' });
+  it('renders the file-tree empty guide before the workspace is initialized', () => {
+    useScriptStore.setState({ currentStep: 0 as never, originalText: '', projectDir: null });
 
     const html = renderToStaticMarkup(
       <OverlayProvider>
@@ -36,23 +37,58 @@ describe('ScriptWorkbench', () => {
       </OverlayProvider>,
     );
 
-    expect(html).toContain('在右侧面板选择工作目录并上传报告文件');
+    expect(html).toContain('选择工作目录');
+    expect(html).toContain('导入文本文件');
   });
 
-  it('renders the editor container when originalText is set', () => {
+  it('renders the review workspace when original text is available', () => {
     useScriptStore.setState({
-      currentStep: 2,
+      currentStep: 1,
+      projectDir: '/tmp/script-project',
+      openedFile: 'original.md',
       originalText: '# 测试报告\n\n正文内容。',
     });
 
     // CM6 uses imperative DOM — renderToStaticMarkup produces the container div
     // but not the editor content. Verify no crash.
-    expect(() =>
-      renderToStaticMarkup(
-        <OverlayProvider>
-          <ScriptWorkbench onBack={() => undefined} />
-        </OverlayProvider>,
-      ),
-    ).not.toThrow();
+    const html = renderToStaticMarkup(
+      <OverlayProvider>
+        <ScriptWorkbench onBack={() => undefined} />
+      </OverlayProvider>,
+    );
+
+    // OperationBar 摘要行应显示原稿字数统计
+    expect(html).toContain('原稿');
+    expect(html).toContain('original.md');
+  });
+
+  it('keeps activeStream in the ScriptWorkbench store destructuring', () => {
+    const source = readFileSync(
+      new URL('../src/pages/ScriptWorkbench.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(source).toMatch(
+      /const\s*\{[\s\S]*\bsetActiveStream,\s*[\s\S]*\bactiveStream,\s*[\s\S]*\}\s*=\s*useScriptStore\(\);/,
+    );
+  });
+
+  it('does not render the redundant top progress bar in the workbench shell', () => {
+    const source = readFileSync(
+      new URL('../src/pages/ScriptWorkbench.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(source).not.toContain('AgentProgressBar');
+  });
+
+  it('renders a collapsible thinking block in the editor-side view when reasoning content is available', () => {
+    const source = readFileSync(
+      new URL('../src/pages/ScriptWorkbench.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(source).toContain('ThinkingBlock');
+    expect(source).toMatch(/onReasoningChunk/);
   });
 });
