@@ -168,6 +168,7 @@ export interface KillTerminalParams {
 // ─── 流式事件（Agent → Client 通知）──────────────────────────
 
 export type AcpEvent =
+  | SessionStartedEvent
   | ContentDeltaEvent
   | ThinkingEvent
   | ToolCallEvent
@@ -176,14 +177,21 @@ export type AcpEvent =
   | PermissionRequestEvent
   | UsageEvent;
 
+export interface SessionStartedEvent {
+  type: 'session_started';
+  sessionId: string;
+}
+
 export interface ContentDeltaEvent {
   type: 'content_delta';
   text: string;
+  sessionId?: string;
 }
 
 export interface ThinkingEvent {
   type: 'thinking';
   text: string;
+  sessionId?: string;
 }
 
 export interface ToolCallEvent {
@@ -195,6 +203,7 @@ export interface ToolCallEvent {
   content?: string;
   rawInput?: string;
   rawOutput?: string;
+  sessionId?: string;
 }
 
 export interface ToolCallUpdateEvent {
@@ -206,6 +215,7 @@ export interface ToolCallUpdateEvent {
   rawInput?: string;
   rawOutput?: string;
   rawOutputAppend?: boolean;
+  sessionId?: string;
 }
 
 export interface TurnCompleteEvent {
@@ -220,6 +230,7 @@ export interface UsageEvent {
   type: 'usage';
   used: number;
   size: number;
+  sessionId?: string;
 }
 
 export interface PermissionRequestEvent {
@@ -227,6 +238,7 @@ export interface PermissionRequestEvent {
   requestId: string;
   toolCall: unknown;
   options: PermissionOption[];
+  sessionId?: string;
 }
 
 // ─── Prompt 输入 ─────────────────────────────────────────────

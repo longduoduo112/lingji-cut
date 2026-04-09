@@ -4,12 +4,12 @@ import {
   buildSubtitleHighlightSystemPrompt,
   buildSubtitleHighlightUserMessage,
 } from './subtitle-highlight-ai';
-import { callLLM, parseLLMJsonResponse } from './llm-client';
+import { generateStructuredData } from './llm';
 import { parseSubtitleHighlightResponse } from './subtitle-highlight-service';
 
 interface GenerateSubtitleHighlightsOptions {
   batchSize?: number;
-  callModel?: typeof callLLM;
+  generateStructuredData?: typeof generateStructuredData;
 }
 
 export async function generateSubtitleHighlights(
@@ -22,19 +22,18 @@ export async function generateSubtitleHighlights(
   }
 
   const batchSize = Math.max(1, options.batchSize ?? 30);
-  const callModel = options.callModel ?? callLLM;
+  const requestStructuredData = options.generateStructuredData ?? generateStructuredData;
   const systemPrompt = buildSubtitleHighlightSystemPrompt();
   const highlights: SubtitleHighlight[] = [];
 
   try {
     for (let index = 0; index < entries.length; index += batchSize) {
       const batch = entries.slice(index, index + batchSize);
-      const content = await callModel(
+      const payload = await requestStructuredData(
         settings,
         systemPrompt,
         buildSubtitleHighlightUserMessage(batch),
       );
-      const payload = parseLLMJsonResponse(content);
       highlights.push(...parseSubtitleHighlightResponse(payload, batch));
     }
   } catch (error) {

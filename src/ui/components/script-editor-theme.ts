@@ -53,6 +53,11 @@ const theme = EditorView.theme(
       border: 'none',
       padding: '0',
     },
+    // MCP 变更行高亮
+    '.cm-mcp-change-highlight': {
+      backgroundColor: 'rgba(50, 215, 75, 0.15)',
+      transition: 'background-color 0.5s ease-out',
+    },
     '.cm-annotation-tooltip': {
       backgroundColor: '#2C2C2E',
       border: '1px solid #48484A',

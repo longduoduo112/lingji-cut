@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SrtEntry } from '../src/types';
 import type { AISettings } from '../src/types/ai';
 import { generateSubtitleHighlights } from '../src/lib/subtitle-highlight-runner';
+import { generateStructuredData } from '../src/lib/llm';
 
 function createEntry(index: number, text: string): SrtEntry {
   return {
@@ -27,11 +28,10 @@ describe('generateSubtitleHighlights', () => {
       createEntry(2, '真正值得记住的是世界冠军'),
       createEntry(3, '最后一句没有重点'),
     ];
-    const modelCaller = vi
-      .fn<(settings: AISettings, systemPrompt: string, userMessage: string) => Promise<string>>()
+    const modelCaller = vi.fn<typeof generateStructuredData>()
       .mockImplementation(async (_settings, _systemPrompt, userMessage) => {
         if (userMessage.includes('entryIndex=1')) {
-          return JSON.stringify({
+          return {
             highlights: [
               {
                 entryIndex: 1,
@@ -48,10 +48,10 @@ describe('generateSubtitleHighlights', () => {
                 end: 12,
               },
             ],
-          });
+          };
         }
 
-        return JSON.stringify({
+        return {
           highlights: [
             {
               entryIndex: 3,
@@ -61,12 +61,12 @@ describe('generateSubtitleHighlights', () => {
               end: -1,
             },
           ],
-        });
+        };
       });
 
     const result = await generateSubtitleHighlights(entries, settings, {
       batchSize: 2,
-      callModel: modelCaller,
+      generateStructuredData: modelCaller,
     });
 
     expect(modelCaller).toHaveBeenCalledTimes(2);
@@ -90,22 +90,20 @@ describe('generateSubtitleHighlights', () => {
 
   it('filters invalid model results before returning', async () => {
     const entries = [createEntry(1, '真正值得记住的是世界冠军')];
-    const modelCaller = vi.fn().mockResolvedValue(
-      JSON.stringify({
-        highlights: [
-          {
-            entryIndex: 1,
-            shouldHighlight: true,
-            highlightText: '世界冠军',
-            start: 0,
-            end: 4,
-          },
-        ],
-      }),
-    );
+    const modelCaller = vi.fn().mockResolvedValue({
+      highlights: [
+        {
+          entryIndex: 1,
+          shouldHighlight: true,
+          highlightText: '世界冠军',
+          start: 0,
+          end: 4,
+        },
+      ],
+    });
 
     const result = await generateSubtitleHighlights(entries, settings, {
-      callModel: modelCaller,
+      generateStructuredData: modelCaller,
     });
 
     expect(result).toEqual([]);
@@ -114,7 +112,7 @@ describe('generateSubtitleHighlights', () => {
   it('wraps model failures with a user-friendly message', async () => {
     await expect(
       generateSubtitleHighlights([createEntry(1, '测试字幕')], settings, {
-        callModel: vi.fn().mockRejectedValue(new Error('network down')),
+        generateStructuredData: vi.fn().mockRejectedValue(new Error('network down')),
       }),
     ).rejects.toThrow('字幕关键词高亮生成失败');
   });

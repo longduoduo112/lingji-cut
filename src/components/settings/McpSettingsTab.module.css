@@ -1,0 +1,212 @@
+/* MCP 服务设置面板样式 */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ─── 通用 section 标题 ──────────────────── */
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.sectionIcon {
+  color: #0a84ff;
+  flex-shrink: 0;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: #e5e5e7;
+}
+
+.sectionDesc {
+  font-size: 13px;
+  color: #8e8e93;
+  margin: 4px 0 0;
+  line-height: 1.5;
+}
+
+/* ─── 服务状态行 ─────────────────────────── */
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #2c2c2e;
+  border-radius: 8px;
+}
+
+.indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.indicatorRunning {
+  background: #32d74b;
+  box-shadow: 0 0 6px #32d74b80;
+}
+
+.indicatorStopped {
+  background: #ff453a;
+  box-shadow: 0 0 6px #ff453a80;
+}
+
+.statusText {
+  font-size: 13px;
+  font-weight: 500;
+  color: #e5e5e7;
+}
+
+.statusUrl {
+  flex: 1;
+  font-size: 12px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  color: #8e8e93;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refreshBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #0a84ff;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.refreshBtn:hover {
+  background: #0a84ff1a;
+}
+
+.refreshBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+/* ─── 分割线 ─────────────────────────────── */
+
+.divider {
+  border: none;
+  border-top: 1px solid #3a3a3c;
+  margin: 0;
+}
+
+/* ─── AI 工具注册列表 ─────────────────────── */
+
+.appList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.appRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #2c2c2e;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.appRow:hover {
+  background: #3a3a3c;
+}
+
+.appName {
+  font-size: 14px;
+  font-weight: 500;
+  color: #e5e5e7;
+  flex: 1;
+}
+
+.statusBadge {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.statusRegistered {
+  color: #32d74b;
+  background: #32d74b1a;
+}
+
+.statusUnregistered {
+  color: #8e8e93;
+  background: #8e8e931a;
+}
+
+/* ─── 注册 / 移除按钮 ────────────────────── */
+
+.registerBtn {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.registerBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.registerBtnAdd {
+  background: #0a84ff;
+  color: #fff;
+}
+
+.registerBtnAdd:hover:not(:disabled) {
+  background: #0a6edb;
+}
+
+.registerBtnRemove {
+  background: #ff453a1a;
+  color: #ff453a;
+}
+
+.registerBtnRemove:hover:not(:disabled) {
+  background: #ff453a33;
+}
+
+/* ─── 不可用提示 ──────────────────────────── */
+
+.unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: #8e8e93;
+  font-size: 14px;
+}

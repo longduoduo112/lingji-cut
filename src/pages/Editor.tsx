@@ -112,6 +112,21 @@ export function Editor({ onAddAsset, exportRequestToken, projectDir = '' }: Edit
     };
   }, [overlayCount, podcastAudioPath, podcastSrtPath, projectDir]);
 
+  // 自动扫描项目目录下的媒体素材
+  useEffect(() => {
+    if (!projectDir) return;
+    let cancelled = false;
+
+    void window.electronAPI.scanProjectAssets(projectDir).then((scanned) => {
+      if (cancelled || scanned.length === 0) return;
+      store.addAssets(scanned);
+    }).catch((err) => {
+      console.error('扫描项目素材失败:', err);
+    });
+
+    return () => { cancelled = true; };
+  }, [projectDir, store]);
+
   useEffect(() => {
     setTimelinePanelHeight((currentHeight) => {
       const storedHeight = readStoredTimelinePanelHeight();

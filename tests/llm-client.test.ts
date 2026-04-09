@@ -1,60 +1,132 @@
-import { describe, expect, it } from 'vitest';
-import { buildChatRequest, parseLLMJsonResponse } from '../src/lib/llm-client';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AISettings } from '../src/types/ai';
 
-const settings: AISettings = {
-  llmBaseUrl: 'https://api.openai.com/v1',
-  llmApiKey: 'sk-test',
-  llmModel: 'gpt-4o',
+const { invokeMock, bindInvokeMock, bindMock, streamMock, chatOpenAIMock } = vi.hoisted(() => {
+  const invoke = vi.fn();
+  const bindInvoke = vi.fn();
+  const bind = vi.fn(() => ({
+    invoke: bindInvoke,
+  }));
+  const stream = vi.fn();
+  const chatOpenAI = vi.fn().mockImplementation(() => ({
+    invoke,
+    bind,
+    stream,
+  }));
+
+  return {
+    invokeMock: invoke,
+    bindInvokeMock: bindInvoke,
+    bindMock: bind,
+    streamMock: stream,
+    chatOpenAIMock: chatOpenAI,
+  };
+});
+
+vi.mock('@langchain/openai', () => ({
+  ChatOpenAI: chatOpenAIMock,
+}));
+
+import { generateStructuredData, generateText } from '../src/lib/llm';
+import { parseLLMJsonResponse } from '../src/lib/llm/content';
+
+const BASE_SETTINGS: AISettings = {
+  llmBaseUrl: 'https://example.com/v1/',
+  llmApiKey: 'test-key',
+  llmModel: 'qwen3.6-plus',
   jimengApiUrl: '',
   jimengSessionId: '',
 };
 
-describe('buildChatRequest', () => {
-  it('builds an OpenAI-compatible request payload', () => {
-    const request = buildChatRequest(settings, 'system prompt', 'user message');
-
-    expect(request.url).toBe('https://api.openai.com/v1/chat/completions');
-    expect(request.body.model).toBe('gpt-4o');
-    expect(request.body.messages).toHaveLength(2);
-    expect(request.body.messages[0]).toEqual({ role: 'system', content: 'system prompt' });
-    expect(request.body.messages[1]).toEqual({ role: 'user', content: 'user message' });
-    expect(request.body.response_format).toEqual({ type: 'json_object' });
-    expect(request.headers.Authorization).toBe('Bearer sk-test');
+describe('llm-client langchain adapter', () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    bindInvokeMock.mockReset();
+    bindMock.mockClear();
+    streamMock.mockReset();
+    chatOpenAIMock.mockClear();
   });
 
-  it('trims trailing slashes from the configured base url', () => {
-    const request = buildChatRequest(
-      { ...settings, llmBaseUrl: 'https://api.example.com/v1/' },
-      'sys',
-      'usr',
-    );
-
-    expect(request.url).toBe('https://api.example.com/v1/chat/completions');
-  });
-});
-
-describe('parseLLMJsonResponse', () => {
-  it('parses direct JSON content', () => {
-    const result = parseLLMJsonResponse(
-      '{"cards":[],"coverPrompts":[],"summary":"test","keywords":[]}',
-    );
-
-    expect(result).toEqual({
-      cards: [],
-      coverPrompts: [],
-      summary: 'test',
-      keywords: [],
+  it('passes enableThinking=false via modelKwargs and uses json mode binding', async () => {
+    bindInvokeMock.mockResolvedValue({
+      content: '{"ok":true}',
     });
+
+    await generateStructuredData(
+      {
+        ...BASE_SETTINGS,
+        enableThinking: false,
+      },
+      '系统提示',
+      '用户输入',
+    );
+
+    expect(chatOpenAIMock).toHaveBeenCalledTimes(1);
+    expect(chatOpenAIMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: 'test-key',
+        model: 'qwen3.6-plus',
+        temperature: 0.3,
+        configuration: {
+          apiKey: 'test-key',
+          baseURL: 'https://example.com/v1',
+        },
+        modelKwargs: {
+          extra_body: {
+            enable_thinking: false,
+          },
+        },
+      }),
+    );
+    expect(bindMock).toHaveBeenCalledWith({
+      response_format: { type: 'json_object' },
+    });
+    expect(bindInvokeMock).toHaveBeenCalledTimes(1);
+    expect(bindInvokeMock.mock.calls[0]?.[0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ content: '系统提示' }),
+        expect.objectContaining({ content: '用户输入' }),
+      ]),
+    );
   });
 
-  it('extracts JSON from markdown code blocks', () => {
-    const result = parseLLMJsonResponse('```json\n{"cards":[]}\n```');
+  it('does not inject modelKwargs when thinking mode is enabled for plain text generation', async () => {
+    invokeMock.mockResolvedValue({
+      content: '最终答案',
+    });
 
-    expect(result).toEqual({ cards: [] });
+    await generateText(
+      {
+        ...BASE_SETTINGS,
+        enableThinking: true,
+      },
+      '系统提示',
+      '用户输入',
+    );
+
+    expect(chatOpenAIMock).toHaveBeenCalledTimes(1);
+    const config = chatOpenAIMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(config.modelKwargs).toBeUndefined();
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock.mock.calls[0]?.[0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ content: '系统提示' }),
+        expect.objectContaining({ content: '用户输入' }),
+      ]),
+    );
   });
 
-  it('returns null for invalid JSON', () => {
-    expect(parseLLMJsonResponse('not json at all')).toBeNull();
+  it('parses fenced json blocks for structured output compatibility', () => {
+    expect(parseLLMJsonResponse('```json\n{"cards":[]}\n```')).toEqual({ cards: [] });
+  });
+
+  it('returns null for invalid structured output', () => {
+    expect(parseLLMJsonResponse('not json')).toBeNull();
+  });
+
+  it('throws when plain text generation returns empty content', async () => {
+    invokeMock.mockResolvedValue({ content: '' });
+
+    await expect(generateText(BASE_SETTINGS, '系统提示', '用户输入')).rejects.toThrow('LLM 返回空内容');
   });
 });

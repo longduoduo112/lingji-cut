@@ -1,0 +1,53 @@
+.card {
+  background: var(--bg-secondary, #2a2a4e);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 8px;
+  padding: 10px;
+  max-width: 340px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+.header {
+  font-weight: bold;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.title { flex: 1; }
+.suggestion {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--bg-tertiary, #1a2a3a);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-secondary, #7fb8e0);
+  display: flex;
+  gap: 4px;
+}
+.suggestionIcon { flex-shrink: 0; }
+.actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.actions button {
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.acceptBtn {
+  background: #2ecc71;
+  color: #fff;
+}
+.dismissBtn {
+  background: var(--bg-tertiary, #555);
+  color: var(--text-secondary, #aaa);
+}
+.rewriteBtn {
+  background: #3498db;
+  color: #fff;
+}

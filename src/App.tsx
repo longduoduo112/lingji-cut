@@ -11,9 +11,11 @@ import { Editor } from './pages/Editor';
 import { ScriptWorkbench } from './pages/ScriptWorkbench';
 import { Settings } from './pages/Settings';
 import { Setup } from './pages/Setup';
+import { WorkspaceTabs } from './components/WorkspaceTabs';
 import { getFileNameFromPath } from './lib/utils';
 import { createDefaultTimeline, type TimelineData } from './types';
 import { useAIStore } from './store/ai';
+import { useScriptStore } from './store/script';
 import {
   clearCurrentProject,
   getCurrentProjectDir,
@@ -82,14 +84,16 @@ export default function App() {
     async (projectDir: string) => {
       try {
         const storedTimeline = await window.electronAPI.loadTimeline(projectDir);
+
         if (!storedTimeline) {
-          removeRecentProject(projectDir);
-          if (getCurrentProjectDir() === projectDir) {
-            clearCurrentProject();
-          }
+          // 目录可能只有文稿文件（ScriptWorkbench 创建），仍然视为有效项目
+          setTimeline(createDefaultTimeline());
+          setSrtEntries([]);
+          clearAIAnalysis();
+          setProjectDir(projectDir);
           syncWorkspaceState();
-          resetToSetup();
-          setSetupError('打开工程失败，请确认目录里存在有效的 timeline.json。');
+          setSetupError(null);
+          setPage('welcome');
           return;
         }
 
@@ -182,11 +186,15 @@ export default function App() {
       return;
     }
 
+    // 重置当前工程数据，初始化为空白项目
+    setTimeline(createDefaultTimeline());
+    setSrtEntries([]);
+    clearAIAnalysis();
     setProjectDir(projectDir);
     syncWorkspaceState();
-    resetToSetup();
     setSetupError(null);
-  }, [resetToSetup, syncWorkspaceState]);
+    setPage('welcome');
+  }, [clearAIAnalysis, setSrtEntries, setTimeline, syncWorkspaceState]);
 
   const handleOpenProject = useCallback(async () => {
     const projectDir = await window.electronAPI.selectProjectDirectory();
@@ -285,6 +293,18 @@ export default function App() {
             setExportRequestToken((current) => current + 1);
           }
           return;
+        case 'save-script': {
+          const saveCb = useScriptStore.getState().workbenchCallbacks.save;
+          if (page === 'script-workbench' && saveCb) {
+            saveCb();
+          }
+          return;
+        }
+        case 'go-back':
+          if (page === 'script-workbench') {
+            setPage('welcome');
+          }
+          return;
       }
     },
     [
@@ -378,6 +398,40 @@ export default function App() {
     }
   };
 
+  // ── 双向同步：ScriptWorkbench ↔ Editor 共享工作目录 ──
+
+  // 方向 A：script store 选定新目录 → 更新 timeline store + App 状态
+  useEffect(() => {
+    const unsub = useScriptStore.subscribe((state, prev) => {
+      if (state.projectDir && state.projectDir !== prev.projectDir) {
+        if (state.projectDir !== getCurrentProjectDir()) {
+          setProjectDir(state.projectDir);
+          syncWorkspaceState();
+        }
+      }
+    });
+    return unsub;
+  }, [syncWorkspaceState]);
+
+  // 方向 B：timeline store / App 打开新项目 → 同步到 script store
+  useEffect(() => {
+    if (!currentProjectDir) return;
+    const scriptDir = useScriptStore.getState().projectDir;
+    if (scriptDir !== currentProjectDir) {
+      useScriptStore.getState().setProjectDir(currentProjectDir);
+    }
+  }, [currentProjectDir]);
+
+  const handleWorkspaceTabSwitch = useCallback(
+    (tab: 'script-workbench' | 'editor') => {
+      if (tab === page) return;
+      setPage(tab);
+    },
+    [page, setPage],
+  );
+
+  const showWorkspaceTabs = page === 'editor' || page === 'script-workbench';
+
   const agentSidebarOpen = useAgentStore((s) => s.sidebarOpen);
   const projectName = currentProjectDir ? getFileNameFromPath(currentProjectDir) : '';
 
@@ -433,7 +487,9 @@ export default function App() {
         overflow: 'hidden',
         fontFamily: APP_FONT_STACK,
         display: 'grid',
-        gridTemplateRows: 'auto minmax(0, 1fr) auto',
+        gridTemplateRows: showWorkspaceTabs
+          ? 'auto auto minmax(0, 1fr) auto'
+          : 'auto minmax(0, 1fr) auto',
       }}
     >
       <Toolbar
@@ -447,28 +503,41 @@ export default function App() {
           void handleCommand(command);
         }}
       />
+      {showWorkspaceTabs && (
+        <WorkspaceTabs
+          active={page as 'script-workbench' | 'editor'}
+          onSwitch={handleWorkspaceTabSwitch}
+        />
+      )}
       <div style={{ minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
           {page === 'welcome' || page === 'setup' ? (
             <Setup
               busy={isSettingUp}
               errorMessage={setupError}
+              projectName={projectName}
               recentProjects={recentProjects}
               onComplete={handleSetupComplete}
               onOpenRecentProject={openProject}
               onStartScriptWorkbench={() => setPage('script-workbench')}
               onOpenSettings={() => setPage('settings')}
             />
-          ) : page === 'script-workbench' ? (
-            <ScriptWorkbench onBack={() => setPage('welcome')} />
           ) : page === 'settings' ? (
             <Settings onBack={() => setPage(previousPage)} />
           ) : (
-            <Editor
-              onAddAsset={handleAddAsset}
-              exportRequestToken={exportRequestToken}
-              projectDir={currentProjectDir}
-            />
+            <>
+              {/* 写稿工作台和编辑器保持同时挂载，用 display 切换，避免重新挂载引起的布局振荡 */}
+              <div style={{ display: page === 'script-workbench' ? 'contents' : 'none' }}>
+                <ScriptWorkbench onBack={() => setPage('welcome')} />
+              </div>
+              <div style={{ display: page === 'editor' ? 'contents' : 'none' }}>
+                <Editor
+                  onAddAsset={handleAddAsset}
+                  exportRequestToken={exportRequestToken}
+                  projectDir={currentProjectDir}
+                />
+              </div>
+            </>
           )}
         </div>
         {agentSidebarOpen && <AgentSidebar />}

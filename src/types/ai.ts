@@ -58,9 +58,13 @@ export interface AIAnalysisResult {
 }
 
 export interface AISettings {
+  // OpenAI / OpenAI-compatible
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
+  /** 是否开启模型思考模式，默认开启 */
+  enableThinking?: boolean;
+  // 图片生成
   jimengApiUrl: string;
   jimengSessionId: string;
 }

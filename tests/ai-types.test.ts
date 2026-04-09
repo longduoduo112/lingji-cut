@@ -110,7 +110,7 @@ describe('AI type definitions', () => {
     expect(overlay.aiCardData?.sourceEndMs).toBe(30_000);
   });
 
-  it('keeps the Jimeng session based settings shape', () => {
+  it('supports the basic llm settings structure', () => {
     const settings: AISettings = {
       llmBaseUrl: 'https://api.openai.com/v1',
       llmApiKey: 'sk-test',
@@ -119,7 +119,8 @@ describe('AI type definitions', () => {
       jimengSessionId: 'session-test',
     };
 
-    expect(settings.jimengSessionId).toBe('session-test');
+    expect(settings.llmBaseUrl).toContain('openai');
+    expect(settings.llmModel).toBe('gpt-4o');
   });
 
   it('builds reusable timeline draft data from an AI card', () => {

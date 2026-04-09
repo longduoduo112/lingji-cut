@@ -11,6 +11,7 @@ describe('AISettingsModal', () => {
           llmBaseUrl: 'https://api.openai.com/v1',
           llmApiKey: 'sk-test',
           llmModel: 'gpt-4o',
+          enableThinking: true,
           jimengApiUrl: 'http://47.109.159.194:8330',
           jimengSessionId: 'session-test',
         }}
@@ -22,5 +23,6 @@ describe('AISettingsModal', () => {
     expect(html).toContain('AI 配置');
     expect(html).toContain('LLM API Base URL');
     expect(html).toContain('即梦 Session ID');
+    expect(html).toContain('开启思考模式');
   });
 });

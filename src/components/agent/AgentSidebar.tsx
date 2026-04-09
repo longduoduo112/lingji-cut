@@ -1,16 +1,130 @@
-import { useEffect, useCallback, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAgentStore } from '../../store/agent';
 import { useScriptStore } from '../../store/script';
 import { getCurrentProjectDir } from '../../store/timeline';
+import { useConversationList } from '../../hooks/use-conversation-list';
 import { AgentHeader } from './AgentHeader';
-import { MessageList } from './MessageList';
-import { InputBar } from './InputBar';
-import { StatusBar } from './StatusBar';
+import { ConversationToolbar } from './ConversationToolbar';
+import { SessionListPane } from './SessionListPane';
+import { ConversationDetailPane } from './ConversationDetailPane';
 import styles from './AgentSidebar.module.css';
-import type { AcpConfigOption, AvailableCommand } from '../../../electron/acp/types';
+import { ConversationWorkspaceProvider } from '../../contexts/conversation-workspace-context';
+import { AcpConnectionsProvider, useAcpConnections } from '../../contexts/acp-connections-context';
+import { ConversationRuntimeProvider } from '../../contexts/conversation-runtime-context';
+import { QUICK_ACTION_CONVERSATION_EVENT } from '../../lib/quick-action-conversation';
 
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 700;
+
+function AgentSidebarWorkspace({ projectDir }: { projectDir: string | null }) {
+  const conversationProjectId = useMemo(() => projectDir, [projectDir]);
+
+  if (!conversationProjectId) {
+    return (
+      <div className="flex-1 flex items-center justify-center px-6 text-center text-sm text-mac-text-muted/60">
+        先打开一个项目目录，才能使用会话工作区。
+      </div>
+    );
+  }
+
+  return (
+    <ConversationWorkspaceProvider projectId={conversationProjectId}>
+      <AcpConnectionsProvider>
+        <ConversationRuntimeProvider>
+          <SidebarWorkspaceShell projectDir={conversationProjectId} />
+        </ConversationRuntimeProvider>
+      </AcpConnectionsProvider>
+    </ConversationWorkspaceProvider>
+  );
+}
+
+function SidebarWorkspaceShell({ projectDir }: { projectDir: string }) {
+  const [explicitConversationId, setExplicitConversationId] = useState<number | null>(null);
+  const connections = useAcpConnections();
+  const {
+    loading,
+    refresh,
+    createConversation,
+    deleteConversation,
+    setActiveConversation,
+  } = useConversationList();
+
+  async function handleCreateConversation() {
+    const created = await createConversation({
+      agentType: 'claude-acp',
+    });
+    setExplicitConversationId(created.id);
+  }
+
+  async function handleSelectConversation(conversationId: number) {
+    setExplicitConversationId(conversationId);
+    await setActiveConversation(conversationId);
+  }
+
+  async function handleDeleteConversation(conversationId: number) {
+    try {
+      await connections.disconnect(conversationId);
+    } catch {
+      // 会话可能本来就没建立 runtime，删除时忽略即可。
+    }
+
+    if (explicitConversationId === conversationId) {
+      setExplicitConversationId(null);
+    }
+    await deleteConversation(conversationId);
+  }
+
+  useEffect(() => {
+    const onActivate = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        projectId: string;
+        conversationId: number;
+        explicit: boolean;
+      }>).detail;
+      if (!detail || detail.projectId !== projectDir) {
+        return;
+      }
+
+      if (detail.explicit) {
+        setExplicitConversationId(detail.conversationId);
+      }
+      void setActiveConversation(detail.conversationId);
+    };
+
+    window.addEventListener(QUICK_ACTION_CONVERSATION_EVENT, onActivate);
+    return () => {
+      window.removeEventListener(QUICK_ACTION_CONVERSATION_EVENT, onActivate);
+    };
+  }, [projectDir, setActiveConversation]);
+
+  return (
+    <div className="flex-1 min-w-0 flex">
+      <div className="w-[240px] min-w-[220px] max-w-[280px] border-r border-mac-separator bg-white/[0.02] flex flex-col">
+        <ConversationToolbar
+          loading={loading}
+          onCreateConversation={() => void handleCreateConversation()}
+          onRefresh={() => void refresh()}
+        />
+        <SessionListPane
+          explicitConversationId={explicitConversationId}
+          onSelectConversation={(conversationId) => {
+            void handleSelectConversation(conversationId);
+          }}
+          onDeleteConversation={(conversationId) => {
+            void handleDeleteConversation(conversationId);
+          }}
+          onCreateConversation={() => {
+            void handleCreateConversation();
+          }}
+        />
+      </div>
+      <ConversationDetailPane
+        projectDir={projectDir}
+        explicitActivated={explicitConversationId !== null}
+      />
+    </div>
+  );
+}
 
 export function AgentSidebar() {
   const scriptProjectDir = useScriptStore((s) => s.projectDir);
@@ -40,125 +154,14 @@ export function AgentSidebar() {
     [width],
   );
 
-  // IPC 事件监听（全局，不随 sidebar 开关重建）
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.agentAPI === 'undefined') return;
-
-    const unsubStatus = window.agentAPI.onStatusChanged((s) => {
-      useAgentStore.getState().setStatus(s as ReturnType<typeof useAgentStore.getState>['status']);
-    });
-
-    const unsubEvent = window.agentAPI.onEvent((block) => {
-      const store = useAgentStore.getState();
-      const event = block as { type: string; [key: string]: unknown };
-
-      switch (event.type) {
-        case 'content_delta':
-          store.appendTextDelta(event.text as string);
-          break;
-        case 'thinking':
-          store.appendThinking(event.text as string);
-          break;
-        case 'tool_call':
-          store.addToolCall(event as Parameters<typeof store.addToolCall>[0]);
-          break;
-        case 'tool_call_update':
-          store.updateToolCall(event as Parameters<typeof store.updateToolCall>[0]);
-          break;
-        case 'turn_complete': {
-          store.markTurnComplete(event.stopReason as string);
-          const usage = event.usage as { used: number; size: number } | undefined;
-          if (usage && usage.used > 0) {
-            store.setContextUsage(usage);
-          }
-          break;
-        }
-        case 'usage': {
-          const used = event.used as number;
-          const size = event.size as number;
-          if (used > 0 && size > 0) {
-            store.setContextUsage({ used, size });
-          }
-          break;
-        }
-        case 'permission_request':
-          store.addPermissionRequest(event as Parameters<typeof store.addPermissionRequest>[0]);
-          break;
-        case 'file_changed':
-          store.addFileChanged(event as Parameters<typeof store.addFileChanged>[0]);
-          break;
-        case 'error':
-          store.addError(event.message as string);
-          break;
-        case 'available_commands':
-          store.setAvailableCommands((event.commands as AvailableCommand[]) ?? []);
-          break;
-        case 'config_update':
-          if (event.configOptions) {
-            store.setConfigOptions(event.configOptions as AcpConfigOption[]);
-          }
-          break;
-      }
-    });
-
-    const unsubCaps = window.agentAPI.onCapabilities((caps) => {
-      const c = caps as {
-        modes?: unknown[];
-        configOptions?: unknown[];
-        currentModeId?: string;
-      };
-      const store = useAgentStore.getState();
-      if (c.modes) store.setModes(c.modes as Parameters<typeof store.setModes>[0]);
-      if (c.configOptions) store.setConfigOptions(c.configOptions as AcpConfigOption[]);
-      if (c.currentModeId) store.setCurrentMode(c.currentModeId);
-    });
-
-    return () => {
-      unsubStatus();
-      unsubEvent();
-      unsubCaps();
-    };
-  }, []);
-
-  const sidebarOpen = useAgentStore((s) => s.sidebarOpen);
-
-  // 组件挂载 / sidebar 打开 / projectDir 变化时自动连接
-  // 不检查 store 中的 status — 它可能因组件卸载期间丢失 IPC 事件而过期
-  // main process 的 connect handler 内置去重逻辑，已连接时为 no-op 并同步状态
-  useEffect(() => {
-    if (!sidebarOpen) return;
-    if (typeof window === 'undefined' || !window.agentAPI) return;
-
-    const projectDir = scriptProjectDir || getCurrentProjectDir();
-    if (!projectDir) return;
-
-    let cancelled = false;
-    window.agentAPI
-      .connect(projectDir)
-      .then(() => {
-        if (!cancelled) useAgentStore.getState().setAutoConnectError(null);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) {
-          const msg = e instanceof Error ? e.message : String(e);
-          console.error('[Agent] 自动连接失败:', msg);
-          useAgentStore.getState().setAutoConnectError(msg);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [sidebarOpen, scriptProjectDir]);
+  const projectDir = scriptProjectDir || getCurrentProjectDir();
 
   return (
     <aside className={styles.sidebar} style={{ width }}>
       <div className={styles.resizeHandle} onMouseDown={handleResizeStart} />
       <div className={styles.content}>
         <AgentHeader />
-        <MessageList />
-        <InputBar />
-        <StatusBar />
+        <AgentSidebarWorkspace projectDir={projectDir} />
       </div>
     </aside>
   );

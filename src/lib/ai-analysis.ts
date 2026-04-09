@@ -11,23 +11,23 @@ import {
   type CardStyle,
   type WebCardPayload,
 } from '../types/ai';
-import { callLLM, parseLLMJsonResponse } from './llm-client';
+import { generateStructuredData } from './llm';
 
 interface AnalyzeSrtOptions {
   maxTokens?: number;
-  callModel?: typeof callLLM;
+  generateStructuredData?: typeof generateStructuredData;
   globalPrompt?: string;
 }
 
 interface RegenerateCardOptions {
-  callModel?: typeof callLLM;
+  generateStructuredData?: typeof generateStructuredData;
   globalPrompt?: string;
   cardPrompt?: string;
   contextPaddingMs?: number;
 }
 
 interface RegenerateCoverPromptOptions {
-  callModel?: typeof callLLM;
+  generateStructuredData?: typeof generateStructuredData;
   globalPrompt?: string;
   currentPrompt?: string;
 }
@@ -456,7 +456,11 @@ export async function analyzeSrt(
   settings: AISettings,
   options: AnalyzeSrtOptions = {},
 ): Promise<AIAnalysisResult> {
-  const { maxTokens = 8_000, callModel = callLLM, globalPrompt } = options;
+  const {
+    maxTokens = 8_000,
+    generateStructuredData: requestStructuredData = generateStructuredData,
+    globalPrompt,
+  } = options;
   const chunks = chunkSrtEntries(entries, maxTokens);
   if (chunks.length === 0) {
     throw new Error('没有可分析的字幕内容');
@@ -466,8 +470,8 @@ export async function analyzeSrt(
   const partialResults: AIAnalysisResult[] = [];
 
   for (const chunk of chunks) {
-    const rawResult = await callModel(settings, systemPrompt, buildSrtText(chunk));
-    const parsed = parsePartialResult(parseLLMJsonResponse(rawResult));
+    const payload = await requestStructuredData(settings, systemPrompt, buildSrtText(chunk));
+    const parsed = parsePartialResult(payload);
     if (parsed) {
       partialResults.push(parsed);
       continue;
@@ -491,7 +495,7 @@ export async function regenerateAICard(
   options: RegenerateCardOptions = {},
 ): Promise<AICard> {
   const {
-    callModel = callLLM,
+    generateStructuredData: requestStructuredData = generateStructuredData,
     globalPrompt,
     cardPrompt = card.cardPrompt,
     contextPaddingMs = 10_000,
@@ -502,7 +506,7 @@ export async function regenerateAICard(
     throw new Error('未找到与该卡片对应的字幕上下文');
   }
 
-  const rawResult = await callModel(
+  const payload = await requestStructuredData(
     settings,
     buildCardRegenerationPrompt(card, {
       globalPrompt,
@@ -510,7 +514,7 @@ export async function regenerateAICard(
     }),
     buildSrtText(contextEntries),
   );
-  const parsed = normalizeCard(parseLLMJsonResponse(rawResult), 0);
+  const parsed = normalizeCard(payload, 0);
   if (!parsed) {
     throw new Error('LLM 未返回有效的卡片结果');
   }
@@ -529,13 +533,17 @@ export async function regenerateCoverPrompt(
   settings: AISettings,
   options: RegenerateCoverPromptOptions = {},
 ): Promise<string[]> {
-  const { callModel = callLLM, globalPrompt, currentPrompt } = options;
+  const {
+    generateStructuredData: requestStructuredData = generateStructuredData,
+    globalPrompt,
+    currentPrompt,
+  } = options;
 
   if (entries.length === 0) {
     throw new Error('没有可用于生成封面提示词的字幕内容');
   }
 
-  const rawResult = await callModel(
+  const payload = await requestStructuredData(
     settings,
     buildCoverPromptRegenerationPrompt({
       globalPrompt,
@@ -543,7 +551,7 @@ export async function regenerateCoverPrompt(
     }),
     buildSrtText(entries),
   );
-  const prompts = parseCoverPromptResult(parseLLMJsonResponse(rawResult));
+  const prompts = parseCoverPromptResult(payload);
 
   if (prompts.length === 0) {
     throw new Error('LLM 未返回有效的封面提示词');

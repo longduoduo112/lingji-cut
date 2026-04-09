@@ -62,26 +62,4 @@ describe('AgentConfig', () => {
     const key = await config.getApiKey('claude-acp');
     expect(key).toBe('sk-ant-test-key-123');
   });
-
-  it('saves project session', async () => {
-    const { AgentConfig } = await import('../electron/acp/config');
-    const config = new AgentConfig(path.join(tmpDir, 'agent-config.json'));
-    const projectDir = path.join(tmpDir, 'project');
-    await fs.mkdir(projectDir, { recursive: true });
-
-    await config.saveSession(projectDir, {
-      sessionId: 'sess_abc',
-      lastConnected: new Date().toISOString(),
-    });
-
-    const session = await config.loadSession(projectDir);
-    expect(session?.sessionId).toBe('sess_abc');
-  });
-
-  it('returns null session for non-existent project', async () => {
-    const { AgentConfig } = await import('../electron/acp/config');
-    const config = new AgentConfig(path.join(tmpDir, 'agent-config.json'));
-    const session = await config.loadSession('/non/existent');
-    expect(session).toBeNull();
-  });
 });

@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { useAgentStore } from '../../store/agent';
 import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
-import { EmptyState } from '../../ui/primitives/EmptyState';
 
 export function MessageList() {
   const messages = useAgentStore((s) => s.messages);
@@ -29,9 +28,6 @@ export function MessageList() {
       onScroll={handleScroll}
       className="flex-1 overflow-y-auto p-4 flex flex-col gap-3"
     >
-      {messages.length === 0 && (
-        <EmptyState title="开始与 Claude Code 对话" />
-      )}
       {messages.map((msg, i) =>
         msg.role === 'user' ? (
           <UserMessage key={i} content={msg.content} />

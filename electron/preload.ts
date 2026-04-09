@@ -1,9 +1,10 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { AppLogEntry } from '../src/lib/app-log';
-import type { MenuContext, MenuEvent, ProjectMetadata } from '../src/lib/electron-api';
+import type { FileEntry, MenuContext, MenuEvent, ProjectMetadata } from '../src/lib/electron-api';
 import type { ExportConfig } from '../src/lib/export-settings';
 import type { SrtEntry } from '../src/types';
 import type { AICard, AISettings } from '../src/types/ai';
+import type { ConversationAPI } from '../src/types/conversation';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   parseSrtFile: (filePath: string) => ipcRenderer.invoke('parse-srt-file', filePath),
@@ -42,6 +43,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectMediaFile: (kind: 'audio' | 'srt') => ipcRenderer.invoke('select-media-file', kind),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   addAsset: () => ipcRenderer.invoke('add-asset'),
+  scanProjectAssets: (projectDir: string) =>
+    ipcRenderer.invoke('scan-project-assets', projectDir) as Promise<
+      { path: string; type: 'video' | 'image' | 'audio' | 'srt'; durationMs: number }[]
+    >,
   renderVideo: (args: { timeline: string; outputPath: string; exportConfig: ExportConfig }) =>
     ipcRenderer.invoke('render-video', args),
   onRenderProgress: (callback: (progress: number) => void) => {
@@ -73,14 +78,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('load-script-state', projectDir),
   selectTextFile: () =>
     ipcRenderer.invoke('select-text-file') as Promise<{ path: string; content: string } | null>,
+  startWatching: (dir: string) => ipcRenderer.invoke('start-watching', dir),
+  stopWatching: () => ipcRenderer.invoke('stop-watching'),
+  onFileChanged: (callback: (data: { file: string; content: string }) => void) => {
+    const handler = (_event: unknown, data: { file: string; content: string }) => callback(data);
+    ipcRenderer.on('file-changed', handler);
+    return () => ipcRenderer.removeListener('file-changed', handler);
+  },
+  onFileTreeChanged: (callback: (data: { type: string; file: string }) => void) => {
+    const handler = (_event: unknown, data: { type: string; file: string }) => callback(data);
+    ipcRenderer.on('file-tree-changed', handler);
+    return () => ipcRenderer.removeListener('file-tree-changed', handler);
+  },
+  readDirectory: (dir: string) =>
+    ipcRenderer.invoke('read-directory', dir) as Promise<FileEntry[]>,
   setMenuContext: (context: MenuContext) => ipcRenderer.invoke('set-menu-context', context),
   selectOutputPath: () => ipcRenderer.invoke('select-output-path'),
+  showEditorContextMenu: () => ipcRenderer.invoke('show-editor-context-menu'),
 });
 
 // ─── Agent API ────────────────────────────────────────────
 
 contextBridge.exposeInMainWorld('agentAPI', {
-  connect: (projectDir: string) => ipcRenderer.invoke('agent:connect', projectDir),
+  connect: (projectDir: string, sessionId?: string | null) =>
+    ipcRenderer.invoke('agent:connect', projectDir, sessionId ?? null),
   disconnect: () => ipcRenderer.invoke('agent:disconnect'),
   getStatus: () => ipcRenderer.invoke('agent:get-status') as Promise<string>,
   sendPrompt: (contents: unknown[]) => ipcRenderer.invoke('agent:send-prompt', contents),
@@ -118,4 +139,154 @@ contextBridge.exposeInMainWorld('agentAPI', {
     ipcRenderer.on('agent:capabilities', handler);
     return () => ipcRenderer.removeListener('agent:capabilities', handler);
   },
+
+  connectRuntime: (input: { conversationId: number; projectDir: string; sessionId?: string | null; agentType?: string }) =>
+    ipcRenderer.invoke('agent:connect-runtime', input),
+  disconnectRuntime: (conversationId: number) => ipcRenderer.invoke('agent:disconnect-runtime', conversationId),
+  sendPromptToConversation: (conversationId: number, contents: unknown[]) =>
+    ipcRenderer.invoke('agent:send-prompt-runtime', conversationId, contents),
+  cancelConversationTurn: (conversationId: number) =>
+    ipcRenderer.invoke('agent:cancel-turn-runtime', conversationId),
+  setConversationMode: (conversationId: number, modeId: string) =>
+    ipcRenderer.invoke('agent:set-mode-runtime', conversationId, modeId),
+  setConversationConfigOption: (conversationId: number, configId: string, valueId: string) =>
+    ipcRenderer.invoke('agent:set-config-option-runtime', conversationId, configId, valueId),
+  respondConversationPermission: (conversationId: number, requestId: string, optionId: string) =>
+    ipcRenderer.invoke('agent:respond-permission-runtime', conversationId, requestId, optionId),
+  onRuntimeStatusChanged: (callback: (payload: { conversationId: number; status: string }) => void) => {
+    const handler = (_event: unknown, payload: { conversationId: number; status: string }) => callback(payload);
+    ipcRenderer.on('agent:runtime-status', handler);
+    return () => ipcRenderer.removeListener('agent:runtime-status', handler);
+  },
+  onRuntimeEvent: (callback: (payload: { conversationId: number; event: unknown }) => void) => {
+    const handler = (_event: unknown, payload: { conversationId: number; event: unknown }) => callback(payload);
+    ipcRenderer.on('agent:runtime-event', handler);
+    return () => ipcRenderer.removeListener('agent:runtime-event', handler);
+  },
+  onRuntimeCapabilities: (callback: (payload: { conversationId: number; capabilities: unknown }) => void) => {
+    const handler = (_event: unknown, payload: { conversationId: number; capabilities: unknown }) => callback(payload);
+    ipcRenderer.on('agent:runtime-capabilities', handler);
+    return () => ipcRenderer.removeListener('agent:runtime-capabilities', handler);
+  },
+});
+
+contextBridge.exposeInMainWorld('conversationAPI', {
+  list: (projectId: string) => ipcRenderer.invoke('conversation:list', projectId),
+  detail: (conversationId: number, projectId?: string) => {
+    if (!projectId) {
+      throw new Error('conversationAPI.detail requires projectId');
+    }
+    return ipcRenderer.invoke('conversation:detail', projectId, conversationId);
+  },
+  create: (input: { projectId: string; agentType: string; title?: string }) =>
+    ipcRenderer.invoke('conversation:create', input),
+  fork: (sourceConversationId: number, projectId?: string, title?: string) => {
+    if (!projectId) {
+      throw new Error('conversationAPI.fork requires projectId');
+    }
+    return ipcRenderer.invoke('conversation:fork', projectId, sourceConversationId, title);
+  },
+  update: (
+    conversationId: number,
+    patch: {
+      title?: string;
+      status?: string;
+      externalId?: string | null;
+      sessionStatsJson?: string | null;
+      messageCount?: number;
+    },
+    projectId?: string,
+  ) => {
+    if (!projectId) {
+      throw new Error('conversationAPI.update requires projectId');
+    }
+    return ipcRenderer.invoke('conversation:update', projectId, conversationId, patch);
+  },
+  delete: (conversationId: number, projectId?: string) => {
+    if (!projectId) {
+      throw new Error('conversationAPI.delete requires projectId');
+    }
+    return ipcRenderer.invoke('conversation:delete', projectId, conversationId);
+  },
+  open: (projectId: string, conversationId: number) => {
+    if (!projectId) {
+      throw new Error('conversationAPI.open requires projectId');
+    }
+    return ipcRenderer.invoke('conversation:open', projectId, conversationId);
+  },
+  appendTurn: (
+    conversationId: number,
+    input: { role: string; blocks: unknown[]; sessionStatsJson?: string | null },
+    projectId?: string,
+  ) => {
+    if (!projectId) {
+      throw new Error('conversationAPI.appendTurn requires projectId');
+    }
+    return ipcRenderer.invoke('conversation:append-turn', projectId, conversationId, input);
+  },
+  getOpenedConversation: (projectId: string) => ipcRenderer.invoke('conversation:get-opened', projectId),
+  setOpenedConversation: (projectId: string, conversationId: number | null) =>
+    ipcRenderer.invoke('conversation:set-opened', projectId, conversationId),
+} satisfies ConversationAPI);
+
+// ─── MCP API ─────────────────────────────────────────────
+
+contextBridge.exposeInMainWorld('mcpAPI', {
+  // 服务管理
+  getStatus: () => ipcRenderer.invoke('mcp:get-status'),
+  start: (port: number) => ipcRenderer.invoke('mcp:start', port),
+  stop: () => ipcRenderer.invoke('mcp:stop'),
+
+  // 配置管理
+  scanLocal: () => ipcRenderer.invoke('mcp:scan-local'),
+  registerToApp: (app: string) => ipcRenderer.invoke('mcp:register-to-app', app),
+  removeFromApp: (app: string) => ipcRenderer.invoke('mcp:remove-from-app', app),
+  isRegistered: (app: string) => ipcRenderer.invoke('mcp:is-registered', app),
+
+  // MCP Tool 事件监听（Main → Renderer）
+  onGetEditorState: (handler: (payload: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => handler(payload);
+    ipcRenderer.on('mcp:get-editor-state', listener);
+    return () => ipcRenderer.removeListener('mcp:get-editor-state', listener);
+  },
+  onReadScript: (handler: (payload: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => handler(payload);
+    ipcRenderer.on('mcp:read-script', listener);
+    return () => ipcRenderer.removeListener('mcp:read-script', listener);
+  },
+  onGenerateScript: (handler: (payload: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => handler(payload);
+    ipcRenderer.on('mcp:generate-script', listener);
+    return () => ipcRenderer.removeListener('mcp:generate-script', listener);
+  },
+  onUpdateScript: (handler: (payload: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => handler(payload);
+    ipcRenderer.on('mcp:update-script', listener);
+    return () => ipcRenderer.removeListener('mcp:update-script', listener);
+  },
+  onSubmitReview: (handler: (payload: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => handler(payload);
+    ipcRenderer.on('mcp:submit-review', listener);
+    return () => ipcRenderer.removeListener('mcp:submit-review', listener);
+  },
+  onListProjectFiles: (handler: (payload: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => handler(payload);
+    ipcRenderer.on('mcp:list-project-files', listener);
+    return () => ipcRenderer.removeListener('mcp:list-project-files', listener);
+  },
+  onGetProjectContext: (handler: (payload: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => handler(payload);
+    ipcRenderer.on('mcp:get-project-context', listener);
+    return () => ipcRenderer.removeListener('mcp:get-project-context', listener);
+  },
+
+  // MCP 日志监听（Main → Renderer）
+  onLog: (handler: (data: { level: string; message: string }) => void) => {
+    const listener = (_event: unknown, data: { level: string; message: string }) => handler(data);
+    ipcRenderer.on('mcp:log', listener);
+    return () => ipcRenderer.removeListener('mcp:log', listener);
+  },
+
+  // 回复辅助（Renderer → Main）
+  reply: (replyChannel: string, data: unknown) => ipcRenderer.invoke(replyChannel, data),
 });

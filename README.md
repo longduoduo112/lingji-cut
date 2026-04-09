@@ -93,12 +93,13 @@ npm test
 - `llmBaseUrl`
 - `llmApiKey`
 - `llmModel`
+- `enableThinking`
 - `jimengApiUrl`
 - `jimengSessionId`
 
 说明：
 
-- LLM 接口按 OpenAI 兼容的 `/chat/completions` 结构调用
+- LLM 统一通过 LangChain 调用 OpenAI 兼容接口
 - 即梦封面生成通过 `/v1/images/generations` 调用
 - 不要把真实密钥硬编码到源码里
 

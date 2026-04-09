@@ -1,0 +1,124 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import type { FileEntry } from '../src/lib/electron-api';
+
+function createStorageMock() {
+  const storage = new Map<string, string>();
+
+  return {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storage.set(key, value);
+    },
+    removeItem: (key: string) => {
+      storage.delete(key);
+    },
+    clear: () => {
+      storage.clear();
+    },
+  };
+}
+
+describe('script shell components', () => {
+  const nestedEntries: FileEntry[] = [
+    {
+      name: 'drafts',
+      type: 'directory',
+      children: [
+        { name: 'chapter-1.md', type: 'file' },
+        { name: 'chapter-2.md', type: 'file' },
+      ],
+    },
+    { name: 'original.md', type: 'file' },
+  ];
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doUnmock('../src/store/script');
+    vi.stubGlobal('localStorage', createStorageMock());
+  });
+
+  it('renders the file tree empty state before a project is selected', async () => {
+    const { FileTreePanel } = await import('../src/components/script/FileTreePanel');
+
+    const html = renderToStaticMarkup(
+      <FileTreePanel
+        projectDir={null}
+        fileEntries={[]}
+        openedFile={null}
+        fileDirtyMap={{}}
+        fileConflictMap={{}}
+        onSelectProjectDir={() => undefined}
+        onOpenFile={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('工作文件');
+    expect(html).toContain('选择工作目录');
+  });
+
+  it('renders collapsed directory rows without showing their children', async () => {
+    const { FileTree } = await import('../src/components/script/FileTreePanel');
+
+    const html = renderToStaticMarkup(
+      <FileTree
+        fileEntries={nestedEntries}
+        expandedDirectories={{ drafts: false }}
+        openedFile={null}
+        fileDirtyMap={{}}
+        fileConflictMap={{}}
+        onToggleDirectory={() => undefined}
+        onOpenFile={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('drafts');
+    expect(html).not.toContain('chapter-1.md');
+  });
+
+  it('renders expanded directory rows and keeps nested children on a single tree branch', async () => {
+    const { FileTree, reconcileExpandedDirectories } = await import(
+      '../src/components/script/FileTreePanel'
+    );
+
+    expect(reconcileExpandedDirectories(nestedEntries, {})).toEqual({ drafts: true });
+    expect(reconcileExpandedDirectories(nestedEntries, { drafts: false })).toEqual({
+      drafts: false,
+    });
+
+    const html = renderToStaticMarkup(
+      <FileTree
+        fileEntries={nestedEntries}
+        expandedDirectories={{ drafts: true }}
+        openedFile="drafts/chapter-1.md"
+        fileDirtyMap={{ 'drafts/chapter-1.md': true }}
+        fileConflictMap={{}}
+        onToggleDirectory={() => undefined}
+        onOpenFile={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain('chapter-1.md');
+    expect(html).toContain('drafts/chapter-1.md');
+  });
+
+  it('renders tabs for available files and keeps the active file visible', async () => {
+    const { FileTabs } = await import('../src/components/script/FileTabs');
+
+    const html = renderToStaticMarkup(
+      <FileTabs
+        tabs={['original.md', 'script.md']}
+        openedFile="script.md"
+        fileDirtyMap={{ 'original.md': true }}
+        fileConflictMap={{ 'script.md': true }}
+        onOpenFile={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('original.md');
+    expect(html).toContain('script.md');
+    expect(html).toContain('⚠');
+  });
+});

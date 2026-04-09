@@ -68,7 +68,11 @@ export function loadAISettings(): AISettings | null {
   }
 
   try {
-    return JSON.parse(rawValue) as AISettings;
+    const parsed = JSON.parse(rawValue) as AISettings;
+    return {
+      ...parsed,
+      enableThinking: parsed.enableThinking ?? true,
+    };
   } catch {
     return null;
   }

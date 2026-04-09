@@ -7,7 +7,7 @@ import { isJsonRpcNotification, isJsonRpcRequest, isJsonRpcResponse } from './ty
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (reason: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout> | undefined;
 }
 
 interface AcpClientOptions {
@@ -93,7 +93,7 @@ export class AcpClient extends EventEmitter {
     this.rejectAllPending(new Error('Client disconnected'));
   }
 
-  async sendRequest(method: string, params: unknown): Promise<unknown> {
+  async sendRequest(method: string, params: unknown, timeout?: number): Promise<unknown> {
     return new Promise((resolve, reject) => {
       if (!this.process?.stdin?.writable) {
         reject(new Error('Not connected'));
@@ -103,12 +103,15 @@ export class AcpClient extends EventEmitter {
       const id = this.nextId++;
       const message: JsonRpcRequest = { jsonrpc: '2.0', id, method, params };
 
-      const timer = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error(`Request timeout: ${method} (id=${id})`));
-      }, this.requestTimeout);
+      const effectiveTimeout = timeout ?? this.requestTimeout;
+      const timer = effectiveTimeout > 0
+        ? setTimeout(() => {
+            this.pendingRequests.delete(id);
+            reject(new Error(`Request timeout: ${method} (id=${id})`));
+          }, effectiveTimeout)
+        : undefined;
 
-      this.pendingRequests.set(id, { resolve, reject, timer });
+      this.pendingRequests.set(id, { resolve, reject, timer: timer! });
       this.process.stdin.write(JSON.stringify(message) + '\n');
     });
   }

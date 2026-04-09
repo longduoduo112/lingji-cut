@@ -1,8 +1,10 @@
 // src/ui/components/script-editor.tsx
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
 import {
+  Decoration,
+  type DecorationSet,
   EditorView,
   keymap,
   placeholder as cmPlaceholder,
@@ -19,6 +21,8 @@ import {
   setAnnotationsEffect,
   type AnnotationClickInfo,
 } from './script-editor-annotations';
+import { virtualCursorExtension } from '../../lib/virtual-cursor';
+import { createReadOnlyGuard } from '../../lib/editor-readonly-guard';
 
 // --- Severity display config ---
 
@@ -43,7 +47,7 @@ function AnnotationPopover({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const { annotation } = info;
-  const severity = SEVERITY_LABEL[annotation.severity];
+  const severity = SEVERITY_LABEL[annotation.severity] ?? SEVERITY_LABEL.info;
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -103,7 +107,7 @@ function AnnotationPopover({
       </div>
 
       {/* suggestion diff */}
-      {annotation.suggestion !== annotation.originalText && (
+      {annotation.suggestion && annotation.suggestion !== annotation.originalText && (
         <div
           style={{
             padding: '8px 10px',
@@ -139,27 +143,54 @@ function AnnotationPopover({
         >
           忽略
         </button>
-        <button
-          type="button"
-          onClick={onAccept}
-          style={{
-            padding: '6px 14px',
-            borderRadius: 6,
-            border: 'none',
-            background: severity.color,
-            color: '#fff',
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          采纳修改
-        </button>
+        {annotation.suggestion && annotation.suggestion !== annotation.originalText ? (
+          <button
+            type="button"
+            onClick={onAccept}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              border: 'none',
+              background: severity.color,
+              color: '#fff',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            采纳修改
+          </button>
+        ) : null}
       </div>
     </div>,
     document.body,
   );
 }
+
+// --- MCP 变更行高亮 ---
+
+const setHighlightLinesEffect = StateEffect.define<number[]>();
+
+const highlightLineField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(value, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setHighlightLinesEffect)) {
+        const lines = effect.value;
+        const decos: any[] = [];
+        for (const lineNum of lines) {
+          if (lineNum >= 1 && lineNum <= tr.state.doc.lines) {
+            const line = tr.state.doc.line(lineNum);
+            decos.push(Decoration.line({ class: 'cm-mcp-change-highlight' }).range(line.from));
+          }
+        }
+        return Decoration.set(decos, true);
+      }
+    }
+    return value;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 // --- ScriptEditor ---
 
@@ -170,6 +201,11 @@ interface ScriptEditorProps {
   annotations?: Annotation[];
   onAcceptAnnotation?: (id: string) => void;
   onDismissAnnotation?: (id: string) => void;
+  readOnly?: boolean;
+  /** 流式写入进行中时为 true，跳过 React → CM6 的 value 同步以避免覆盖动画 */
+  streamingActive?: boolean;
+  editorViewRef?: React.MutableRefObject<EditorView | null>;
+  mcpChangeHighlightLines?: number[];
 }
 
 export function ScriptEditor({
@@ -179,12 +215,17 @@ export function ScriptEditor({
   annotations = [],
   onAcceptAnnotation,
   onDismissAnnotation,
+  readOnly,
+  streamingActive,
+  editorViewRef,
+  mcpChangeHighlightLines,
 }: ScriptEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const placeholderCompartment = useRef(new Compartment());
+  const readOnlyGuard = useRef(createReadOnlyGuard());
 
   const [clickInfo, setClickInfo] = useState<AnnotationClickInfo | null>(null);
 
@@ -204,24 +245,43 @@ export function ScriptEditor({
           annotationField,
           annotationHoverTooltip,
           createAnnotationClickHandler(setClickInfo),
+          highlightLineField,
+          ...virtualCursorExtension,
+          readOnlyGuard.current.extension,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               onChangeRef.current(update.state.doc.toString());
             }
           }),
           EditorView.lineWrapping,
+          EditorView.domEventHandlers({
+            contextmenu: (event) => {
+              event.preventDefault();
+              window.electronAPI?.showEditorContextMenu();
+            },
+          }),
         ],
       }),
       parent: containerRef.current,
     });
 
     viewRef.current = view;
-    return () => view.destroy();
+    if (editorViewRef) {
+      editorViewRef.current = view;
+    }
+    return () => {
+      view.destroy();
+      if (editorViewRef) {
+        editorViewRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // React → CM6: sync external value changes
+  // 流式写入期间跳过，避免覆盖 StreamingEditor 的动画帧
   useEffect(() => {
+    if (streamingActive) return;
     const view = viewRef.current;
     if (!view) return;
     const currentDoc = view.state.doc.toString();
@@ -230,7 +290,7 @@ export function ScriptEditor({
         changes: { from: 0, to: currentDoc.length, insert: value },
       });
     }
-  }, [value]);
+  }, [value, streamingActive]);
 
   // React → CM6: sync annotations
   useEffect(() => {
@@ -249,6 +309,25 @@ export function ScriptEditor({
       ),
     });
   }, [placeholder]);
+
+  // React → CM6: sync readOnly state
+  useEffect(() => {
+    if (viewRef.current) {
+      viewRef.current.dispatch({
+        effects: readOnlyGuard.current.reconfigure(readOnly ?? false),
+      });
+    }
+  }, [readOnly]);
+
+  // React → CM6: 同步 MCP 变更行高亮
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view && mcpChangeHighlightLines?.length) {
+      view.dispatch({ effects: setHighlightLinesEffect.of(mcpChangeHighlightLines) });
+    } else if (view) {
+      view.dispatch({ effects: setHighlightLinesEffect.of([]) });
+    }
+  }, [mcpChangeHighlightLines]);
 
   // Close popover when the active annotation is no longer pending
   useEffect(() => {

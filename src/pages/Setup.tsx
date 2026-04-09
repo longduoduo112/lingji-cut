@@ -11,6 +11,7 @@ import styles from './Setup.module.css';
 interface SetupProps {
   busy: boolean;
   errorMessage: string | null;
+  projectName: string;
   recentProjects: RecentProject[];
   onComplete: (audioPath: string, srtPath: string) => Promise<void>;
   onOpenRecentProject: (projectDir: string) => Promise<void>;
@@ -66,6 +67,7 @@ function ImportCard({
 export function Setup({
   busy,
   errorMessage,
+  projectName,
   recentProjects,
   onComplete,
   onOpenRecentProject,
@@ -137,12 +139,40 @@ export function Setup({
           <div className={styles.heroEyebrow} style={{ fontSize: 11, letterSpacing: 2 }}>
             LOCAL PODCAST VIDEO EDITOR
           </div>
-          <h1 className={styles.heroTitle} style={{ fontSize: 34 }}>
-            选择你的创作方式
-          </h1>
-          <p className={styles.heroDescription} style={{ fontSize: 15, color: '#EBEBF599' }}>
-            AI 智能写稿或直接导入音频字幕，开始制作播客视频
-          </p>
+          {projectName ? (
+            <>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 16px',
+                borderRadius: 8,
+                background: '#32D74B1A',
+                color: '#32D74B',
+                fontSize: 13,
+                fontWeight: 600,
+                marginBottom: 8,
+              }}>
+                <span style={{ fontSize: 15 }}>📁</span>
+                {projectName}
+              </div>
+              <h1 className={styles.heroTitle} style={{ fontSize: 34 }}>
+                选择你的创作方式
+              </h1>
+              <p className={styles.heroDescription} style={{ fontSize: 15, color: '#EBEBF599' }}>
+                项目已就绪，选择 AI 写稿或导入音频字幕开始创作
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className={styles.heroTitle} style={{ fontSize: 34 }}>
+                选择你的创作方式
+              </h1>
+              <p className={styles.heroDescription} style={{ fontSize: 15, color: '#EBEBF599' }}>
+                AI 智能写稿或直接导入音频字幕，开始制作播客视频
+              </p>
+            </>
+          )}
         </div>
 
         {/* 双入口卡片 */}
