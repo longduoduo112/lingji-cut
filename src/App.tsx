@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useToast } from './ui';
 import { AgentSidebar } from './components/agent/AgentSidebar';
 import { AppStatusBar } from './components/AppStatusBar';
 import { Toolbar } from './components/Toolbar';
 import type { AppPage, MenuAction, MenuEvent } from './lib/electron-api';
 import { getAISettingsIssue } from './lib/ai-settings';
 import { useAgentStore } from './store/agent';
-import { createPersistedAIState, parsePersistedAIState } from './lib/ai-persistence';
+import { createPersistedAIState } from './lib/ai-persistence';
 import { useViewportSize } from './hooks/useViewportSize';
 import { getAppShortcutCommand, isTextEditingTarget } from './lib/native-shortcuts';
 import { Editor } from './pages/Editor';
@@ -14,9 +15,10 @@ import { Settings } from './pages/Settings';
 import { Setup } from './pages/Setup';
 import { WorkspaceTabs } from './components/WorkspaceTabs';
 import { getFileNameFromPath } from './lib/utils';
-import { createDefaultTimeline, type TimelineData } from './types';
+import { createDefaultTimeline } from './types';
 import type { AIAnalysisResult } from './types/ai';
-import { loadAISettings, useAIStore } from './store/ai';
+import { getCurrentAISaveStatus, loadAISettings, subscribeToAISaveStatus, useAIStore } from './store/ai';
+import type { ProjectData } from './lib/project-persistence';
 import { useScriptStore } from './store/script';
 import {
   clearCurrentProject,
@@ -24,6 +26,7 @@ import {
   getCurrentSaveStatus,
   getRecentProjects,
   removeRecentProject,
+  type SaveStatus,
   setProjectDir,
   subscribeToSaveStatus,
   useTimelineStore,
@@ -54,6 +57,13 @@ export default function App() {
   const [currentProjectDir, setCurrentProjectDir] = useState(() => getCurrentProjectDir());
   const [recentProjects, setRecentProjects] = useState(() => getRecentProjects());
   const [saveStatus, setSaveStatus] = useState(() => getCurrentSaveStatus());
+  const [aiSaveStatus, setAISaveStatus] = useState(() => getCurrentAISaveStatus());
+  const aggregatedSaveStatus: SaveStatus = (() => {
+    if (saveStatus === 'error' || aiSaveStatus === 'error') return 'error';
+    if (saveStatus === 'saving' || aiSaveStatus === 'saving') return 'saving';
+    if (saveStatus === 'saved' || aiSaveStatus === 'saved') return 'saved';
+    return saveStatus;
+  })();
   const [exportRequestToken, setExportRequestToken] = useState(0);
   const {
     addAsset,
@@ -68,6 +78,7 @@ export default function App() {
   } = useTimelineStore();
   const clearAIAnalysis = useAIStore((state) => state.clearAnalysis);
   const setAIAnalysisResult = useAIStore((state) => state.setAnalysisResult);
+  const { showToast } = useToast();
   const setCoverCandidates = useAIStore((state) => state.setCoverCandidates);
 
   const invalidateAIAnalysis = useCallback(async (projectDir?: string) => {
@@ -99,7 +110,7 @@ export default function App() {
 
   const rerunAiAnalysisForEntries = useCallback(
     async (entries: ReturnType<typeof useTimelineStore.getState>['srtEntries']) => {
-      const settings = loadAISettings();
+      const settings = await loadAISettings();
       const settingsIssue = getAISettingsIssue(settings);
 
       clearAIAnalysis();
@@ -173,43 +184,56 @@ export default function App() {
   const openProject = useCallback(
     async (projectDir: string) => {
       try {
-        const storedTimeline = await window.electronAPI.loadTimeline(projectDir);
+        const raw = await window.electronAPI.loadProject(projectDir);
+        const projectData = JSON.parse(raw) as ProjectData;
 
-        if (!storedTimeline) {
-          // 目录可能只有文稿文件（ScriptWorkbench 创建），仍然视为有效项目
+        // timeline 段
+        if (projectData.timeline) {
+          setTimeline(projectData.timeline);
+        } else {
           setTimeline(createDefaultTimeline());
-          setSrtEntries([]);
-          clearAIAnalysis();
-          setProjectDir(projectDir);
-          syncWorkspaceState();
-          setSetupError(null);
-          setPage('welcome');
-          return;
         }
 
-        const parsedTimeline = JSON.parse(storedTimeline) as TimelineData;
-        setTimeline(parsedTimeline);
-
-        if (parsedTimeline.podcast?.srtPath) {
-          const { entries } = await window.electronAPI.parseSrtFile(parsedTimeline.podcast.srtPath);
-          setSrtEntries(entries);
+        // SRT 解析（从 timeline.podcast.srtPath）
+        if (projectData.timeline?.podcast?.srtPath) {
+          try {
+            const { entries } = await window.electronAPI.parseSrtFile(
+              projectData.timeline.podcast.srtPath,
+            );
+            setSrtEntries(entries);
+          } catch (err) {
+            const isNotFound = String(err).includes('ENOENT');
+            if (isNotFound) {
+              // 文件被外部删除——清除配置引用并继续，不中断恢复流程
+              if (projectData.timeline) {
+                projectData.timeline.podcast = {
+                  ...projectData.timeline.podcast,
+                  srtPath: '',
+                  audioPath: '',
+                };
+                await window.electronAPI.saveProjectSection(
+                  projectDir,
+                  'timeline',
+                  JSON.stringify(projectData.timeline),
+                );
+              }
+              setSrtEntries([]);
+              showToast('字幕文件已被删除，已从工程配置中移除', {
+                type: 'warning',
+                duration: 5000,
+              });
+            } else {
+              throw err;
+            }
+          }
         } else {
           setSrtEntries([]);
         }
 
-        const storedAIAnalysis = await window.electronAPI.loadAIAnalysis(projectDir);
-        if (storedAIAnalysis) {
-          try {
-            const persistedState = parsePersistedAIState(JSON.parse(storedAIAnalysis));
-            if (persistedState?.analysisResult) {
-              setAIAnalysisResult(persistedState.analysisResult);
-              setCoverCandidates(persistedState.coverCandidates);
-            } else {
-              clearAIAnalysis();
-            }
-          } catch {
-            clearAIAnalysis();
-          }
+        // AI 分析段
+        if (projectData.aiAnalysis?.analysisResult) {
+          setAIAnalysisResult(projectData.aiAnalysis.analysisResult);
+          setCoverCandidates(projectData.aiAnalysis.coverCandidates ?? []);
         } else {
           clearAIAnalysis();
         }
@@ -218,7 +242,9 @@ export default function App() {
         syncWorkspaceState();
         setSetupError(null);
         setPage(
-          parsedTimeline.podcast?.audioPath && parsedTimeline.podcast?.srtPath ? 'editor' : 'welcome',
+          projectData.timeline?.podcast?.audioPath && projectData.timeline?.podcast?.srtPath
+            ? 'editor'
+            : 'welcome',
         );
       } catch (error) {
         console.error('恢复工程失败:', error);
@@ -238,6 +264,7 @@ export default function App() {
       setCoverCandidates,
       setSrtEntries,
       setTimeline,
+      showToast,
       syncWorkspaceState,
     ],
   );
@@ -258,6 +285,7 @@ export default function App() {
   }, [openProject]);
 
   useEffect(() => subscribeToSaveStatus(setSaveStatus), []);
+  useEffect(() => subscribeToAISaveStatus(setAISaveStatus), []);
 
   useEffect(() => {
     void window.electronAPI.setMenuContext({
@@ -542,6 +570,15 @@ export default function App() {
   const agentSidebarOpen = useAgentStore((s) => s.sidebarOpen);
   const projectName = currentProjectDir ? getFileNameFromPath(currentProjectDir) : '';
 
+  // 写稿进度：null=无稿件（隐藏圆环），50=已生成未审，100=审稿完成
+  const scriptProgress = useScriptStore((s) => {
+    if (!s.workspaceFiles.hasScriptFile) return null;
+    const isClean =
+      s.reviewState === 'clean' ||
+      (s.reviewState === 'issues' && s.annotations.every((a) => a.status !== 'pending'));
+    return isClean ? 100 : 50;
+  });
+
   if (isHydrating) {
     return (
       <div
@@ -559,7 +596,7 @@ export default function App() {
           compact={viewport.width < 960}
           page={page}
           projectName={projectName}
-          saveStatus={saveStatus}
+          saveStatus={aggregatedSaveStatus}
           canUndo={canUndo}
           canRedo={canRedo}
           onCommand={(command) => {
@@ -603,7 +640,7 @@ export default function App() {
         compact={viewport.width < 960}
         page={page}
         projectName={projectName}
-        saveStatus={saveStatus}
+        saveStatus={aggregatedSaveStatus}
         canUndo={canUndo}
         canRedo={canRedo}
         onCommand={(command) => {
@@ -614,6 +651,7 @@ export default function App() {
         <WorkspaceTabs
           active={page as 'script-workbench' | 'editor'}
           onSwitch={handleWorkspaceTabSwitch}
+          scriptProgress={scriptProgress}
         />
       )}
       <div style={{ minHeight: 0, display: 'flex', overflow: 'hidden' }}>
