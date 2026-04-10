@@ -9,7 +9,7 @@ function buildModelKwargs(settings: AISettings): Record<string, unknown> | undef
   if (settings.enableThinking === false) {
     return {
       extra_body: {
-        enable_thinking: false
+        enable_thinking: false,
       },
     };
   }

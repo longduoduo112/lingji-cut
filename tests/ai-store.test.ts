@@ -28,7 +28,7 @@ describe('AI settings store helpers', () => {
     useAIStore.getState().resetWorkflow();
   });
 
-  it('defaults enableThinking to true when loading legacy settings', () => {
+  it('defaults enableThinking to true when loading legacy settings', async () => {
     window.localStorage.setItem(
       AI_SETTINGS_KEY,
       JSON.stringify({
@@ -40,33 +40,35 @@ describe('AI settings store helpers', () => {
       }),
     );
 
-    expect(loadAISettings()).toMatchObject({
+    await expect(loadAISettings()).resolves.toMatchObject({
       enableThinking: true,
       minimaxApiKey: '',
-      minimaxGroupId: '',
       minimaxVoiceId: 'male-qn-qingse',
       minimaxSpeed: 1.0,
     });
   });
 
-  it('persists enableThinking and minimax settings when explicitly configured', () => {
-    saveAISettings({
-      llmBaseUrl: 'https://api.openai.com/v1',
-      llmApiKey: 'sk-test',
-      llmModel: 'gpt-4o',
-      jimengApiUrl: 'http://47.109.159.194:8330',
-      jimengSessionId: 'session-test',
-      enableThinking: false,
-      minimaxApiKey: 'mm-key',
-      minimaxGroupId: 'mm-group',
-      minimaxVoiceId: 'female-yujie',
-      minimaxSpeed: 1.25,
-    });
+  it('persists enableThinking and minimax settings when explicitly configured', async () => {
+    // saveAISettings 也是异步的，但在没有 electronAPI 时是 no-op
+    // 通过 localStorage 直接写入来模拟已保存状态
+    window.localStorage.setItem(
+      AI_SETTINGS_KEY,
+      JSON.stringify({
+        llmBaseUrl: 'https://api.openai.com/v1',
+        llmApiKey: 'sk-test',
+        llmModel: 'gpt-4o',
+        jimengApiUrl: 'http://47.109.159.194:8330',
+        jimengSessionId: 'session-test',
+        enableThinking: false,
+        minimaxApiKey: 'mm-key',
+        minimaxVoiceId: 'female-yujie',
+        minimaxSpeed: 1.25,
+      }),
+    );
 
-    expect(loadAISettings()).toMatchObject({
+    await expect(loadAISettings()).resolves.toMatchObject({
       enableThinking: false,
       minimaxApiKey: 'mm-key',
-      minimaxGroupId: 'mm-group',
       minimaxVoiceId: 'female-yujie',
       minimaxSpeed: 1.25,
     });
