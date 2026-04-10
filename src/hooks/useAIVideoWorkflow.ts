@@ -68,8 +68,12 @@ async function persistAIState(
     return;
   }
 
-  const nextState = createPersistedAIState(analysisResult, coverCandidates);
-  await window.electronAPI.saveAIAnalysis(projectDir, JSON.stringify(nextState, null, 2));
+  const persistedState = createPersistedAIState(analysisResult, coverCandidates);
+  await window.electronAPI.saveProjectSection(
+    projectDir,
+    'aiAnalysis',
+    JSON.stringify(persistedState),
+  );
 }
 
 export function useAIVideoWorkflow() {
@@ -370,15 +374,25 @@ export function useAIVideoWorkflow() {
   );
 
   const start = useCallback(
-    (scriptText: string, options?: WorkflowStartOptions) => {
+    async (scriptText: string, options?: WorkflowStartOptions) => {
       resetWorkflowSession();
       workflowSession.requestId = crypto.randomUUID();
       workflowSession.retryStep = 'tts_generating';
-      workflowSession.scriptText = scriptText;
       workflowSession.projectDir = getProjectDir() ?? '';
       workflowSession.pauseAfterTts = options?.pauseAfterTts ?? false;
 
-      void runFromStep('tts_generating', scriptText, workflowSession.projectDir);
+      // 优先使用传入文本，否则从磁盘读取 script.md
+      let text = scriptText;
+      if (!text.trim() && workflowSession.projectDir) {
+        const diskText = await window.electronAPI.loadScriptFile(
+          workflowSession.projectDir,
+          'script.md',
+        );
+        text = diskText ?? '';
+      }
+      workflowSession.scriptText = text;
+
+      void runFromStep('tts_generating', text, workflowSession.projectDir);
     },
     [runFromStep],
   );
