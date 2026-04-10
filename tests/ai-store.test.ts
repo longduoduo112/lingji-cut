@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadAISettings, saveAISettings } from '../src/store/ai';
+import { loadAISettings, saveAISettings, useAIStore } from '../src/store/ai';
 
 const AI_SETTINGS_KEY = 'podcast-editor-ai-settings';
 
@@ -25,6 +25,7 @@ describe('AI settings store helpers', () => {
     const localStorage = createStorageMock();
     vi.stubGlobal('window', { localStorage });
     localStorage.clear();
+    useAIStore.getState().resetWorkflow();
   });
 
   it('defaults enableThinking to true when loading legacy settings', () => {
@@ -41,10 +42,14 @@ describe('AI settings store helpers', () => {
 
     expect(loadAISettings()).toMatchObject({
       enableThinking: true,
+      minimaxApiKey: '',
+      minimaxGroupId: '',
+      minimaxVoiceId: 'male-qn-qingse',
+      minimaxSpeed: 1.0,
     });
   });
 
-  it('persists enableThinking when explicitly disabled', () => {
+  it('persists enableThinking and minimax settings when explicitly configured', () => {
     saveAISettings({
       llmBaseUrl: 'https://api.openai.com/v1',
       llmApiKey: 'sk-test',
@@ -52,10 +57,45 @@ describe('AI settings store helpers', () => {
       jimengApiUrl: 'http://47.109.159.194:8330',
       jimengSessionId: 'session-test',
       enableThinking: false,
+      minimaxApiKey: 'mm-key',
+      minimaxGroupId: 'mm-group',
+      minimaxVoiceId: 'female-yujie',
+      minimaxSpeed: 1.25,
     });
 
     expect(loadAISettings()).toMatchObject({
       enableThinking: false,
+      minimaxApiKey: 'mm-key',
+      minimaxGroupId: 'mm-group',
+      minimaxVoiceId: 'female-yujie',
+      minimaxSpeed: 1.25,
+    });
+  });
+
+  it('supports workflow updates and reset', () => {
+    useAIStore.getState().setWorkflow({
+      step: 'tts_generating',
+      progress: 42,
+      stepLabel: '正在生成语音…',
+      canCancel: true,
+    });
+
+    expect(useAIStore.getState().workflow).toMatchObject({
+      step: 'tts_generating',
+      progress: 42,
+      stepLabel: '正在生成语音…',
+      canCancel: true,
+      error: null,
+    });
+
+    useAIStore.getState().resetWorkflow();
+
+    expect(useAIStore.getState().workflow).toEqual({
+      step: 'idle',
+      progress: 0,
+      stepLabel: '',
+      error: null,
+      canCancel: false,
     });
   });
 });

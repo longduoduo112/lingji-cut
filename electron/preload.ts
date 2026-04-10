@@ -93,6 +93,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readDirectory: (dir: string) =>
     ipcRenderer.invoke('read-directory', dir) as Promise<FileEntry[]>,
   setMenuContext: (context: MenuContext) => ipcRenderer.invoke('set-menu-context', context),
+  generateTTS: (args: {
+    requestId: string;
+    text: string;
+    voiceId: string;
+    speed: number;
+    apiKey: string;
+    groupId: string;
+    projectDir: string;
+  }) => ipcRenderer.invoke('generate-tts', args),
+  onTTSProgress: (callback: (pct: number) => void) => {
+    const handler = (_event: unknown, pct: number) => callback(pct);
+    ipcRenderer.on('tts-progress', handler);
+    return () => ipcRenderer.removeListener('tts-progress', handler);
+  },
+  cancelTTS: (requestId: string) => ipcRenderer.invoke('cancel-tts', requestId),
   selectOutputPath: () => ipcRenderer.invoke('select-output-path'),
   showEditorContextMenu: () => ipcRenderer.invoke('show-editor-context-menu'),
 });

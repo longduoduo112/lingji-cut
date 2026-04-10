@@ -4,7 +4,7 @@ import { AppStatusBar } from './components/AppStatusBar';
 import { Toolbar } from './components/Toolbar';
 import type { AppPage, MenuAction, MenuEvent } from './lib/electron-api';
 import { useAgentStore } from './store/agent';
-import { parsePersistedAIState } from './lib/ai-persistence';
+import { createPersistedAIState, parsePersistedAIState } from './lib/ai-persistence';
 import { useViewportSize } from './hooks/useViewportSize';
 import { getAppShortcutCommand, isTextEditingTarget } from './lib/native-shortcuts';
 import { Editor } from './pages/Editor';
@@ -67,6 +67,19 @@ export default function App() {
   const clearAIAnalysis = useAIStore((state) => state.clearAnalysis);
   const setAIAnalysisResult = useAIStore((state) => state.setAnalysisResult);
   const setCoverCandidates = useAIStore((state) => state.setCoverCandidates);
+
+  const invalidateAIAnalysis = useCallback(async (projectDir?: string) => {
+    clearAIAnalysis();
+
+    if (!projectDir) {
+      return;
+    }
+
+    await window.electronAPI.saveAIAnalysis(
+      projectDir,
+      JSON.stringify(createPersistedAIState(null, []), null, 2),
+    );
+  }, [clearAIAnalysis]);
 
   const syncWorkspaceState = useCallback(() => {
     setCurrentProjectDir(getCurrentProjectDir());
@@ -239,7 +252,26 @@ export default function App() {
     const { entries, durationMs } = await window.electronAPI.parseSrtFile(srtPath);
     setSrtEntries(entries);
     setPodcast(timeline.podcast.audioPath, srtPath, durationMs);
-  }, [setPodcast, setSrtEntries, timeline.podcast.audioPath]);
+    await invalidateAIAnalysis(currentProjectDir);
+  }, [currentProjectDir, invalidateAIAnalysis, setPodcast, setSrtEntries, timeline.podcast.audioPath]);
+
+  const handleUseAssetAsPodcastAudio = useCallback(
+    async (audioPath: string, durationMs: number) => {
+      const resolvedDuration = durationMs > 0 ? durationMs : timeline.podcast.durationMs;
+      setPodcast(audioPath, timeline.podcast.srtPath, resolvedDuration);
+    },
+    [setPodcast, timeline.podcast.durationMs, timeline.podcast.srtPath],
+  );
+
+  const handleUseAssetAsPodcastSrt = useCallback(
+    async (srtPath: string) => {
+      const { entries, durationMs } = await window.electronAPI.parseSrtFile(srtPath);
+      setSrtEntries(entries);
+      setPodcast(timeline.podcast.audioPath, srtPath, durationMs);
+      await invalidateAIAnalysis(currentProjectDir);
+    },
+    [currentProjectDir, invalidateAIAnalysis, setPodcast, setSrtEntries, timeline.podcast.audioPath],
+  );
 
   const handleCommand = useCallback(
     async (command: MenuAction) => {
@@ -528,13 +560,19 @@ export default function App() {
             <>
               {/* 写稿工作台和编辑器保持同时挂载，用 display 切换，避免重新挂载引起的布局振荡 */}
               <div style={{ display: page === 'script-workbench' ? 'contents' : 'none' }}>
-                <ScriptWorkbench onBack={() => setPage('welcome')} />
+                <ScriptWorkbench
+                  onBack={() => setPage('welcome')}
+                  onNavigateToEditor={() => setPage('editor')}
+                />
               </div>
               <div style={{ display: page === 'editor' ? 'contents' : 'none' }}>
                 <Editor
                   onAddAsset={handleAddAsset}
+                  onUseAsPodcastAudio={handleUseAssetAsPodcastAudio}
+                  onUseAsPodcastSrt={handleUseAssetAsPodcastSrt}
                   exportRequestToken={exportRequestToken}
                   projectDir={currentProjectDir}
+                  isActive={page === 'editor'}
                 />
               </div>
             </>

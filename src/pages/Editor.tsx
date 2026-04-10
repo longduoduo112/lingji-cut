@@ -7,16 +7,22 @@ import { EditorInspector, type InspectorSelection } from '../components/EditorIn
 import { ExportProgress } from '../components/ExportProgress';
 import { ExportSettingsModal } from '../components/ExportSettingsModal';
 import { PreviewPanel } from '../components/PreviewPanel';
+import { TimelineAIOverlay } from '../components/TimelineAIOverlay';
 import { Timeline } from '../components/Timeline';
 import type { ProjectOverviewMeta } from '../components/ProjectOverviewPanel';
 import type { ProjectMetadata } from '../lib/electron-api';
+import { createPersistedAIState } from '../lib/ai-persistence';
+import { getAISettingsIssue } from '../lib/ai-settings';
 import type { ExportConfig } from '../lib/export-settings';
 import { createDefaultTextData } from '../lib/text-templates';
 import { DEFAULT_VISUAL_TRACK_ID, type OverlayPosition } from '../types';
+import type { AIAnalysisResult } from '../types/ai';
+import { useAIVideoWorkflow } from '../hooks/useAIVideoWorkflow';
 import { useViewportSize } from '../hooks/useViewportSize';
 import { getEditorLayoutMode, getTimelinePanelBounds } from '../lib/layout';
 import { shouldUpdatePlaybackTime } from '../lib/playback';
 import { frameToMs, getFileNameFromPath, msToFrame } from '../lib/utils';
+import { loadAISettings, useAIStore } from '../store/ai';
 import { useTimelineStore } from '../store/timeline';
 import { Button } from '../ui';
 import { AppIcon } from '../components/AppIcon';
@@ -24,8 +30,11 @@ import styles from './Editor.module.css';
 
 interface EditorProps {
   onAddAsset: () => Promise<void>;
+  onUseAsPodcastAudio: (path: string, durationMs: number) => Promise<void>;
+  onUseAsPodcastSrt: (path: string) => Promise<void>;
   exportRequestToken: number;
   projectDir?: string;
+  isActive?: boolean;
 }
 
 const TIMELINE_PANEL_HEIGHT_KEY = 'podcast-editor-timeline-panel-height';
@@ -45,11 +54,19 @@ function readStoredTimelinePanelHeight(): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function Editor({ onAddAsset, exportRequestToken, projectDir = '' }: EditorProps) {
+export function Editor({
+  onAddAsset,
+  onUseAsPodcastAudio,
+  onUseAsPodcastSrt,
+  exportRequestToken,
+  projectDir = '',
+  isActive = false,
+}: EditorProps) {
   const viewport = useViewportSize();
   const layout = getEditorLayoutMode(viewport.width, viewport.height);
   const panelBounds = getTimelinePanelBounds(viewport.height, layout.compactTimeline);
   const playerRef = useRef<PlayerRef>(null);
+  const timelineWrapRef = useRef<HTMLDivElement>(null);
   const currentTimeRef = useRef(0);
   const dragStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const [timelinePanelHeight, setTimelinePanelHeight] = useState(layout.timelineHeight);
@@ -66,6 +83,16 @@ export function Editor({ onAddAsset, exportRequestToken, projectDir = '' }: Edit
   const [projectMeta, setProjectMeta] = useState<ProjectOverviewMeta | null>(null);
   const [isProjectMetaLoading, setIsProjectMetaLoading] = useState(false);
   const store = useTimelineStore();
+  const clearAIAnalysis = useAIStore((state) => state.clearAnalysis);
+  const setAIAnalysisError = useAIStore((state) => state.setAnalysisError);
+  const setAIAnalysisResult = useAIStore((state) => state.setAnalysisResult);
+  const setCoverCandidates = useAIStore((state) => state.setCoverCandidates);
+  const {
+    start: startWorkflow,
+    cancel: cancelWorkflow,
+    continueFromTtsDone,
+    workflow,
+  } = useAIVideoWorkflow();
   const assets = store.assets ?? [];
   const { timeline } = store;
   const overlayCount = timeline.overlays?.length ?? 0;
@@ -227,6 +254,12 @@ export function Editor({ onAddAsset, exportRequestToken, projectDir = '' }: Edit
     setIsExportSettingsOpen(true);
   }, [exportRequestToken]);
 
+  useEffect(() => {
+    if (isActive && workflow.step === 'tts_done' && projectDir) {
+      continueFromTtsDone(projectDir);
+    }
+  }, [continueFromTtsDone, isActive, projectDir, workflow.step]);
+
   const handleTogglePlay = useCallback(() => {
     const player = playerRef.current;
     if (!player) {
@@ -259,6 +292,59 @@ export function Editor({ onAddAsset, exportRequestToken, projectDir = '' }: Edit
     setIsExportSettingsOpen(true);
   }, []);
 
+  const persistAIState = useCallback(
+    async (result: AIAnalysisResult | null) => {
+      if (!projectDir) {
+        return;
+      }
+
+      const persistedState = createPersistedAIState(result, []);
+      await window.electronAPI.saveAIAnalysis(
+        projectDir,
+        JSON.stringify(persistedState, null, 2),
+      );
+    },
+    [projectDir],
+  );
+
+  const rerunAiAnalysisForCurrentSrt = useCallback(
+    async (entries: ReturnType<typeof useTimelineStore.getState>['srtEntries']) => {
+      const settings = loadAISettings();
+      const settingsIssue = getAISettingsIssue(settings);
+
+      clearAIAnalysis();
+      await persistAIState(null);
+
+      if (settingsIssue || !settings) {
+        setAIAnalysisError(settingsIssue ?? '请先完成 AI 配置后再重新分析');
+        setActivePanel('ai');
+        return;
+      }
+
+      try {
+        const result = (await window.electronAPI.analyzeSrt({
+          entries,
+          settings,
+        })) as AIAnalysisResult;
+        setAIAnalysisResult(result);
+        setCoverCandidates([]);
+        await persistAIState(result);
+      } catch (error) {
+        console.error('重新分析字幕失败:', error);
+        setAIAnalysisError(
+          error instanceof Error ? error.message : '重新分析字幕失败，请稍后重试。',
+        );
+      }
+    },
+    [
+      clearAIAnalysis,
+      persistAIState,
+      setAIAnalysisError,
+      setAIAnalysisResult,
+      setCoverCandidates,
+    ],
+  );
+
   const handleOpenAICardInspector = useCallback((cardId: string) => {
     setInspectorSelection({ type: 'ai-card', cardId });
     setActivePanel('ai');
@@ -278,6 +364,57 @@ export function Editor({ onAddAsset, exportRequestToken, projectDir = '' }: Edit
     },
     [],
   );
+
+  const handleReplaceAudio = useCallback(async () => {
+    const audioPath = await window.electronAPI.selectMediaFile('audio');
+    if (!audioPath) {
+      return;
+    }
+
+    store.setPodcast(
+      audioPath,
+      store.timeline.podcast?.srtPath ?? '',
+      store.timeline.podcast?.durationMs ?? 0,
+    );
+  }, [store]);
+
+  const handleReplaceSrt = useCallback(async () => {
+    const srtPath = await window.electronAPI.selectMediaFile('srt');
+    if (!srtPath) {
+      return;
+    }
+
+    const { entries, durationMs } = await window.electronAPI.parseSrtFile(srtPath);
+    store.setSrtEntries(entries);
+    store.setPodcast(store.timeline.podcast?.audioPath ?? '', srtPath, durationMs);
+    clearAIAnalysis();
+    await persistAIState(null);
+
+    const shouldReanalyze = window.confirm(
+      '替换字幕后，AI 卡片分析将失效。是否立即重新分析？',
+    );
+
+    if (shouldReanalyze) {
+      await rerunAiAnalysisForCurrentSrt(entries);
+    }
+  }, [rerunAiAnalysisForCurrentSrt, store]);
+
+  const handleStartAIClip = useCallback(async () => {
+    if (!projectDir) {
+      return;
+    }
+
+    const scriptContent = await window.electronAPI
+      .loadScriptFile(projectDir, 'script.md')
+      .catch(() => null);
+
+    if (!scriptContent?.trim()) {
+      window.alert('未找到 script.md，请先在文稿工作台完成口播稿生成。');
+      return;
+    }
+
+    startWorkflow(scriptContent);
+  }, [projectDir, startWorkflow]);
 
   const handleAddTextOverlay = useCallback(() => {
     const store = useTimelineStore.getState();
@@ -427,35 +564,54 @@ export function Editor({ onAddAsset, exportRequestToken, projectDir = '' }: Edit
               data-editor-sidebar-width="224"
             >
               <div className={styles.tabStrip}>
-                <div className={styles.topTabBar} role="tablist" aria-label="侧边栏面板切换">
-                  <Button
-                    role="tab"
-                    aria-selected={activePanel === 'assets'}
-                    variant="ghost"
-                    size="sm"
-                    className={joinClassNames(
-                      styles.topTabButton,
-                      activePanel === 'assets' ? styles.topTabButtonActive : '',
-                    )}
-                    onClick={() => setActivePanel('assets')}
-                  >
-                    <AppIcon name="folder-open" size={14} className={styles.topTabIcon} />
-                    <span>素材</span>
-                  </Button>
-                  <Button
-                    role="tab"
-                    aria-selected={activePanel === 'ai'}
-                    variant="ghost"
-                    size="sm"
-                    className={joinClassNames(
-                      styles.topTabButton,
-                      activePanel === 'ai' ? styles.topTabButtonActive : '',
-                    )}
-                    onClick={() => setActivePanel('ai')}
-                  >
-                    <AppIcon name="sparkles" size={14} className={styles.topTabIcon} />
-                    <span>AI 助手</span>
-                  </Button>
+                <div className={styles.tabHeader}>
+                  <div className={styles.topTabBar} role="tablist" aria-label="侧边栏面板切换">
+                    <Button
+                      role="tab"
+                      aria-selected={activePanel === 'assets'}
+                      variant="ghost"
+                      size="sm"
+                      className={joinClassNames(
+                        styles.topTabButton,
+                        activePanel === 'assets' ? styles.topTabButtonActive : '',
+                      )}
+                      onClick={() => setActivePanel('assets')}
+                    >
+                      <AppIcon name="folder-open" size={14} className={styles.topTabIcon} />
+                      <span>素材</span>
+                    </Button>
+                    <Button
+                      role="tab"
+                      aria-selected={activePanel === 'ai'}
+                      variant="ghost"
+                      size="sm"
+                      className={joinClassNames(
+                        styles.topTabButton,
+                        activePanel === 'ai' ? styles.topTabButtonActive : '',
+                      )}
+                      onClick={() => setActivePanel('ai')}
+                    >
+                      <AppIcon name="sparkles" size={14} className={styles.topTabIcon} />
+                      <span>AI 助手</span>
+                    </Button>
+                  </div>
+                  {(workflow.step === 'idle' ||
+                    workflow.step === 'done' ||
+                    workflow.step === 'error') &&
+                  projectDir ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={styles.workflowAction}
+                      aria-label="AI 一键剪辑"
+                      onClick={() => {
+                        void handleStartAIClip();
+                      }}
+                    >
+                      <AppIcon name="sparkles" size={14} className={styles.topTabIcon} />
+                      <span>AI 一键剪辑</span>
+                    </Button>
+                  ) : null}
                 </div>
               </div>
               <div className={styles.panelBody}>
@@ -466,6 +622,10 @@ export function Editor({ onAddAsset, exportRequestToken, projectDir = '' }: Edit
                     onAddAsset={onAddAsset}
                     onOpenSubtitleInspector={handleOpenSubtitleInspector}
                     onAddTextOverlay={handleAddTextOverlay}
+                    onUseAsPodcastAudio={onUseAsPodcastAudio}
+                    onUseAsPodcastSrt={onUseAsPodcastSrt}
+                    onReplaceAudio={handleReplaceAudio}
+                    onReplaceSrt={handleReplaceSrt}
                   />
                 ) : (
                   <AIPanel
@@ -525,7 +685,11 @@ export function Editor({ onAddAsset, exportRequestToken, projectDir = '' }: Edit
         <div className={styles.resizeThumb} />
       </div>
 
-      <div className={styles.timelineWrap} data-editor-region="timeline-wrap">
+      <div
+        ref={timelineWrapRef}
+        className={styles.timelineWrap}
+        data-editor-region="timeline-wrap"
+      >
         <Timeline
           currentTimeMs={currentTimeMs}
           onSeek={handleSeek}
@@ -533,6 +697,11 @@ export function Editor({ onAddAsset, exportRequestToken, projectDir = '' }: Edit
           onOpenAICardInspector={handleOpenAICardInspector}
           onOpenSubtitleInspector={handleOpenSubtitleInspector}
           onOpenOverlayInspector={handleOpenOverlayInspector}
+        />
+        <TimelineAIOverlay
+          workflow={workflow}
+          timelineContainerRef={timelineWrapRef}
+          onCancel={cancelWorkflow}
         />
       </div>
 

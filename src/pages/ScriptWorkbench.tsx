@@ -1,6 +1,8 @@
 import { AlertTriangle, Sparkles, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
+import { AppIcon } from '../components/AppIcon';
+import { useAIVideoWorkflow } from '../hooks/useAIVideoWorkflow';
 import type { FileEntry } from '../lib/electron-api';
 import {
   createPersistedScriptState,
@@ -37,15 +39,18 @@ import { TemplateDrawerContent } from '../components/script/TemplateDrawerConten
 import { ThinkingBlock } from '../components/agent/ThinkingBlock';
 import { ScriptEditor } from '../ui/components/script-editor';
 import { AlertProvider } from '../ui/components/alert';
+import { Button } from '../ui';
 import styles from './ScriptWorkbench.module.css';
 
 interface ScriptWorkbenchProps {
   onBack: () => void;
+  onNavigateToEditor?: () => void;
 }
 
 const SPECIAL_FILES = new Set(['original.md', 'script.md']);
 
-export function ScriptWorkbench({ onBack }: ScriptWorkbenchProps) {
+export function ScriptWorkbench({ onBack, onNavigateToEditor }: ScriptWorkbenchProps) {
+  const { start: startWorkflow, workflow } = useAIVideoWorkflow();
   const {
     currentStep,
     originalText,
@@ -130,6 +135,12 @@ export function ScriptWorkbench({ onBack }: ScriptWorkbenchProps) {
     () => waitForValue(() => editorViewRef.current, { maxAttempts: 12 }),
     [],
   );
+
+  useEffect(() => {
+    if (workflow.step === 'tts_done' && onNavigateToEditor) {
+      onNavigateToEditor();
+    }
+  }, [onNavigateToEditor, workflow.step]);
 
   const syncContentToStore = useCallback(
     (filePath: string, content: string) => {
@@ -879,6 +890,14 @@ export function ScriptWorkbench({ onBack }: ScriptWorkbenchProps) {
     }
   }, [openDrawer, scriptText, setAnnotations, setReviewing]);
 
+  const handleGenerateVideo = useCallback(() => {
+    if (!scriptText.trim()) {
+      return;
+    }
+
+    startWorkflow(scriptText, { pauseAfterTts: true });
+  }, [scriptText, startWorkflow]);
+
   const handleUseExternalVersion = useCallback(
     (file: string) => {
       const externalContent = stashedContent[file];
@@ -1399,6 +1418,35 @@ export function ScriptWorkbench({ onBack }: ScriptWorkbenchProps) {
           {projectDir && (
             <QuickActionBar onImportText={() => { void handleImportText(); }} />
           )}
+          {projectDir ? (
+            <div className={styles.workflowBar}>
+              {(workflow.step === 'idle' ||
+                workflow.step === 'done' ||
+                workflow.step === 'error') ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!scriptText.trim()}
+                  className={styles.workflowButton}
+                  onClick={handleGenerateVideo}
+                >
+                  <AppIcon name="film" size={14} />
+                  <span>生成视频</span>
+                </Button>
+              ) : null}
+              {workflow.step !== 'idle' &&
+              workflow.step !== 'done' &&
+              workflow.step !== 'error' ? (
+                <div className={styles.workflowStatus}>
+                  <span>AI 视频流程进行中</span>
+                  <span>{workflow.stepLabel} {Math.round(workflow.progress)}%</span>
+                </div>
+              ) : null}
+              {workflow.step === 'error' && workflow.error ? (
+                <div className={styles.workflowError}>{workflow.error}</div>
+              ) : null}
+            </div>
+          ) : null}
           <div className={styles.editorBody}>
             {activeFile && fileConflictMap[activeFile] ? (
               <div className={styles.conflictBanner}>

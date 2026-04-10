@@ -139,7 +139,17 @@ export interface ElectronAPI {
   onFileTreeChanged: (callback: (data: { type: string; file: string }) => void) => () => void;
   readDirectory: (dir: string) => Promise<FileEntry[]>;
   setMenuContext: (context: MenuContext) => Promise<void>;
-
+  generateTTS: (args: {
+    requestId: string;
+    text: string;
+    voiceId: string;
+    speed: number;
+    apiKey: string;
+    groupId: string;
+    projectDir: string;
+  }) => Promise<{ audioPath: string; srtPath: string; durationMs: number }>;
+  onTTSProgress: (callback: (pct: number) => void) => () => void;
+  cancelTTS: (requestId: string) => Promise<void>;
   selectOutputPath: () => Promise<string | null>;
   showEditorContextMenu: () => Promise<void>;
 }

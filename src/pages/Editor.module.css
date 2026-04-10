@@ -62,11 +62,18 @@
   border-bottom: 1px solid var(--color-separator);
 }
 
+.tabHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .topTabBar {
   display: flex;
   align-items: center;
   gap: 6px;
   min-height: 33px;
+  flex: 1;
 }
 
 .topTabButton {
@@ -104,6 +111,20 @@
   flex-shrink: 0;
   width: 14px;
   height: 14px;
+}
+
+.workflowAction {
+  flex-shrink: 0;
+  min-height: 27px;
+  padding-inline: 10px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-selection-blue) 28%, transparent);
+  background: color-mix(in srgb, var(--color-selection-blue) 12%, transparent);
+  color: var(--color-text-primary);
+}
+
+.workflowAction:hover {
+  background: color-mix(in srgb, var(--color-selection-blue) 18%, transparent);
 }
 
 .panelBody {
@@ -150,4 +171,5 @@
 .timelineWrap {
   min-height: 0;
   overflow: hidden;
+  position: relative;
 }

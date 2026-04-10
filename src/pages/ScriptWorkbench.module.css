@@ -15,6 +15,40 @@
   position: relative;
 }
 
+.workflowBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border-subtle, #38383a);
+  background: color-mix(
+    in srgb,
+    var(--color-window-bg, #1c1c1e) 78%,
+    var(--color-panel-bg, #2c2c2e)
+  );
+}
+
+.workflowButton {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-selection-blue, #0a84ff) 26%, transparent);
+  background: color-mix(in srgb, var(--color-selection-blue, #0a84ff) 10%, transparent);
+  color: var(--color-text-primary, #fff);
+}
+
+.workflowStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #c4b5fd;
+}
+
+.workflowError {
+  font-size: 12px;
+  color: #fca5a5;
+}
+
 .editorBody {
   flex: 1;
   min-height: 0;

@@ -91,4 +91,23 @@ describe('ScriptWorkbench', () => {
     expect(source).toContain('ThinkingBlock');
     expect(source).toMatch(/onReasoningChunk/);
   });
+
+  it('declares navigation callback support for jumping into the editor after TTS', () => {
+    const source = readFileSync(
+      new URL('../src/pages/ScriptWorkbench.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(source).toContain('onNavigateToEditor');
+  });
+
+  it('includes a generate video action in the workbench shell', () => {
+    const source = readFileSync(
+      new URL('../src/pages/ScriptWorkbench.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(source).toContain('生成视频');
+    expect(source).toContain('useAIVideoWorkflow');
+  });
 });

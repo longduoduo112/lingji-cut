@@ -34,6 +34,10 @@ export function AISettingsModal({
   const [enableThinking, setEnableThinking] = useState(true);
   const [jimengApiUrl, setJimengApiUrl] = useState("");
   const [jimengSessionId, setJimengSessionId] = useState("");
+  const [minimaxApiKey, setMinimaxApiKey] = useState("");
+  const [minimaxGroupId, setMinimaxGroupId] = useState("");
+  const [minimaxVoiceId, setMinimaxVoiceId] = useState("male-qn-qingse");
+  const [minimaxSpeed, setMinimaxSpeed] = useState("1.0");
 
   useEffect(() => {
     if (!visible) {
@@ -46,6 +50,10 @@ export function AISettingsModal({
     setEnableThinking(settings?.enableThinking ?? true);
     setJimengApiUrl(settings?.jimengApiUrl ?? "http://47.109.159.194:8330");
     setJimengSessionId(settings?.jimengSessionId ?? "");
+    setMinimaxApiKey(settings?.minimaxApiKey ?? "");
+    setMinimaxGroupId(settings?.minimaxGroupId ?? "");
+    setMinimaxVoiceId(settings?.minimaxVoiceId ?? "male-qn-qingse");
+    setMinimaxSpeed(String(settings?.minimaxSpeed ?? 1.0));
   }, [settings, visible]);
 
   const canSave = Boolean(llmBaseUrl.trim() && llmApiKey.trim());
@@ -101,6 +109,33 @@ export function AISettingsModal({
               onChange={setJimengSessionId}
               type="password"
             />
+
+            <Divider label="语音合成（MiniMax）" />
+            <SettingsField
+              label="MiniMax API Key"
+              value={minimaxApiKey}
+              placeholder="eyJ..."
+              onChange={setMinimaxApiKey}
+              type="password"
+            />
+            <SettingsField
+              label="MiniMax Group ID"
+              value={minimaxGroupId}
+              placeholder="1234567890"
+              onChange={setMinimaxGroupId}
+            />
+            <SettingsField
+              label="发音人 ID"
+              value={minimaxVoiceId}
+              placeholder="male-qn-qingse"
+              onChange={setMinimaxVoiceId}
+            />
+            <SettingsField
+              label="语速（0.5~2.0）"
+              value={minimaxSpeed}
+              placeholder="1.0"
+              onChange={setMinimaxSpeed}
+            />
           </div>
         </DialogBody>
         <DialogFooter>
@@ -118,6 +153,10 @@ export function AISettingsModal({
                 enableThinking,
                 jimengApiUrl,
                 jimengSessionId,
+                minimaxApiKey,
+                minimaxGroupId,
+                minimaxVoiceId,
+                minimaxSpeed: parseFloat(minimaxSpeed) || 1.0,
               });
               onClose();
             }}
