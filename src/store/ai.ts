@@ -6,6 +6,32 @@ import {
 } from '../lib/ai-persistence';
 import type { AIAnalysisResult, AICard, AISettings, CoverCandidate } from '../types/ai';
 
+export type WorkflowStep =
+  | 'idle'
+  | 'tts_generating'
+  | 'tts_done'
+  | 'ai_analyzing'
+  | 'cover_generating'
+  | 'arranging'
+  | 'done'
+  | 'error';
+
+export interface WorkflowState {
+  step: WorkflowStep;
+  progress: number;
+  stepLabel: string;
+  error: string | null;
+  canCancel: boolean;
+}
+
+export const DEFAULT_WORKFLOW: WorkflowState = {
+  step: 'idle',
+  progress: 0,
+  stepLabel: '',
+  error: null,
+  canCancel: false,
+};
+
 const AI_SETTINGS_KEY = 'podcast-editor-ai-settings';
 
 export type AITab = 'cards' | 'cover';
@@ -27,6 +53,9 @@ export interface AIStore {
   setGeneratingCovers: (generating: boolean) => void;
   setActiveTab: (tab: AITab) => void;
   clearAnalysis: () => void;
+  workflow: WorkflowState;
+  setWorkflow: (updates: Partial<WorkflowState>) => void;
+  resetWorkflow: () => void;
 }
 
 export const useAIStore = create<AIStore>((set) => ({
@@ -55,6 +84,12 @@ export const useAIStore = create<AIStore>((set) => ({
   setGeneratingCovers: (generating) => set({ isGeneratingCovers: generating }),
   setActiveTab: (tab) => set({ activeTab: tab }),
   clearAnalysis: () => set({ analysisResult: null, analysisError: null, coverCandidates: [] }),
+  workflow: { ...DEFAULT_WORKFLOW },
+  setWorkflow: (updates) =>
+    set((state) => ({
+      workflow: { ...state.workflow, ...updates },
+    })),
+  resetWorkflow: () => set({ workflow: { ...DEFAULT_WORKFLOW } }),
 }));
 
 export function loadAISettings(): AISettings | null {
@@ -72,6 +107,10 @@ export function loadAISettings(): AISettings | null {
     return {
       ...parsed,
       enableThinking: parsed.enableThinking ?? true,
+      minimaxApiKey: parsed.minimaxApiKey ?? '',
+      minimaxGroupId: parsed.minimaxGroupId ?? '',
+      minimaxVoiceId: parsed.minimaxVoiceId ?? 'male-qn-qingse',
+      minimaxSpeed: parsed.minimaxSpeed ?? 1.0,
     };
   } catch {
     return null;

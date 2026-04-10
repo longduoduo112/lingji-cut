@@ -43,6 +43,26 @@ vi.mock('../src/components/ExportSettingsModal', () => ({
   ExportSettingsModal: () => null,
 }));
 
+vi.mock('../src/hooks/useAIVideoWorkflow', () => ({
+  useAIVideoWorkflow: () => ({
+    start: () => undefined,
+    cancel: () => undefined,
+    retry: () => undefined,
+    continueFromTtsDone: () => undefined,
+    workflow: {
+      step: 'idle',
+      progress: 0,
+      stepLabel: '',
+      error: null,
+      canCancel: false,
+    },
+  }),
+}));
+
+vi.mock('../src/components/TimelineAIOverlay', () => ({
+  TimelineAIOverlay: () => <div data-editor-region="timeline-ai-overlay">timeline-ai-overlay</div>,
+}));
+
 vi.mock('../src/store/timeline', () => ({
   useTimelineStore: () => ({
     timeline: {
@@ -93,5 +113,22 @@ describe('Editor', () => {
 
     expect(html).toContain('data-asset-audio-hook="true"');
     expect(html).toContain('data-asset-srt-hook="true"');
+  });
+
+  it('renders AI one-click clip button when project dir is available', async () => {
+    const rendered = await (async () => {
+      const { Editor } = await import('../src/pages/Editor');
+      return renderToStaticMarkup(
+        <Editor
+          onAddAsset={async () => undefined}
+          onUseAsPodcastAudio={async () => undefined}
+          onUseAsPodcastSrt={async () => undefined}
+          exportRequestToken={0}
+          projectDir="/tmp/project"
+        />,
+      );
+    })();
+
+    expect(rendered).toContain('AI 一键剪辑');
   });
 });

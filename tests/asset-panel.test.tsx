@@ -63,4 +63,21 @@ describe('AssetPanel', () => {
     expect(html).toContain('intro.mp4');
     expect(html).toContain('导入');
   });
+
+  it('renders dedicated timeline attach actions for audio and srt assets', () => {
+    const html = renderToStaticMarkup(<AssetPanel compact={false} />);
+
+    expect(html).toContain('设为音频轨');
+    expect(html).toContain('设为字幕轨');
+  });
+
+  it('renders podcast resource section with replace actions', () => {
+    const html = renderToStaticMarkup(<AssetPanel compact={false} />);
+
+    expect(html).toContain('口播资源');
+    expect(html).toContain('podcast.mp3');
+    expect(html).toContain('subtitles.srt');
+    expect(html).toContain('替换音频');
+    expect(html).toContain('替换字幕');
+  });
 });

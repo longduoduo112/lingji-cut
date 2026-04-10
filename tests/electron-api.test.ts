@@ -15,6 +15,8 @@ describe('electron menu actions', () => {
       'replace-srt',
       'add-asset',
       'export',
+      'save-script',
+      'go-back',
     ]);
   });
 

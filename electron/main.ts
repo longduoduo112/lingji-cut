@@ -32,6 +32,62 @@ let menuContext: MenuContext = {
   recentProjects: [],
 };
 let fileWatcher: FSWatcher | null = null;
+const activeTtsRequests = new Map<string, AbortController>();
+
+interface MinimaxSubtitleWord {
+  text: string;
+  time_ms: number;
+  duration_ms: number;
+}
+
+function assembleSRT(words: MinimaxSubtitleWord[]): string {
+  if (words.length === 0) return '';
+
+  const sentences: Array<{ words: MinimaxSubtitleWord[]; startMs: number; endMs: number }> = [];
+  let current: MinimaxSubtitleWord[] = [];
+
+  for (const word of words) {
+    current.push(word);
+    const isSentenceEnd =
+      /[。！？….!?]$/.test(word.text.trimEnd()) || current.length >= 20;
+    if (isSentenceEnd) {
+      const startMs = current[0].time_ms;
+      const lastWord = current[current.length - 1];
+      sentences.push({
+        words: current,
+        startMs,
+        endMs: lastWord.time_ms + lastWord.duration_ms,
+      });
+      current = [];
+    }
+  }
+
+  if (current.length > 0) {
+    const startMs = current[0].time_ms;
+    const lastWord = current[current.length - 1];
+    sentences.push({
+      words: current,
+      startMs,
+      endMs: lastWord.time_ms + lastWord.duration_ms,
+    });
+  }
+
+  const toSRTTime = (ms: number): string => {
+    const safeMs = Math.max(0, Math.round(ms));
+    const h = Math.floor(safeMs / 3_600_000);
+    const m = Math.floor((safeMs % 3_600_000) / 60_000);
+    const s = Math.floor((safeMs % 60_000) / 1_000);
+    const mil = safeMs % 1_000;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(mil).padStart(3, '0')}`;
+  };
+
+  return `${sentences
+    .map((sentence, index) => {
+      const text = sentence.words.map((w) => w.text).join('');
+      return `${index + 1}\n${toSRTTime(sentence.startMs)} --> ${toSRTTime(sentence.endMs)}\n${text}`;
+    })
+    .join('\n\n')}\n`;
+}
 
 function sendMenuEvent(event: MenuEvent) {
   mainWindow?.webContents.send('menu-action', event);
@@ -662,6 +718,138 @@ ipcMain.handle('select-output-path', async () => {
   });
 
   return result.canceled ? null : result.filePath;
+});
+
+ipcMain.handle(
+  'generate-tts',
+  async (
+    _event,
+    args: {
+      requestId: string;
+      text: string;
+      voiceId: string;
+      speed: number;
+      apiKey: string;
+      groupId: string;
+      projectDir: string;
+    },
+  ) => {
+    const { requestId, text, voiceId, speed, apiKey, groupId, projectDir } = args;
+    const controller = new AbortController();
+    activeTtsRequests.set(requestId, controller);
+    mainWindow?.webContents.send('tts-progress', 0);
+
+    try {
+      const response = await fetch('https://api.minimax.chat/v1/t2a_pro', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          GroupId: groupId,
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: 'speech-01-turbo',
+          text,
+          stream: true,
+          voice_setting: { voice_id: voiceId, speed, pitch: 0 },
+          audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' },
+          subtitle_enable: true,
+          language_boost: 'zh',
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        const errText = await response.text().catch(() => String(response.status));
+        throw new Error(`MiniMax TTS 请求失败: ${errText}`);
+      }
+
+      const audioChunks: Buffer[] = [];
+      let subtitleWords: MinimaxSubtitleWord[] = [];
+      let receivedChunks = 0;
+      let estimatedTotal = 50;
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let lineBuffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+
+        lineBuffer += decoder.decode(value, { stream: true });
+        const lines = lineBuffer.split('\n');
+        lineBuffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr || jsonStr === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(jsonStr) as {
+              data?: {
+                audio?: string;
+                status?: number;
+                subtitle?: { subtitles?: MinimaxSubtitleWord[] };
+              };
+            };
+
+            const audioBase64 = parsed?.data?.audio;
+            const status = parsed?.data?.status;
+
+            if (audioBase64) {
+              audioChunks.push(Buffer.from(audioBase64, 'base64'));
+              receivedChunks += 1;
+            }
+
+            if (status === 2 && Array.isArray(parsed?.data?.subtitle?.subtitles)) {
+              subtitleWords = parsed.data.subtitle.subtitles;
+              estimatedTotal = Math.max(estimatedTotal, receivedChunks);
+            }
+
+            if (status === 1) {
+              estimatedTotal = Math.max(estimatedTotal, receivedChunks + 3);
+            }
+
+            const pct = Math.round(Math.min(90, (receivedChunks / estimatedTotal) * 90));
+            mainWindow?.webContents.send('tts-progress', pct);
+          } catch {
+            // 忽略单行 SSE 解析异常，继续消费后续块
+          }
+        }
+      }
+
+      await fs.mkdir(projectDir, { recursive: true });
+
+      const audioPath = path.join(projectDir, 'podcast-audio.mp3');
+      const audioBuffer = Buffer.concat(audioChunks);
+      await fs.writeFile(audioPath, audioBuffer);
+
+      const srtPath = path.join(projectDir, 'podcast-subtitles.srt');
+      const srtContent = assembleSRT(subtitleWords);
+      await fs.writeFile(srtPath, srtContent, 'utf-8');
+
+      const lastWord = subtitleWords[subtitleWords.length - 1];
+      const durationMs = lastWord ? lastWord.time_ms + lastWord.duration_ms : 0;
+      mainWindow?.webContents.send('tts-progress', 100);
+
+      return { audioPath, srtPath, durationMs };
+    } catch (error) {
+      if ((error as { name?: string }).name === 'AbortError') {
+        throw new Error('TTS 任务已取消');
+      }
+      throw error;
+    } finally {
+      activeTtsRequests.delete(requestId);
+    }
+  },
+);
+
+ipcMain.handle('cancel-tts', async (_event, requestId: string) => {
+  activeTtsRequests.get(requestId)?.abort();
+  activeTtsRequests.delete(requestId);
 });
 
 ipcMain.handle('get-app-logs', () => getAppLogs());

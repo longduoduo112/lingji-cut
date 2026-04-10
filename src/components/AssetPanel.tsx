@@ -42,18 +42,97 @@ function matchesAssetFilter(asset: AssetItem, filter: AssetFilterKey, keyword: s
   return asset.name.toLowerCase().includes(normalizedKeyword);
 }
 
+function getPathFileName(path: string): string {
+  if (!path) {
+    return '';
+  }
+  const normalizedPath = path.replaceAll('\\', '/');
+  return normalizedPath.split('/').pop() ?? '';
+}
+
+function PodcastResourceSection({
+  audioPath,
+  srtPath,
+  onReplaceAudio,
+  onReplaceSrt,
+}: {
+  audioPath: string;
+  srtPath: string;
+  onReplaceAudio?: () => Promise<void>;
+  onReplaceSrt?: () => Promise<void>;
+}) {
+  const audioName = getPathFileName(audioPath);
+  const srtName = getPathFileName(srtPath);
+
+  return (
+    <section className={styles.podcastSection} aria-label="口播资源">
+      <div className={styles.podcastSectionTitle}>口播资源</div>
+      <div className={styles.podcastRow}>
+        <span className={styles.podcastRowIcon}>
+          <AppIcon name="music" size={13} />
+        </span>
+        <span
+          className={[
+            styles.podcastRowName,
+            audioName ? '' : styles.podcastRowNameEmpty,
+          ].join(' ')}
+          title={audioName || '未设置音频'}
+        >
+          {audioName || '未设置音频'}
+        </span>
+        <button
+          type="button"
+          className={styles.podcastRowAction}
+          onClick={() => void onReplaceAudio?.()}
+        >
+          {audioName ? '替换音频' : '+ 添加'}
+        </button>
+      </div>
+      <div className={styles.podcastRow}>
+        <span className={styles.podcastRowIcon}>
+          <AppIcon name="file-text" size={13} />
+        </span>
+        <span
+          className={[
+            styles.podcastRowName,
+            srtName ? '' : styles.podcastRowNameEmpty,
+          ].join(' ')}
+          title={srtName || '未设置字幕'}
+        >
+          {srtName || '未设置字幕'}
+        </span>
+        <button
+          type="button"
+          className={styles.podcastRowAction}
+          onClick={() => void onReplaceSrt?.()}
+        >
+          {srtName ? '替换字幕' : '+ 添加'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function AssetPanel({
   compact,
   railHeight,
   onAddAsset,
   onOpenSubtitleInspector,
   onAddTextOverlay,
+  onUseAsPodcastAudio,
+  onUseAsPodcastSrt,
+  onReplaceAudio,
+  onReplaceSrt,
 }: {
   compact: boolean;
   railHeight?: number;
   onAddAsset?: () => Promise<void>;
   onOpenSubtitleInspector?: () => void;
   onAddTextOverlay?: () => void;
+  onUseAsPodcastAudio?: (path: string, durationMs: number) => Promise<void>;
+  onUseAsPodcastSrt?: (path: string) => Promise<void>;
+  onReplaceAudio?: () => Promise<void>;
+  onReplaceSrt?: () => Promise<void>;
 }) {
   const { addAsset, assets, removeAsset, timeline } = useTimelineStore();
   const [keyword, setKeyword] = useState('');
@@ -101,6 +180,15 @@ export function AssetPanel({
     <aside
       className={[styles.root, compact ? styles.compact : styles.regular].join(' ')}
     >
+      {!compact && (
+        <PodcastResourceSection
+          audioPath={timeline.podcast?.audioPath ?? ''}
+          srtPath={timeline.podcast?.srtPath ?? ''}
+          onReplaceAudio={onReplaceAudio}
+          onReplaceSrt={onReplaceSrt}
+        />
+      )}
+
       {/* 搜索栏 — compact 时通过 CSS 隐藏 */}
       {!compact && (
         <div className={styles.searchWrap}>
@@ -152,28 +240,53 @@ export function AssetPanel({
           </button>
         ) : (
           <div className={compact ? styles.gridCompact : styles.grid}>
-            {visibleAssets.map((asset) => (
-              <AssetCard
-                key={asset.path}
-                asset={asset}
-                compact={compact}
-                usageCount={getAssetUsageCount(asset.path)}
-                onRemove={handleRemoveAsset}
-                onClick={asset.type === 'srt' ? onOpenSubtitleInspector : undefined}
-                onDragStart={(event) => {
-                  if (asset.locked) {
-                    event.preventDefault();
-                    return;
-                  }
-                  if (asset.type !== 'image' && asset.type !== 'video' && asset.type !== 'text') {
-                    event.preventDefault();
-                    return;
-                  }
-                  event.dataTransfer.effectAllowed = 'copy';
-                  event.dataTransfer.setData('application/json', JSON.stringify(asset));
-                }}
-              />
-            ))}
+            {visibleAssets.map((asset) => {
+              const actionLabel =
+                asset.type === 'audio'
+                  ? '设为音频轨'
+                  : asset.type === 'srt'
+                    ? '设为字幕轨'
+                    : null;
+              const handleAssetAction =
+                asset.type === 'audio'
+                  ? () => void onUseAsPodcastAudio?.(asset.path, asset.durationMs)
+                  : asset.type === 'srt'
+                    ? () => void onUseAsPodcastSrt?.(asset.path)
+                    : undefined;
+
+              return (
+                <div key={asset.path} className={styles.assetSlot}>
+                  <AssetCard
+                    asset={asset}
+                    compact={compact}
+                    usageCount={getAssetUsageCount(asset.path)}
+                    onRemove={handleRemoveAsset}
+                    onClick={asset.type === 'srt' ? onOpenSubtitleInspector : undefined}
+                    onDragStart={(event) => {
+                      if (asset.locked) {
+                        event.preventDefault();
+                        return;
+                      }
+                      if (asset.type !== 'image' && asset.type !== 'video' && asset.type !== 'text') {
+                        event.preventDefault();
+                        return;
+                      }
+                      event.dataTransfer.effectAllowed = 'copy';
+                      event.dataTransfer.setData('application/json', JSON.stringify(asset));
+                    }}
+                  />
+                  {actionLabel && handleAssetAction ? (
+                    <button
+                      type="button"
+                      className={styles.assetAction}
+                      onClick={handleAssetAction}
+                    >
+                      {actionLabel}
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
 
             {/* 导入 ghost 卡片 — 始终显示在末尾 */}
             <AssetImportCard onClick={() => void handleAddAsset()} />

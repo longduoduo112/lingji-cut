@@ -20,6 +20,69 @@
   width: 224px;
 }
 
+/* ── 口播资源区块 ── */
+.podcastSection {
+  flex-shrink: 0;
+  padding: 10px 8px 6px;
+  border-bottom: 1px solid var(--color-separator);
+}
+
+.podcastSectionTitle {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.podcastRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.podcastRowIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.podcastRowName {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podcastRowNameEmpty {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.podcastRowAction {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background var(--motion-fast, 120ms);
+}
+
+.podcastRowAction:hover {
+  background: var(--color-panel-elevated);
+  color: var(--color-text-primary);
+}
+
 /* ── 搜索栏 ── */
 .searchWrap {
   margin: 8px 8px 0;
@@ -111,6 +174,33 @@
   align-content: start;
 }
 
+.assetSlot {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.assetAction {
+  width: 64px;
+  min-height: 18px;
+  border: 1px solid color-mix(in srgb, var(--color-selection-blue) 28%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-selection-blue) 12%, transparent);
+  color: var(--color-text-primary);
+  font-size: 9px;
+  line-height: 1.2;
+  padding: 2px 4px;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast, 120ms),
+    border-color var(--motion-fast, 120ms);
+}
+
+.assetAction:hover {
+  background: color-mix(in srgb, var(--color-selection-blue) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-selection-blue) 40%, transparent);
+}
+
 /* compact（横向 rail）时改为横向滚动一行 */
 .contentCompact {
   overflow-y: hidden;
@@ -121,6 +211,7 @@
 .gridCompact {
   display: flex;
   gap: 4px;
+  align-items: flex-start;
 }
 
 /* compact 搜索栏隐藏 */
