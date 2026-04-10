@@ -2,6 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import App from '../src/App';
 
+vi.mock('../src/ui', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/ui')>();
+  return {
+    ...original,
+    useToast: () => ({ showToast: () => undefined }),
+    ToastProvider: ({ children }: { children: React.ReactNode }) => children,
+  };
+});
+
 function createStorageMock(initialEntries: Record<string, string> = {}) {
   const storage = new Map<string, string>(Object.entries(initialEntries));
 

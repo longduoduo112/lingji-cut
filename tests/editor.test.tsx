@@ -17,12 +17,17 @@ vi.mock('../src/components/AssetPanel', () => ({
   AssetPanel: (props: {
     onUseAsPodcastAudio?: () => Promise<void>;
     onUseAsPodcastSrt?: () => Promise<void>;
+    showAIClip?: boolean;
+    onStartAIClip?: () => void;
   }) => (
     <div
       data-asset-audio-hook={String(Boolean(props.onUseAsPodcastAudio))}
       data-asset-srt-hook={String(Boolean(props.onUseAsPodcastSrt))}
     >
       asset-panel
+      {props.showAIClip && props.onStartAIClip ? (
+        <button type="button" onClick={props.onStartAIClip}>AI 一键剪辑</button>
+      ) : null}
     </div>
   ),
 }));
