@@ -172,7 +172,7 @@ export class ScriptHistoryRepository {
       .run(...ids);
   }
 
-  updateLabel(versionId: number, label: string): void {
+  updateLabel(versionId: number, label: string | null): void {
     this.db
       .prepare('UPDATE script_version SET label = ? WHERE id = ?')
       .run(label, versionId);
