@@ -300,9 +300,10 @@ export function Editor({
       }
 
       const persistedState = createPersistedAIState(result, []);
-      await window.electronAPI.saveAIAnalysis(
+      await window.electronAPI.saveProjectSection(
         projectDir,
-        JSON.stringify(persistedState, null, 2),
+        'aiAnalysis',
+        JSON.stringify(persistedState),
       );
     },
     [projectDir],
