@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { loadReviewCriteria, saveReviewCriteria } from '../../lib/settings-storage';
+import { Textarea } from '../../ui';
 
 export function ReviewCriteriaTab() {
   const [criteria, setCriteria] = useState('');
@@ -38,23 +39,13 @@ export function ReviewCriteriaTab() {
         系统已内置基础审查规则（事实准确性、表达流畅性、逻辑连贯性等），以下内容将作为补充要求追加到审查 Prompt 中。
       </div>
 
-      <textarea
+      <Textarea
         value={criteria}
         onChange={(e) => setCriteria(e.target.value)}
         rows={12}
         placeholder="输入你希望 AI 额外关注的审查维度..."
-        style={{
-          width: '100%',
-          padding: 16,
-          borderRadius: 10,
-          border: '1px solid #48484A',
-          background: '#2C2C2E',
-          color: 'inherit',
-          fontSize: 14,
-          lineHeight: 1.7,
-          resize: 'vertical',
-          fontFamily: 'inherit',
-        }}
+        size="md"
+        resize="vertical"
       />
 
       <button

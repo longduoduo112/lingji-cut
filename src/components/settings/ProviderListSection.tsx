@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import type { LLMProvider } from '../../types/ai';
+import { Input, Select, Checkbox } from '../../ui';
+import type { SelectOption } from '../../ui';
 
 /** 生成唯一 ID */
 function genId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-const PROVIDER_TYPE_OPTIONS = [
+const PROVIDER_TYPE_OPTIONS: SelectOption[] = [
   { value: 'openai_compatible', label: 'OpenAI Compatible' },
   { value: 'anthropic', label: 'Anthropic' },
-] as const;
+];
 
 /** 空白 Provider 表单 */
 function emptyProvider(): LLMProvider {
@@ -91,50 +93,44 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
         {/* 名称 */}
         <label style={labelStyle}>
           <span>名称</span>
-          <input
-            style={inputStyle}
+          <Input
             value={form.name}
             onChange={(e) => set('name', e.target.value)}
             placeholder="例如：本地 Ollama"
+            size="sm"
           />
         </label>
 
         {/* 类型 */}
-        <label style={labelStyle}>
+        <div style={labelStyle}>
           <span>类型</span>
-          <select
-            style={{ ...inputStyle, cursor: 'pointer' }}
+          <Select
             value={form.type}
+            options={PROVIDER_TYPE_OPTIONS}
             onChange={(e) => set('type', e.target.value as LLMProvider['type'])}
-          >
-            {PROVIDER_TYPE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
 
         {/* Base URL */}
         <label style={labelStyle}>
           <span>Base URL</span>
-          <input
-            style={inputStyle}
+          <Input
             value={form.baseUrl}
             onChange={(e) => set('baseUrl', e.target.value)}
             placeholder="https://api.openai.com/v1"
+            size="sm"
           />
         </label>
 
         {/* API Key */}
         <label style={labelStyle}>
           <span>API Key</span>
-          <input
-            type="password"
-            style={inputStyle}
+          <Input
+            variant="password"
             value={form.apiKey}
             onChange={(e) => set('apiKey', e.target.value)}
             placeholder="sk-..."
+            size="sm"
           />
         </label>
 
@@ -176,9 +172,8 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
               ))}
             </div>
           )}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              style={{ ...inputStyle, flex: 1 }}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Input
               value={newModel}
               onChange={(e) => setNewModel(e.target.value)}
               onKeyDown={(e) => {
@@ -188,6 +183,8 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
                 }
               }}
               placeholder="输入模型名后按 Enter 或点击添加"
+              size="sm"
+              wrapperClassName="flex-1"
             />
             <button type="button" onClick={addModel} style={secondaryBtnStyle}>
               添加
@@ -196,17 +193,12 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
         </div>
 
         {/* 设为默认 */}
-        <label
-          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}
-        >
-          <input
-            type="checkbox"
-            checked={setAsDefault}
-            onChange={(e) => setSetAsDefault(e.target.checked)}
-            style={{ width: 14, height: 14, accentColor: '#0a84ff' }}
-          />
-          设为默认 Provider
-        </label>
+        <Checkbox
+          label="设为默认 Provider"
+          checked={setAsDefault}
+          onChange={(checked) => setSetAsDefault(checked)}
+          size="sm"
+        />
 
         {/* 操作按钮 */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
@@ -388,17 +380,6 @@ const labelStyle: React.CSSProperties = {
   color: '#ebebf5cc',
 };
 
-const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.08)',
-  border: '1px solid rgba(255,255,255,0.12)',
-  borderRadius: 8,
-  padding: '8px 12px',
-  color: '#fff',
-  fontSize: 13,
-  outline: 'none',
-  width: '100%',
-  boxSizing: 'border-box',
-};
 
 const secondaryBtnStyle: React.CSSProperties = {
   padding: '7px 16px',

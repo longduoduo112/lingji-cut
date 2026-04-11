@@ -11,6 +11,7 @@
     Inter,
     "Segoe UI",
     sans-serif;
+  --font-mono: "SF Mono", Menlo, Monaco, "Courier New", monospace;
   --font-size-xs: 10px;
   --font-size-sm: 11px;
   --font-size-md: 12px;
@@ -59,6 +60,7 @@
   --color-bg-elevated: var(--color-panel-elevated);
   --color-bg-subtle: rgba(255, 255, 255, 0.035);
   --color-bg-muted: rgba(255, 255, 255, 0.055);
+  --color-bg-hover: rgba(255, 255, 255, 0.08);
   --color-panel-solid: var(--color-panel-bg);
   --color-panel-subtle: rgba(255, 255, 255, 0.05);
   --color-panel-muted: rgba(255, 255, 255, 0.08);
@@ -76,6 +78,7 @@
   /* Text — macOS system text colors */
   --color-text-primary: #FFFFFF;
   --color-text-secondary: #EBEBF599;
+  --color-text-tertiary: #8E8E93;
   --color-text-muted: #EBEBF54D;
   --color-text-disabled: #EBEBF533;
 

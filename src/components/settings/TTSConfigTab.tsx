@@ -1,19 +1,20 @@
 import { useState, useEffect } from 'react';
 import { loadAISettings, saveAISettings } from '../../store/ai';
-import { Field, Input, Slider } from '../../ui';
+import { Field, Input, Slider, Select } from '../../ui';
+import type { SelectOption } from '../../ui';
 
-const MINIMAX_MODELS = [
-  'speech-2.8-hd',
-  'speech-2.8-turbo',
-  'speech-2.6-hd',
-  'speech-2.6-turbo',
-  'speech-02-hd',
-  'speech-02-turbo',
-  'speech-01-hd',
-  'speech-01-turbo',
+const MINIMAX_MODEL_OPTIONS: SelectOption[] = [
+  { value: 'speech-2.8-hd', label: 'speech-2.8-hd' },
+  { value: 'speech-2.8-turbo', label: 'speech-2.8-turbo' },
+  { value: 'speech-2.6-hd', label: 'speech-2.6-hd' },
+  { value: 'speech-2.6-turbo', label: 'speech-2.6-turbo' },
+  { value: 'speech-02-hd', label: 'speech-02-hd' },
+  { value: 'speech-02-turbo', label: 'speech-02-turbo' },
+  { value: 'speech-01-hd', label: 'speech-01-hd' },
+  { value: 'speech-01-turbo', label: 'speech-01-turbo' },
 ];
 
-const EMOTIONS = [
+const EMOTION_OPTIONS: SelectOption[] = [
   { value: '', label: '自动（模型判断）' },
   { value: 'happy', label: '高兴' },
   { value: 'sad', label: '悲伤' },
@@ -25,17 +26,6 @@ const EMOTIONS = [
   { value: 'fluent', label: '生动（2.6 系列）' },
 ];
 
-const selectStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 10px',
-  borderRadius: 6,
-  border: '1px solid rgba(255,255,255,0.12)',
-  background: '#1c1c1e',
-  color: '#fff',
-  fontSize: 13,
-  outline: 'none',
-  cursor: 'pointer',
-};
 
 export function TTSConfigTab() {
   const [apiKey, setApiKey] = useState('');
@@ -99,7 +89,7 @@ export function TTSConfigTab() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Field label="MiniMax API Key">
           <Input
-            type="password"
+            variant="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="your-api-key"
@@ -107,13 +97,11 @@ export function TTSConfigTab() {
         </Field>
 
         <Field label="模型">
-          <select value={model} onChange={(e) => setModel(e.target.value)} style={selectStyle}>
-            {MINIMAX_MODELS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+          <Select
+            value={model}
+            options={MINIMAX_MODEL_OPTIONS}
+            onChange={(e) => setModel(e.target.value)}
+          />
         </Field>
 
         <Field label="音色 ID" hint="系统音色 ID 或克隆音色 ID，参考 MiniMax 音色列表">
@@ -140,17 +128,11 @@ export function TTSConfigTab() {
           label="情绪"
           hint="speech-2.8 系列不支持 whisper；fluent 仅 2.6 系列生效"
         >
-          <select
+          <Select
             value={emotion}
+            options={EMOTION_OPTIONS}
             onChange={(e) => setEmotion(e.target.value)}
-            style={selectStyle}
-          >
-            {EMOTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          />
         </Field>
       </div>
 

@@ -11,6 +11,7 @@ import {
 import type { CSSProperties, ReactNode } from 'react';
 import type { FileEntry } from '../../lib/electron-api';
 import { isVideoImportPreviewFile } from '../../lib/video-import-preview';
+import { EmptyState, PanelHeader } from '../../ui';
 import styles from './FileTreePanel.module.css';
 
 interface FileTreePanelProps {
@@ -274,10 +275,14 @@ export function FileTreePanel({
   return (
     <aside className={styles.panel}>
       <div className={styles.header}>
-        <span className={styles.headerTitle}>工作文件</span>
-        <button type="button" className={styles.headerButton} onClick={onSelectProjectDir}>
-          更换目录
-        </button>
+        <PanelHeader
+          title="工作文件"
+          actions={
+            <button type="button" className={styles.headerButton} onClick={onSelectProjectDir}>
+              更换目录
+            </button>
+          }
+        />
       </div>
 
       {projectDir ? (
@@ -301,13 +306,15 @@ export function FileTreePanel({
         </>
       ) : (
         <div className={styles.empty}>
-          <div className={styles.emptyTitle}>尚未选择工作目录</div>
-          <div className={styles.emptyText}>
-            左侧文件树会显示工作目录中的原稿、口播稿和脚本状态文件。
-          </div>
-          <button type="button" className={styles.primaryButton} onClick={onSelectProjectDir}>
-            选择工作目录
-          </button>
+          <EmptyState
+            title="尚未选择工作目录"
+            description="左侧文件树会显示工作目录中的原稿、口播稿和脚本状态文件。"
+            actions={
+              <button type="button" className={styles.primaryButton} onClick={onSelectProjectDir}>
+                选择工作目录
+              </button>
+            }
+          />
         </div>
       )}
     </aside>

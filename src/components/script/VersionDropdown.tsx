@@ -1,5 +1,8 @@
+import { ChevronDown, Clock } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useScriptStore } from '../../store/script';
+import { Badge } from '../../ui';
+import styles from './VersionDropdown.module.css';
 
 type VersionMeta = {
   id: number;
@@ -24,7 +27,6 @@ function formatTime(isoStr: string): string {
   if (diffMin < 60) return `${diffMin} 分钟前`;
   const diffHr = Math.floor(diffMin / 60);
   if (diffHr < 24) return `${diffHr} 小时前`;
-  // 超过 24h 显示日期
   const mo = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   const hh = String(d.getHours()).padStart(2, '0');
@@ -45,7 +47,6 @@ export function VersionDropdown() {
   const [loading, setLoading] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // 打开时加载版本列表
   const loadVersions = async () => {
     if (!projectDir || typeof window === 'undefined' || !window.scriptHistoryAPI) return;
     setLoading(true);
@@ -63,7 +64,6 @@ export function VersionDropdown() {
     if (next) void loadVersions();
   };
 
-  // 点击外部关闭
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -103,81 +103,32 @@ export function VersionDropdown() {
   if (!shouldRender) return null;
 
   return (
-    <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
+    <div ref={rootRef} className={styles.root}>
       {/* 触发按钮 */}
       <button
         type="button"
         onClick={handleToggle}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '6px 10px',
-          border: 'none',
-          background: 'transparent',
-          color: '#0A84FF',
-          fontSize: 12,
-          fontWeight: 500,
-          cursor: 'pointer',
-          whiteSpace: 'nowrap',
-          borderRadius: 4,
-          transition: 'background 0.1s',
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(10,132,255,0.1)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-        }}
+        className={styles.trigger}
+        data-open={open}
         title="查看历史版本"
       >
-        🕐 历史版本 ▾
+        <Clock className={styles.icon} />
+        历史版本
+        <ChevronDown className={styles.chevron} />
       </button>
 
       {/* 下拉面板 */}
       {open && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            right: 0,
-            zIndex: 999,
-            width: 320,
-            background: '#1c1c1e',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 10,
-            boxShadow: 'rgba(0,0,0,0.6) 0 12px 32px',
-            overflow: 'hidden',
-          }}
-        >
+        <div className={styles.panel}>
           {/* 筛选 Tab */}
-          <div
-            style={{
-              display: 'flex',
-              gap: 2,
-              padding: '8px 10px 6px',
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
-            }}
-          >
+          <div className={styles.filterBar}>
             {filterTabs.map((tab) => (
               <button
                 key={tab}
                 type="button"
                 onClick={() => setFilter(tab)}
-                style={{
-                  flex: 1,
-                  padding: '4px 0',
-                  border: 'none',
-                  borderRadius: 6,
-                  background:
-                    filter === tab ? 'rgba(10,132,255,0.2)' : 'transparent',
-                  color:
-                    filter === tab ? '#0A84FF' : 'rgba(235,235,245,0.45)',
-                  fontSize: 11,
-                  fontWeight: filter === tab ? 600 : 400,
-                  cursor: 'pointer',
-                  transition: 'background 0.1s',
-                }}
+                className={styles.filterTab}
+                data-active={filter === tab}
               >
                 {tab}
               </button>
@@ -185,139 +136,52 @@ export function VersionDropdown() {
           </div>
 
           {/* 版本列表 */}
-          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+          <div className={styles.list}>
             {loading ? (
-              <div
-                style={{
-                  padding: '20px 16px',
-                  color: 'rgba(235,235,245,0.4)',
-                  fontSize: 12,
-                  textAlign: 'center',
-                }}
-              >
-                加载中…
-              </div>
+              <div className={styles.empty}>加载中…</div>
             ) : filteredVersions.length === 0 ? (
-              <div
-                style={{
-                  padding: '20px 16px',
-                  color: 'rgba(235,235,245,0.4)',
-                  fontSize: 12,
-                  textAlign: 'center',
-                }}
-              >
-                暂无版本记录
-              </div>
+              <div className={styles.empty}>暂无版本记录</div>
             ) : (
               filteredVersions.map((v, idx) => {
                 const isAI = v.source === 'ai';
-                const barColor = isAI ? '#a78bfa' : '#8e8e93';
-                const icon = isAI ? '🤖' : '✏️';
                 const sourceLabel = isAI ? 'AI 生成' : '手动保存';
+                const sourceKey = isAI ? 'ai' : 'manual';
 
                 return (
                   <button
                     key={v.id}
                     type="button"
                     onClick={() => void handleSelectVersion(v)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 10,
-                      width: '100%',
-                      padding: '10px 14px',
-                      border: 'none',
-                      borderBottom: '1px solid rgba(255,255,255,0.05)',
-                      background: 'transparent',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'background 0.1s',
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.background =
-                        'rgba(255,255,255,0.05)';
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.background =
-                        'transparent';
-                    }}
+                    className={styles.versionItem}
                   >
                     {/* 左侧彩色竖条 */}
-                    <span
-                      style={{
-                        width: 3,
-                        minWidth: 3,
-                        height: 38,
-                        borderRadius: 2,
-                        background: barColor,
-                        marginTop: 1,
-                        flexShrink: 0,
-                      }}
-                    />
+                    <span className={styles.bar} data-source={sourceKey} />
 
                     {/* 内容 */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {/* 第一行：图标 + 时间 + 当前版本标记 */}
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          marginBottom: 3,
-                        }}
-                      >
-                        <span style={{ fontSize: 13 }}>{icon}</span>
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: 'rgba(235,235,245,0.8)',
-                            fontWeight: 500,
-                          }}
-                        >
+                    <div className={styles.versionContent}>
+                      {/* 第一行 */}
+                      <div className={styles.versionRow1}>
+                        <span className={styles.sourceTag} data-source={sourceKey}>
+                          {sourceLabel}
+                        </span>
+                        <span className={styles.timeLabel}>
                           {formatTime(v.createdAt)}
                         </span>
                         {idx === 0 && (
-                          <span
-                            style={{
-                              fontSize: 10,
-                              padding: '1px 5px',
-                              borderRadius: 4,
-                              background: 'rgba(10,132,255,0.2)',
-                              color: '#0A84FF',
-                              fontWeight: 600,
-                            }}
-                          >
-                            当前版本
-                          </span>
+                          <span className={styles.currentBadge}>当前</span>
                         )}
                       </div>
 
-                      {/* 第二行：来源 + Provider/Model */}
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: 'rgba(235,235,245,0.4)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {sourceLabel}
+                      {/* 第二行 */}
+                      <div className={styles.versionRow2}>
                         {v.providerName && (
-                          <>
-                            {' · '}
+                          <Badge color="#a78bfa" size="xs">
                             {v.providerName}
                             {v.modelName ? ` / ${v.modelName}` : ''}
-                          </>
+                          </Badge>
                         )}
                         {v.label && (
-                          <span
-                            style={{
-                              marginLeft: 6,
-                              color: 'rgba(235,235,245,0.6)',
-                              fontStyle: 'italic',
-                            }}
-                          >
+                          <span className={styles.versionLabel}>
                             「{v.label}」
                           </span>
                         )}

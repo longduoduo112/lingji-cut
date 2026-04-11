@@ -147,7 +147,7 @@
   font-size: 11px;
   line-height: 1.4;
   color: #636366;
-  font-family: "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono, "SF Mono", Menlo, Monaco, "Courier New", monospace);
   white-space: pre-wrap;
   word-break: break-all;
   /* 最多显示两行 */
@@ -179,7 +179,7 @@
   font-size: 11px;
   line-height: 1.4;
   color: #98989d;
-  font-family: "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono, "SF Mono", Menlo, Monaco, "Courier New", monospace);
   white-space: pre-wrap;
   word-break: break-all;
   display: -webkit-box;

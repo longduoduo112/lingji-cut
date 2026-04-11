@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { PanelHeader } from '../../ui';
 
 interface SideDrawerProps {
   open: boolean;
@@ -33,32 +34,33 @@ export function SideDrawer({ open, title, onClose, children }: SideDrawerProps) 
     >
       <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
           padding: '14px 16px',
           borderBottom: '1px solid var(--color-border-subtle)',
         }}
       >
-        <div style={{ fontSize: 13, fontWeight: 700 }}>{title}</div>
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            border: '1px solid var(--color-border-subtle)',
-            background: 'transparent',
-            color: 'var(--color-text-secondary)',
-            cursor: 'pointer',
-          }}
-        >
-          <X size={14} />
-        </button>
+        <PanelHeader
+          title={title}
+          actions={
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                border: '1px solid var(--color-border-subtle)',
+                background: 'transparent',
+                color: 'var(--color-text-secondary)',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={14} />
+            </button>
+          }
+        />
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>{children}</div>

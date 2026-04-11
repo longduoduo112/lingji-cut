@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { loadAISettings, saveAISettings } from '../../store/ai';
-import { Field, Divider, Switch, Select } from '../../ui';
+import { Field, Divider, Switch, Select, Input } from '../../ui';
 import type { SelectOption } from '../../ui';
 import type { LLMProvider } from '../../types/ai';
 import { ProviderListSection } from './ProviderListSection';
@@ -90,20 +90,20 @@ export function AIConfigTab() {
         <Divider label="封面生成（即梦）" />
 
         <Field label="即梦 API URL">
-          <input
-            style={inputStyle}
+          <Input
             value={jimengApiUrl}
             onChange={(e) => setJimengApiUrl(e.target.value)}
             placeholder="http://47.109.159.194:8330"
+            size="sm"
           />
         </Field>
         <Field label="即梦 Session ID">
-          <input
-            type="password"
-            style={inputStyle}
+          <Input
+            variant="password"
             value={jimengSessionId}
             onChange={(e) => setJimengSessionId(e.target.value)}
             placeholder="session id"
+            size="sm"
           />
         </Field>
         <Field label="即梦模型">
@@ -136,14 +136,3 @@ export function AIConfigTab() {
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.08)',
-  border: '1px solid rgba(255,255,255,0.12)',
-  borderRadius: 8,
-  padding: '8px 12px',
-  color: '#fff',
-  fontSize: 13,
-  outline: 'none',
-  width: '100%',
-  boxSizing: 'border-box',
-};

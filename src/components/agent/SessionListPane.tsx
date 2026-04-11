@@ -1,4 +1,5 @@
 import { MessageSquare, RotateCcw, Trash2 } from 'lucide-react';
+import { EmptyState } from '../../ui';
 import { useConversationList } from '../../hooks/use-conversation-list';
 
 interface SessionListPaneProps {
@@ -52,16 +53,20 @@ export function SessionListPane({
 
   if (conversations.length === 0) {
     return (
-      <div className="flex-1 overflow-y-auto p-4 text-center text-xs text-mac-text-muted/60 flex flex-col items-center justify-center gap-2">
-        <MessageSquare size={18} />
-        <div>当前项目还没有会话</div>
-        <button
-          type="button"
-          onClick={onCreateConversation}
-          className="text-mac-blue hover:underline bg-transparent border-none cursor-pointer text-xs"
-        >
-          创建第一个会话
-        </button>
+      <div className="flex-1 overflow-y-auto p-4 flex items-center justify-center">
+        <EmptyState
+          eyebrow={<MessageSquare size={18} />}
+          title="当前项目还没有会话"
+          actions={
+            <button
+              type="button"
+              onClick={onCreateConversation}
+              className="text-mac-blue hover:underline bg-transparent border-none cursor-pointer text-xs"
+            >
+              创建第一个会话
+            </button>
+          }
+        />
       </div>
     );
   }

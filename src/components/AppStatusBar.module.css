@@ -8,7 +8,7 @@
   align-items: center;
   justify-content: space-between;
   font-size: 11px;
-  color: var(--color-text-tertiary, #EBEBF550);
+  color: var(--color-text-tertiary, #8E8E93);
   user-select: none;
   -webkit-app-region: no-drag;
   position: relative;
@@ -89,7 +89,7 @@
   bottom: 32px;
   right: 12px;
   z-index: 200;
-  background: var(--color-panel-bg, #2C2C2E);
+  background: var(--color-panel-bg, #1E1E20);
   border: 1px solid var(--color-border-subtle, #48484A);
   border-radius: 8px;
   padding: 12px;

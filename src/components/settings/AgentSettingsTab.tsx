@@ -7,7 +7,7 @@ import type {
   PreflightCheck,
   PermissionPolicy,
 } from '../../../electron/acp/types';
-import { PillGroup } from '../../ui';
+import { PillGroup, Input, Checkbox, Textarea } from '../../ui';
 import type { PillGroupItem } from '../../ui/patterns/PillGroup';
 
 const AUTH_MODES: PillGroupItem<AuthMode>[] = [
@@ -139,14 +139,12 @@ export function AgentSettingsTab() {
             ACP 适配器 · npx
           </p>
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#EBEBF5' }}>
-          <input
-            type="checkbox"
-            checked={agent.enabled}
-            onChange={(e) => updateAgent({ enabled: e.target.checked })}
-          />
-          启用
-        </label>
+        <Checkbox
+          label="启用"
+          checked={agent.enabled}
+          onChange={(checked) => updateAgent({ enabled: checked })}
+          size="sm"
+        />
       </div>
 
       {/* 预检 */}
@@ -226,17 +224,14 @@ export function AgentSettingsTab() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
             <label style={{ display: 'block', fontSize: 12, color: '#EBEBF580', marginBottom: 6 }}>API Key</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                type={showKey ? 'text' : 'password'}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Input
+                variant={showKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="sk-ant-..."
-                style={{
-                  flex: 1, background: '#2C2C2E', color: '#EBEBF5',
-                  border: '1px solid #48484A', borderRadius: 8,
-                  padding: '8px 12px', fontSize: 13, outline: 'none',
-                }}
+                size="sm"
+                wrapperClassName="flex-1"
               />
               <button
                 type="button"
@@ -249,28 +244,20 @@ export function AgentSettingsTab() {
           </div>
           <div>
             <label style={{ display: 'block', fontSize: 12, color: '#EBEBF580', marginBottom: 6 }}>API Base URL</label>
-            <input
+            <Input
               value={agent.apiBaseUrl}
               onChange={(e) => updateAgent({ apiBaseUrl: e.target.value })}
               placeholder="https://api.anthropic.com"
-              style={{
-                width: '100%', background: '#2C2C2E', color: '#EBEBF5',
-                border: '1px solid #48484A', borderRadius: 8,
-                padding: '8px 12px', fontSize: 13, outline: 'none',
-              }}
+              size="sm"
             />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: 12, color: '#EBEBF580', marginBottom: 6 }}>Model</label>
-            <input
+            <Input
               value={agent.model}
               onChange={(e) => updateAgent({ model: e.target.value })}
               placeholder="claude-sonnet-4-20250514"
-              style={{
-                width: '100%', background: '#2C2C2E', color: '#EBEBF5',
-                border: '1px solid #48484A', borderRadius: 8,
-                padding: '8px 12px', fontSize: 13, outline: 'none',
-              }}
+              size="sm"
             />
           </div>
         </div>
@@ -282,17 +269,14 @@ export function AgentSettingsTab() {
 
       <div>
         <label style={{ display: 'block', fontSize: 12, color: '#EBEBF580', marginBottom: 6 }}>环境变量</label>
-        <textarea
+        <Textarea
           value={agent.envText}
           onChange={(e) => updateAgent({ envText: e.target.value })}
           placeholder="KEY=VALUE（每行一条）"
           rows={4}
-          style={{
-            width: '100%', background: '#2C2C2E', color: '#EBEBF5',
-            border: '1px solid #48484A', borderRadius: 8,
-            padding: '8px 12px', fontSize: 12,
-            fontFamily: 'SF Mono, Menlo, monospace', resize: 'vertical',
-          }}
+          size="sm"
+          resize="vertical"
+          className="font-mono"
         />
       </div>
 
