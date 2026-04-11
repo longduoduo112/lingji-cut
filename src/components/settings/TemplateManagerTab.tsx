@@ -8,7 +8,7 @@ import {
   deleteCustomTemplate,
   type CustomScriptTemplate,
 } from '../../lib/settings-storage';
-import { Field, Input } from '../../ui';
+import { Field, Input, Textarea } from '../../ui';
 
 export function TemplateManagerTab() {
   const [customs, setCustoms] = useState(() => loadCustomTemplates());
@@ -159,12 +159,13 @@ export function TemplateManagerTab() {
           <Field label="模板名称"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="如：财经解读" /></Field>
           <Field label="描述"><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="一句话描述风格特点" /></Field>
           <Field label="System Prompt">
-            <textarea
+            <Textarea
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
               placeholder="输入完整的 System Prompt..."
               rows={10}
-              style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #48484A', background: '#2C2C2E', color: 'inherit', fontSize: 13, lineHeight: 1.6, resize: 'vertical', fontFamily: 'inherit' }}
+              size="sm"
+              resize="vertical"
             />
           </Field>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>

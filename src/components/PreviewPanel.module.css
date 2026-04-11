@@ -94,7 +94,7 @@
   font-size: var(--font-size-md);
   font-weight: 500;
   color: var(--color-text-primary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono, "SF Mono", Menlo, Monaco, "Courier New", monospace);
   line-height: 1;
 }
 
@@ -108,7 +108,7 @@
   font-size: var(--font-size-md);
   font-weight: 400;
   color: var(--color-text-secondary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono, "SF Mono", Menlo, Monaco, "Courier New", monospace);
   line-height: 1;
 }
 

@@ -1,5 +1,7 @@
+import { Eye } from 'lucide-react';
 import { useState } from 'react';
 import { useScriptStore } from '../../store/script';
+import styles from './VersionPreviewBar.module.css';
 
 /** 格式化时间 */
 function formatTime(isoStr: string): string {
@@ -34,9 +36,8 @@ export function VersionPreviewBar() {
   const { source, providerName, modelName, createdAt, label } = versionMeta;
 
   const isAI = source === 'ai';
-  const sourceLabel = isAI ? '🤖 AI 生成' : '✏️ 手动保存';
+  const sourceLabel = isAI ? 'AI 生成' : '手动保存';
 
-  // 恢复此版本
   const handleRollback = async () => {
     if (versionId === null || content === null || !projectDir) return;
     setSaving(true);
@@ -50,7 +51,6 @@ export function VersionPreviewBar() {
       setScriptText(result.rollbackContent);
       setFileDirty('script.md', true);
       markReviewStale();
-      // 保存到磁盘
       if (window.electronAPI?.saveScriptFile) {
         await window.electronAPI.saveScriptFile(projectDir, 'script.md', result.rollbackContent);
         setFileDirty('script.md', false);
@@ -61,7 +61,6 @@ export function VersionPreviewBar() {
     }
   };
 
-  // 添加/保存标签
   const handleSaveLabel = async () => {
     if (versionId === null || !projectDir) return;
     await window.scriptHistoryAPI.updateLabel(projectDir, versionId, labelInput.trim() || null);
@@ -70,77 +69,26 @@ export function VersionPreviewBar() {
   };
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '8px 14px',
-        background: '#332b00',
-        borderBottom: '1px solid rgba(255,196,0,0.3)',
-        flexWrap: 'wrap',
-      }}
-    >
-      {/* 主要信息 */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          flex: '1 1 auto',
-          minWidth: 0,
-          overflow: 'hidden',
-        }}
-      >
-        <span style={{ fontSize: 14, flexShrink: 0 }}>⚠️</span>
-        <span
-          style={{
-            fontSize: 12,
-            color: 'rgba(255,220,100,0.9)',
-            fontWeight: 500,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          正在预览历史版本 —
-        </span>
-        <span
-          style={{
-            fontSize: 12,
-            color: 'rgba(255,220,100,0.7)',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {formatTime(createdAt)}
-        </span>
-        <span
-          style={{
-            fontSize: 11,
-            color: 'rgba(255,220,100,0.55)',
-            whiteSpace: 'nowrap',
-          }}
-        >
+    <div className={styles.bar}>
+      {/* 左侧信息 */}
+      <div className={styles.info}>
+        <Eye className={styles.infoIcon} />
+        <span className={styles.infoTitle}>预览历史版本</span>
+        <span className={styles.infoTime}>{formatTime(createdAt)}</span>
+        <span className={styles.infoSource}>
           {sourceLabel}
           {providerName && ` · ${providerName}${modelName ? ` / ${modelName}` : ''}`}
         </span>
         {label && (
-          <span
-            style={{
-              fontSize: 11,
-              color: 'rgba(255,220,100,0.7)',
-              fontStyle: 'italic',
-              flexShrink: 0,
-            }}
-          >
-            「{label}」
-          </span>
+          <span className={styles.infoLabel}>「{label}」</span>
         )}
       </div>
 
       {/* 操作区 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+      <div className={styles.actions}>
         {/* 添加标签 */}
         {editingLabel ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div className={styles.labelEdit}>
             <input
               autoFocus
               value={labelInput}
@@ -153,21 +101,12 @@ export function VersionPreviewBar() {
                 }
               }}
               placeholder="输入标签…"
-              style={{
-                padding: '3px 7px',
-                fontSize: 11,
-                borderRadius: 5,
-                border: '1px solid rgba(255,196,0,0.35)',
-                background: 'rgba(0,0,0,0.3)',
-                color: 'rgba(255,220,100,0.9)',
-                outline: 'none',
-                width: 120,
-              }}
+              className={styles.labelInput}
             />
             <button
               type="button"
               onClick={() => void handleSaveLabel()}
-              style={btnStyle('rgba(255,196,0,0.15)', 'rgba(255,220,100,0.8)')}
+              className={styles.btnLabel}
             >
               保存
             </button>
@@ -177,7 +116,7 @@ export function VersionPreviewBar() {
                 setEditingLabel(false);
                 setLabelInput('');
               }}
-              style={btnStyle('rgba(255,255,255,0.06)', 'rgba(235,235,245,0.5)')}
+              className={styles.btn}
             >
               取消
             </button>
@@ -189,7 +128,7 @@ export function VersionPreviewBar() {
               setEditingLabel(true);
               setLabelInput(label ?? '');
             }}
-            style={btnStyle('rgba(255,196,0,0.1)', 'rgba(255,220,100,0.75)')}
+            className={styles.btnLabel}
           >
             添加标签
           </button>
@@ -200,7 +139,7 @@ export function VersionPreviewBar() {
           type="button"
           disabled={saving}
           onClick={() => void handleRollback()}
-          style={btnStyle('rgba(255,196,0,0.25)', 'rgba(255,220,100,0.95)', saving)}
+          className={styles.btnPrimary}
         >
           {saving ? '恢复中…' : '恢复此版本'}
         </button>
@@ -209,32 +148,11 @@ export function VersionPreviewBar() {
         <button
           type="button"
           onClick={exitHistoryPreview}
-          style={btnStyle('rgba(255,255,255,0.08)', 'rgba(235,235,245,0.7)')}
+          className={styles.btn}
         >
           返回当前
         </button>
       </div>
     </div>
   );
-}
-
-/** 统一按钮样式生成 */
-function btnStyle(
-  bg: string,
-  color: string,
-  disabled = false,
-): React.CSSProperties {
-  return {
-    padding: '4px 10px',
-    fontSize: 11,
-    fontWeight: 500,
-    borderRadius: 6,
-    border: '1px solid rgba(255,196,0,0.2)',
-    background: bg,
-    color,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.6 : 1,
-    whiteSpace: 'nowrap' as const,
-    transition: 'background 0.1s',
-  };
 }

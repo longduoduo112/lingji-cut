@@ -49,7 +49,7 @@
 }
 
 .taskPhase {
-  color: var(--color-text-tertiary, #EBEBF550);
+  color: var(--color-text-tertiary, #8E8E93);
   font-size: 10px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -63,7 +63,7 @@
 .taskPct {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-  color: var(--color-text-tertiary, #EBEBF550);
+  color: var(--color-text-tertiary, #8E8E93);
   width: 28px;
   text-align: right;
   flex-shrink: 0;

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Send, Square } from 'lucide-react';
-import { Button } from '../../ui';
+import { Button, EmptyState } from '../../ui';
 import { useConversationDetail } from '../../hooks/use-conversation-detail';
 import { useConnectionLifecycle } from '../../hooks/use-connection-lifecycle';
 import { UserMessage } from './UserMessage';
@@ -76,8 +76,11 @@ export function ConversationDetailPane({
 
   if (conversationId === null) {
     return (
-      <div className="flex-1 flex items-center justify-center text-sm text-mac-text-muted/60 px-6 text-center">
-        先创建一个会话，或者从左侧选择一个已有会话。
+      <div className="flex-1 flex items-center justify-center px-6">
+        <EmptyState
+          title="尚未选择会话"
+          description="先创建一个会话，或者从左侧选择一个已有会话。"
+        />
       </div>
     );
   }
@@ -118,9 +121,10 @@ export function ConversationDetailPane({
 
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
         {turns.length === 0 ? (
-          <div className="text-sm text-mac-text-muted/60">
-            这个会话还没有消息。可以直接在下方输入，或点击左侧其他会话查看。
-          </div>
+          <EmptyState
+            title="暂无消息"
+            description="这个会话还没有消息。可以直接在下方输入，或点击左侧其他会话查看。"
+          />
         ) : null}
         {turns.map((turn) => {
           if (turn.role === 'user') {

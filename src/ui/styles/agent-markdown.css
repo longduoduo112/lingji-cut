@@ -9,7 +9,7 @@
   margin: 8px 0;
 }
 .agent-markdown code {
-  font-family: 'SF Mono', Menlo, monospace;
+  font-family: var(--font-mono, "SF Mono", Menlo, Monaco, "Courier New", monospace);
   font-size: 12px;
 }
 .agent-markdown :not(pre) > code {

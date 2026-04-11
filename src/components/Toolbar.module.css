@@ -58,7 +58,7 @@
 }
 
 .historyButton[data-enabled='false'] {
-  color: color-mix(in srgb, var(--color-text-tertiary) 72%, transparent);
+  color: color-mix(in srgb, var(--color-text-tertiary, #8E8E93) 72%, transparent);
 }
 
 /* ── 居中标题（absolute，不影响 flex 两端） ── */
