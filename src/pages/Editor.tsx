@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AIPanel } from '../components/AIPanel';
 import { AssetPanel } from '../components/AssetPanel';
 import { EditorInspector, type InspectorSelection } from '../components/EditorInspector';
-import { ExportProgress } from '../components/ExportProgress';
+import { useTaskProgressStore } from '../store/task-progress';
 import { ExportSettingsModal } from '../components/ExportSettingsModal';
 import { PreviewPanel } from '../components/PreviewPanel';
 import { TimelineAIOverlay } from '../components/TimelineAIOverlay';
@@ -212,6 +212,17 @@ export function Editor({
   useEffect(() => {
     const cleanup = window.electronAPI.onRenderProgress((progress) => {
       setExportProgress(progress);
+      // 更新统一进度系统
+      const tasks = useTaskProgressStore.getState().tasks;
+      for (const [id, task] of tasks) {
+        if (task.category === 'export' && task.status === 'active') {
+          useTaskProgressStore.getState().updateTask(id, {
+            progress: Math.round(progress * 100),
+            phase: progress < 0.1 ? 'bundling' : 'rendering',
+          });
+          break;
+        }
+      }
     });
 
     return cleanup;
@@ -500,6 +511,18 @@ export function Editor({
     setExportProgress(0);
     setExportError(null);
 
+    const exportTaskId = `export-video-${Date.now()}`;
+    useTaskProgressStore.getState().startTask({
+      id: exportTaskId,
+      category: 'export',
+      label: '视频导出',
+      mode: 'determinate',
+      progress: 0,
+      phase: 'bundling',
+      level: 2,
+      canCancel: false,
+    });
+
     try {
       await window.electronAPI.renderVideo({
         timeline: JSON.stringify(timeline),
@@ -507,9 +530,15 @@ export function Editor({
         exportConfig,
       });
       setExportProgress(1);
+      useTaskProgressStore.getState().completeTask(exportTaskId, {
+        label: '在 Finder 中显示',
+        handler: () => window.electronAPI.showItemInFolder(savePath),
+      });
     } catch (error) {
       console.error('导出失败:', error);
-      setExportError('导出失败，请查看控制台日志后重试。');
+      const errMsg = '导出失败，请查看控制台日志后重试。';
+      setExportError(errMsg);
+      useTaskProgressStore.getState().failTask(exportTaskId, errMsg);
     }
   }, [timeline]);
 
@@ -711,17 +740,6 @@ export function Editor({
         />
       </div>
 
-      <ExportProgress
-        visible={isExporting}
-        progress={exportProgress}
-        outputPath={outputPath}
-        errorMessage={exportError}
-        onClose={() => {
-          setIsExporting(false);
-          setExportProgress(0);
-          setExportError(null);
-        }}
-      />
       <ExportSettingsModal
         visible={isExportSettingsOpen}
         timelineWidth={timeline.width}
