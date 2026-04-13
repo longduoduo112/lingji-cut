@@ -102,7 +102,8 @@ export function OverlayBlock({
   const blockHeight = Math.max(24, trackHeight - 6);
   const showImageThumbnail =
     !isAICard && !isTextOverlay && overlay.type === 'image' && Boolean(asset) && thumbnailWidth >= 24;
-  const projectDuration = timeline.podcast.durationMs || overlay.durationMs;
+  // 不再硬限制素材末端;拖拽路径已由 Timeline.tsx 接管且不做 project 末端 clamp
+  const projectDuration = Number.POSITIVE_INFINITY;
   const maxDurationForAsset =
     overlay.type === 'video' ? asset?.durationMs ?? overlay.durationMs : Number.POSITIVE_INFINITY;
   const label = isDefaultBackground
@@ -249,11 +250,11 @@ export function OverlayBlock({
 
     const handleMouseMove = (moveEvent: globalThis.MouseEvent) => {
       const deltaMs = (moveEvent.clientX - startX) / pxPerMs;
-      const maxByTimeline = Math.max(500, projectDuration - overlay.startMs);
+      // 只受媒体原始时长限制(video/audio);不再用 project 末端硬限制
       const nextDuration = clamp(
         Math.round(startDuration + deltaMs),
         500,
-        Math.min(maxDurationForAsset, maxByTimeline),
+        maxDurationForAsset,
       );
       updateOverlay(overlay.id, { durationMs: nextDuration });
     };
