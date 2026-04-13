@@ -905,6 +905,7 @@ export function Timeline({
                               pxPerMs={pxPerMs}
                               trackHeight={overlayTrackHeight}
                               selected={selectedOverlayId === overlay.id}
+                              trackLocked={Boolean(track.locked)}
                               getTrackDragZones={getTrackDragZones}
                               onTrackHoverChange={setHoverTrackId}
                               onContextMenu={(event) => {

@@ -97,3 +97,13 @@
   cursor: ew-resize;
   background: color-mix(in srgb, var(--color-window-sheen) 18%, transparent);
 }
+
+.collisionOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 69, 58, 0.24);
+  border: 1.5px solid var(--color-danger);
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+}
