@@ -12,13 +12,20 @@ import {
 } from '../types';
 import { resolveOverlayMotion } from './overlay-motion';
 
-function buildLockedTrack(id: string, label: string, kind: 'audio' | 'subtitle'): TimelineTrack {
+function buildLockedTrack(
+  id: string,
+  label: string,
+  kind: 'audio' | 'subtitle',
+  existing?: TimelineTrack,
+): TimelineTrack {
+  // 默认 locked: true，但保留已有 track 的 locked 值（允许用户解锁）
+  const locked = existing ? Boolean(existing.locked) : true;
   return {
     id,
     kind,
     label,
     order: 0,
-    locked: true,
+    locked,
   };
 }
 
@@ -80,9 +87,11 @@ export function normalizeTimelineData(timeline: TimelineData): TimelineData {
         )
       : [createVisualTrack(1)];
 
+  const existingAudioTrack = rawTracks.find((t) => t.id === DEFAULT_AUDIO_TRACK_ID);
+  const existingSubtitleTrack = rawTracks.find((t) => t.id === DEFAULT_SUBTITLE_TRACK_ID);
   const normalizedTracks = [
-    buildLockedTrack(DEFAULT_AUDIO_TRACK_ID, '口播轨', 'audio'),
-    buildLockedTrack(DEFAULT_SUBTITLE_TRACK_ID, '字幕轨', 'subtitle'),
+    buildLockedTrack(DEFAULT_AUDIO_TRACK_ID, '口播轨', 'audio', existingAudioTrack),
+    buildLockedTrack(DEFAULT_SUBTITLE_TRACK_ID, '字幕轨', 'subtitle', existingSubtitleTrack),
     ...normalizedVisualTracks,
   ];
   const visualTrackIds = new Set(normalizedVisualTracks.map((track) => track.id));

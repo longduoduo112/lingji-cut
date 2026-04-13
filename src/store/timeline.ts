@@ -46,6 +46,8 @@ export interface TimelineStore {
   addAssets: (items: { path: string; type: AssetType; durationMs?: number }[]) => void;
   removeAsset: (path: string) => void;
   addTrack: () => string;
+  createTrackAt: (position: 'top' | 'bottom') => string;
+  toggleTrackLocked: (trackId: string) => void;
   removeTrack: (id: string) => void;
   addOverlay: (overlay: OverlayDraft) => string;
   addAICardsToTimeline: (cards: AICardTimelineDraft[]) => void;
@@ -445,11 +447,56 @@ export const useTimelineStore = create<TimelineStore>((set) => ({
 
     return track.id;
   },
+  createTrackAt: (position) => {
+    const tracks = useTimelineStore.getState().timeline.tracks;
+    const visualTracks = tracks.filter((t) => t.kind === 'visual');
+    const existingIds = new Set(visualTracks.map((t) => t.id));
+    let nextIndex = 1;
+    while (existingIds.has(`visual-${nextIndex}`)) nextIndex += 1;
+
+    const orders = visualTracks.map((t) => t.order);
+    const nextOrder =
+      position === 'top'
+        ? orders.length
+          ? Math.min(...orders) - 1
+          : 0
+        : orders.length
+          ? Math.max(...orders) + 1
+          : 0;
+
+    const newTrack = {
+      id: `visual-${nextIndex}`,
+      kind: 'visual' as const,
+      label: `轨道 ${nextIndex}`,
+      order: nextOrder,
+    };
+
+    set((state) => {
+      const nextTimeline = normalizeTimeline({
+        ...state.timeline,
+        tracks: [...state.timeline.tracks, newTrack],
+      });
+      return buildCommittedTimelineState(state, nextTimeline);
+    });
+
+    return newTrack.id;
+  },
+  toggleTrackLocked: (trackId) =>
+    set((state) => {
+      const track = state.timeline.tracks.find((t) => t.id === trackId);
+      if (!track) return {};
+      const nextTimeline = normalizeTimeline({
+        ...state.timeline,
+        tracks: state.timeline.tracks.map((t) =>
+          t.id === trackId ? { ...t, locked: !t.locked } : t,
+        ),
+      });
+      return buildCommittedTimelineState(state, nextTimeline);
+    }),
   removeTrack: (id) =>
     set((state) => {
       const target = state.timeline.tracks.find((track) => track.id === id);
-      // 音频轨和字幕轨禁止删除
-      if (!target || target.locked || target.kind === 'audio' || target.kind === 'subtitle') {
+      if (!target || target.locked) {
         return {};
       }
 
@@ -840,6 +887,11 @@ export const useTimelineStore = create<TimelineStore>((set) => ({
     }),
   removeOverlay: (id) =>
     set((state) => {
+      const target = state.timeline.overlays.find((o) => o.id === id);
+      if (target) {
+        const track = state.timeline.tracks.find((t) => t.id === target.trackId);
+        if (track?.locked) return {};
+      }
       const nextTimeline = normalizeTimeline({
         ...state.timeline,
         overlays: state.timeline.overlays.filter((overlay) => overlay.id !== id),
