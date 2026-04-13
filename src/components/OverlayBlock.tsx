@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import { useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { Clipboard, Copy } from 'lucide-react';
 import { getOverlayMoveDraft, type TrackDragZone } from '../lib/overlay-drag';
 import type { OverlayItem } from '../types';
@@ -9,11 +9,20 @@ import { AppIcon } from './AppIcon';
 import { AssetThumbnail } from './AssetThumbnail';
 import styles from './OverlayBlock.module.css';
 
+// Trim handle 命中区域宽度(像素)
+const TRIM_HANDLE_WIDTH = 6;
+
 interface OverlayBlockProps {
   overlay: OverlayItem;
   pxPerMs: number;
   trackHeight?: number;
   selected?: boolean;
+  /** 当前轨道是否锁定;锁定则不响应任何鼠标交互 */
+  trackLocked?: boolean;
+  /** 碰撞反馈状态;invalid 时叠加红遮罩 */
+  collisionState?: 'none' | 'invalid';
+  /** 可选的 trim snap 计算函数(Task 13 会注入) */
+  computeSnapForTrim?: (candidateMs: number, overlayId: string) => number;
   getTrackDragZones?: () => TrackDragZone[];
   onTrackHoverChange?: (trackId: string | null) => void;
   onSelect?: () => void;
@@ -25,11 +34,16 @@ export function OverlayBlock({
   pxPerMs,
   trackHeight = 48,
   selected = false,
+  trackLocked = false,
+  collisionState = 'none',
+  computeSnapForTrim,
   getTrackDragZones,
   onTrackHoverChange,
   onSelect,
   onContextMenu,
 }: OverlayBlockProps) {
+  const blockRef = useRef<HTMLDivElement | null>(null);
+  const [hoverEdge, setHoverEdge] = useState<'start' | 'end' | null>(null);
   const {
     assets,
     copyOverlay,
@@ -90,6 +104,32 @@ export function OverlayBlock({
   const canManageOverlay = !isDefaultBackground;
   const canPaste = Boolean(overlayClipboard);
 
+  const beginTrim = (edge: 'start' | 'end', startEvent: ReactMouseEvent<HTMLDivElement>) => {
+    startEvent.preventDefault();
+    startEvent.stopPropagation();
+    const originalStart = overlay.startMs;
+    const originalDuration = overlay.durationMs;
+    const originalEnd = originalStart + originalDuration;
+    const startMouseX = startEvent.clientX;
+
+    const onMove = (ev: globalThis.MouseEvent) => {
+      const deltaMs = (ev.clientX - startMouseX) / pxPerMs;
+      let newEdgeMs = edge === 'start' ? originalStart + deltaMs : originalEnd + deltaMs;
+      if (computeSnapForTrim) {
+        newEdgeMs = computeSnapForTrim(newEdgeMs, overlay.id);
+      }
+      useTimelineStore.getState().trimOverlayClip(overlay.id, edge, newEdgeMs);
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   const handleMoveMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
       return;
@@ -99,8 +139,25 @@ export function OverlayBlock({
       return;
     }
 
+    // 锁定轨道完全不响应交互
+    if (trackLocked) {
+      return;
+    }
+
     if ((event.target as HTMLElement).dataset.resize === 'true') {
       return;
+    }
+
+    // 命中 trim handle 边缘 → 走 trim 路径,否则 fallthrough 原 move-drag
+    if (blockRef.current) {
+      const rect = blockRef.current.getBoundingClientRect();
+      const offsetX = event.clientX - rect.left;
+      const fromStartEdge = offsetX <= TRIM_HANDLE_WIDTH;
+      const fromEndEdge = offsetX >= rect.width - TRIM_HANDLE_WIDTH;
+      if (fromStartEdge || fromEndEdge) {
+        beginTrim(fromStartEdge ? 'start' : 'end', event);
+        return;
+      }
     }
 
     event.preventDefault();
@@ -184,10 +241,36 @@ export function OverlayBlock({
     document.addEventListener('mouseup', handleMouseUp);
   };
 
+  const resolvedCursor = trackLocked
+    ? 'default'
+    : hoverEdge === 'start' || hoverEdge === 'end'
+      ? 'col-resize'
+      : 'grab';
+
   const block = (
     <div
+      ref={blockRef}
       data-overlay-block="true"
       onMouseDown={handleMoveMouseDown}
+      onMouseMove={(event) => {
+        if (trackLocked || isDefaultBackground) {
+          if (hoverEdge !== null) setHoverEdge(null);
+          return;
+        }
+        const rect = blockRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const offsetX = event.clientX - rect.left;
+        if (offsetX <= TRIM_HANDLE_WIDTH) {
+          if (hoverEdge !== 'start') setHoverEdge('start');
+        } else if (offsetX >= rect.width - TRIM_HANDLE_WIDTH) {
+          if (hoverEdge !== 'end') setHoverEdge('end');
+        } else if (hoverEdge !== null) {
+          setHoverEdge(null);
+        }
+      }}
+      onMouseLeave={() => {
+        if (hoverEdge !== null) setHoverEdge(null);
+      }}
       onContextMenu={(event) => {
         onSelect?.();
         onContextMenu?.(event);
@@ -201,6 +284,7 @@ export function OverlayBlock({
         left,
         width,
         height: blockHeight,
+        cursor: resolvedCursor,
         ['--overlay-color' as string]: color,
         ['--overlay-glow' as string]: colorGlow,
       }}
@@ -250,6 +334,8 @@ export function OverlayBlock({
           className={styles.resizeHandle}
         />
       )}
+
+      {collisionState === 'invalid' ? <div className={styles.collisionOverlay} /> : null}
     </div>
   );
 
