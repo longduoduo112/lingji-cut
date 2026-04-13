@@ -54,6 +54,7 @@ export interface TimelineStore {
   cutOverlay: (id: string) => boolean;
   pasteOverlay: (options: { trackId: string; startMs: number }) => string | null;
   updateOverlay: (id: string, updates: Partial<OverlayItem>) => void;
+  trimOverlayClip: (id: string, edge: 'start' | 'end', newEdgeMs: number) => void;
   removeOverlay: (id: string) => void;
   undo: () => void;
   redo: () => void;
@@ -708,6 +709,77 @@ export const useTimelineStore = create<TimelineStore>((set) => ({
           o.id === id ? merged : o,
         ),
       });
+      return buildCommittedTimelineState(state, nextTimeline);
+    }),
+  trimOverlayClip: (id, edge, newEdgeMs) =>
+    set((state) => {
+      const current = state.timeline.overlays.find((o) => o.id === id);
+      if (!current) return {};
+
+      const track = state.timeline.tracks.find((t) => t.id === current.trackId);
+      if (track?.locked) return {};
+
+      const MIN_DURATION = 100;
+      let nextStart = current.startMs;
+      let nextDuration = current.durationMs;
+
+      if (edge === 'start') {
+        const currentEnd = current.startMs + current.durationMs;
+        // 钳制到 [0, currentEnd - MIN_DURATION]
+        const clamped = Math.max(0, Math.min(newEdgeMs, currentEnd - MIN_DURATION));
+        nextStart = clamped;
+        nextDuration = currentEnd - clamped;
+      } else {
+        // end edge
+        const minEnd = current.startMs + MIN_DURATION;
+        const clampedEnd = Math.max(minEnd, newEdgeMs);
+        nextStart = current.startMs;
+        nextDuration = clampedEnd - current.startMs;
+      }
+
+      // 碰撞约束：使用 clampOverlayDurationByNeighbors 做右侧 clamp
+      if (edge === 'end' && isOverlayTrackManaged(current)) {
+        nextDuration = clampOverlayDurationByNeighbors({
+          overlayId: id,
+          startMs: nextStart,
+          requestedDurationMs: nextDuration,
+          trackId: current.trackId,
+          overlays: state.timeline.overlays,
+        });
+        nextDuration = Math.max(MIN_DURATION, nextDuration);
+      }
+
+      // 左 trim 的碰撞约束：不得越过左邻 clip 的 end
+      if (edge === 'start' && isOverlayTrackManaged(current)) {
+        const leftNeighborEnd = state.timeline.overlays
+          .filter(
+            (o) =>
+              o.trackId === current.trackId
+              && o.id !== id
+              && isOverlayTrackManaged(o)
+              && o.startMs + o.durationMs <= current.startMs,
+          )
+          .reduce((max, o) => Math.max(max, o.startMs + o.durationMs), 0);
+        if (nextStart < leftNeighborEnd) {
+          const delta = leftNeighborEnd - nextStart;
+          nextStart = leftNeighborEnd;
+          nextDuration = Math.max(MIN_DURATION, nextDuration - delta);
+        }
+      }
+
+      const nextOverlay: OverlayItem = {
+        ...current,
+        startMs: nextStart,
+        durationMs: nextDuration,
+      };
+
+      const nextTimeline = normalizeTimeline({
+        ...state.timeline,
+        overlays: state.timeline.overlays.map((o) =>
+          o.id === id ? nextOverlay : o,
+        ),
+      });
+
       return buildCommittedTimelineState(state, nextTimeline);
     }),
   removeOverlay: (id) =>
