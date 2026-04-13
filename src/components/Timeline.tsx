@@ -769,12 +769,6 @@ export function Timeline({
   useEffect(() => {
     currentTimeRef.current = currentTimeMs;
   }, [currentTimeMs]);
-  const projectDurationForDrag = useRef(
-    timeline.podcast.durationMs || durationMs,
-  );
-  useEffect(() => {
-    projectDurationForDrag.current = timeline.podcast.durationMs || durationMs;
-  }, [timeline.podcast.durationMs, durationMs]);
   const onOverlaySelectRef = useRef<((overlay: OverlayItem) => void) | null>(null);
   useEffect(() => {
     onOverlaySelectRef.current = (overlay: OverlayItem) => {
@@ -869,9 +863,7 @@ export function Timeline({
           ? moveEvent.clientX - containerRect.left + scrollLeft - outerPadding - sidebarWidth
           : 0;
         let candidateStartMs = Math.max(0, Math.round(localX / pxPerMs - grabOffsetMs));
-        // clamp 不超越 project 末端
-        const maxStart = Math.max(0, projectDurationForDrag.current - overlay.durationMs);
-        if (candidateStartMs > maxStart) candidateStartMs = maxStart;
+        // 尾部留白后不再硬限制最大位置;碰撞检测仍会阻止与其它 clip 重叠
 
         // 2. 解析轨道 / drop zone
         const dropZoneHover = resolveDropZoneHover(moveEvent.clientY);
