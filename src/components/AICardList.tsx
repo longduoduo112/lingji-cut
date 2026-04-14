@@ -1,5 +1,7 @@
+import { AnimatePresence, m } from 'framer-motion';
 import type { AICard, AICardType } from '../types/ai';
 import { Badge, Checkbox } from '../ui';
+import { springs } from '../ui/lib/motion';
 import styles from './AICardList.module.css';
 
 export interface AICardPlacement {
@@ -36,48 +38,55 @@ export function AICardList({
 }: AICardListProps) {
   return (
     <div className={styles.list} data-ai-card-list="true">
-      {cards.map((card) => {
-        const meta = CARD_TYPE_META[card.type];
+      <AnimatePresence mode="popLayout" initial={false}>
+        {cards.map((card) => {
+          const meta = CARD_TYPE_META[card.type];
 
-        return (
-          <article
-            key={card.id}
-            className={styles.card}
-            data-ai-card-type={card.type}
-            data-enabled={card.enabled}
-            onClick={() => onEditCard(card.id)}
-          >
-            <div className={styles.cardHead}>
-              <div
-                className={styles.checkbox}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <Checkbox
-                  checked={card.enabled}
-                  onChange={() => onToggleEnabled(card.id)}
-                  aria-label={`切换 ${card.title} 是否上轨`}
-                  size="sm"
-                />
+          return (
+            <m.article
+              key={card.id}
+              layoutId={`ai-card-${card.id}`}
+              className={styles.card}
+              data-ai-card-type={card.type}
+              data-enabled={card.enabled}
+              onClick={() => onEditCard(card.id)}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 12 }}
+              transition={springs.smooth}
+            >
+              <div className={styles.cardHead}>
+                <div
+                  className={styles.checkbox}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <Checkbox
+                    checked={card.enabled}
+                    onChange={() => onToggleEnabled(card.id)}
+                    aria-label={`切换 ${card.title} 是否上轨`}
+                    size="sm"
+                  />
+                </div>
+
+                <Badge
+                  size="xs"
+                  color={meta.color}
+                  className={styles.badge}
+                  data-tone={meta.tone}
+                >
+                  {meta.label}
+                </Badge>
+
+                <span className={styles.title}>{card.title}</span>
               </div>
 
-              <Badge
-                size="xs"
-                color={meta.color}
-                className={styles.badge}
-                data-tone={meta.tone}
-              >
-                {meta.label}
-              </Badge>
-
-              <span className={styles.title}>{card.title}</span>
-            </div>
-
-            <p className={styles.body} data-ai-card-copy="true">
-              {getPreviewText(card.content)}
-            </p>
-          </article>
-        );
-      })}
+              <p className={styles.body} data-ai-card-copy="true">
+                {getPreviewText(card.content)}
+              </p>
+            </m.article>
+          );
+        })}
+      </AnimatePresence>
     </div>
   );
 }

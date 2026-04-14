@@ -1,5 +1,6 @@
 import type { CSSProperties, DragEvent, MouseEvent, ReactNode, MouseEvent as ReactMouseEvent } from 'react';
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { m, useMotionValue, useSpring } from 'framer-motion';
 import { ConfirmDialog, ContextMenu } from '../ui';
 import type { TrackDragZone } from '../lib/overlay-drag';
 import {
@@ -1427,12 +1428,11 @@ export function Timeline({
               top={0}
             />
 
-            <div
-              className={styles.playhead}
-              style={{ left: sidebarWidth + currentTimeMs * pxPerMs }}
-            >
-              <div className={styles.playheadHandle} />
-            </div>
+            <TimelinePlayhead
+              currentTimeMs={currentTimeMs}
+              pxPerMs={pxPerMs}
+              sidebarWidth={sidebarWidth}
+            />
           </div>
         </div>
       </div>
@@ -1467,3 +1467,47 @@ export function Timeline({
 function joinClassNames(...values: Array<string | undefined>): string {
   return values.filter(Boolean).join(' ');
 }
+
+/**
+ * TimelinePlayhead — MotionValue 驱动的播放头
+ *
+ * 设计要点:
+ * - 使用 `useMotionValue` + `useSpring(stiffness: 800, damping: 60)` 组合,几乎 critically damped,
+ *   seek 跳转有细微缓动,playback 实时跟随(延迟 < 一帧)。
+ * - DOM 通过 `transform: translateX`(GPU 合成层)而非 `left`(CPU layout),消除 playhead 自身的
+ *   layout/paint 成本。
+ * - 通过 `useEffect` 将父 prop 同步到 motion value,父组件 re-render 不再触发 playhead 节点的
+ *   style diff(m.div 直接把 transform 写到样式,跳过 React 虚拟 DOM 对该节点 style 的比对)。
+ * - `memo` 包裹,父组件 re-render 若 prop 浅比较相等(sidebarWidth / pxPerMs 稳定)则整个子组件
+ *   不 re-render;仅 currentTimeMs 变动时进来更新 motion value(不触发 DOM 层面的 React diff)。
+ */
+const TimelinePlayhead = memo(function TimelinePlayhead({
+  currentTimeMs,
+  pxPerMs,
+  sidebarWidth,
+}: {
+  currentTimeMs: number;
+  pxPerMs: number;
+  sidebarWidth: number;
+}) {
+  const targetX = sidebarWidth + currentTimeMs * pxPerMs;
+  const rawX = useMotionValue(targetX);
+  const smoothX = useSpring(rawX, { stiffness: 800, damping: 60, mass: 1 });
+
+  useEffect(() => {
+    rawX.set(targetX);
+  }, [targetX, rawX]);
+
+  return (
+    <m.div
+      className={styles.playhead}
+      style={{
+        left: 0,
+        x: smoothX,
+        willChange: 'transform',
+      }}
+    >
+      <div className={styles.playheadHandle} />
+    </m.div>
+  );
+});

@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
+import { m } from 'framer-motion';
 import type { AssetItem, AssetType } from '../types';
 import { useTimelineStore } from '../store/timeline';
+import { springs } from '../ui/lib/motion';
 import type { PillGroupItem } from '../ui';
 import {
   ContextMenu,
@@ -100,9 +102,14 @@ function PodcastResourceSection({
       {expanded ? (
         <div className={styles.podcastSectionBody}>
           <div className={styles.podcastRow}>
-            <span className={styles.podcastRowIcon}>
+            {/* Hero ② 共享元素目标:从 setup 页"导入音频" quickItem icon morph 而来 */}
+            <m.span
+              layoutId="setup-editor-audio"
+              className={styles.podcastRowIcon}
+              transition={springs.layout}
+            >
               <AppIcon name="music" size={13} />
-            </span>
+            </m.span>
             <span
               className={[
                 styles.podcastRowName,

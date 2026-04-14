@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
+import { m } from 'framer-motion';
 import { Plus, Sparkles, Music, Video, FolderOpen, FolderSearch, CheckCircle2, AlertCircle, Link, Loader2 } from 'lucide-react';
+import { springs } from '../ui/lib/motion';
 import { getFileNameFromPath } from '../lib/utils';
 import type { RecentProjectEntry } from '../lib/electron-api';
 import {
@@ -195,9 +197,14 @@ export function Setup({
             className={styles.quickItem}
             onClick={handleOpenImportDialog}
           >
-            <div className={styles.quickItemIcon}>
+            {/* Hero ② 共享元素源:此 icon 容器会 morph 到 editor 页 AssetPanel 的口播音频行 */}
+            <m.div
+              layoutId="setup-editor-audio"
+              className={styles.quickItemIcon}
+              transition={springs.layout}
+            >
               <Music size={22} strokeWidth={1.5} />
-            </div>
+            </m.div>
             <span className={styles.quickItemLabel}>导入音频</span>
           </button>
           {/* 抖音导入入口：解析抖音链接 → 提取标题 → 创建项目 */}
