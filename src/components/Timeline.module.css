@@ -99,19 +99,22 @@
   display: flex;
   align-items: center;
   box-sizing: border-box;
-  width: 80px;
+  width: 100%;
   border-right: 1px solid var(--color-separator);
   background: var(--color-titlebar-bg);
 }
 
 .rulerSide {
   z-index: 4;
-  padding: 0 10px;
+  padding: 0 6px;
   border-bottom: 1px solid var(--color-separator);
   color: var(--color-text-muted);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rulerMain {
@@ -133,7 +136,13 @@
   left: 50%;
   width: 1px;
   height: 8px;
-  background: color-mix(in srgb, var(--color-border-strong) 56%, transparent);
+  background: color-mix(in srgb, var(--color-border-strong) 72%, transparent);
+}
+
+.tickMinor .tickMarker {
+  top: 6px;
+  height: 4px;
+  background: color-mix(in srgb, var(--color-border-strong) 40%, transparent);
 }
 
 .tickLabel {
@@ -141,13 +150,15 @@
   color: var(--color-text-muted);
   font-size: 9px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .trackControls {
   z-index: 3;
   height: 100%;
-  padding: 0 6px 0 10px;
-  gap: 2px;
+  padding: 0 2px;
+  gap: 0;
 }
 
 .trackDeleteButton {
@@ -270,7 +281,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 80px;
+  left: var(--timeline-sidebar-width, 56px);
   right: 0;
   pointer-events: none;
   border: 1px dashed var(--color-separator);
