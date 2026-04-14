@@ -2,6 +2,9 @@
 
 .root {
   display: inline-flex;
+  /* 即使外部 className 把 display 改成 flex，也按内容收缩，避免被父 flex 容器拉伸后右侧留白 */
+  width: fit-content;
+  max-width: 100%;
   gap: 2px;
   padding: 3px;
   background: var(--color-mac-elevated);
@@ -22,6 +25,8 @@
 
 .fullWidth {
   display: flex;
+  /* 覆盖 .root 的 fit-content，撑满父容器 */
+  width: 100%;
 }
 
 .fullWidth .item {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getAICardOverlayPosition } from '../lib/ai-card-layout';
+import { createImportedHtmlWebCardPayload } from '../lib/web-card';
 import type { AICard, AICardType } from '../types/ai';
 import { Button, Input, NumberField, PillGroup, type PillGroupItem, Textarea } from '../ui';
 import { AppIcon } from './AppIcon';
@@ -51,6 +52,7 @@ export function AICardInspector({
   const [displayMode, setDisplayMode] = useState<'fullscreen' | 'pip'>('fullscreen');
   const [displayDurationMs, setDisplayDurationMs] = useState(5_000);
   const [previewWebCard, setPreviewWebCard] = useState<AICard['webCard']>();
+  const [importError, setImportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!card) {
@@ -66,6 +68,7 @@ export function AICardInspector({
     setDisplayMode(card.displayMode);
     setDisplayDurationMs(card.displayDurationMs);
     setPreviewWebCard(card.webCard);
+    setImportError(null);
   }, [card]);
 
   if (!card) {
@@ -83,6 +86,7 @@ export function AICardInspector({
         })()
       : content;
 
+  const effectiveWebCard = previewWebCard ?? card.webCard;
   const draftUpdates: Partial<AICard> = {
     title,
     content: parsedContent,
@@ -91,10 +95,13 @@ export function AICardInspector({
     displayDurationMs,
     cardPrompt: cardPrompt.trim() || undefined,
     template: `${type}-default`,
+    renderMode: effectiveWebCard ? 'web-card' : card.renderMode,
+    webCard: effectiveWebCard,
   };
 
-  const effectiveWebCard = previewWebCard ?? card.webCard;
   const hasPreview = Boolean(effectiveWebCard?.src || effectiveWebCard?.srcDoc);
+  const importedSourceLabel =
+    effectiveWebCard?.sourceKind === 'imported-file' ? effectiveWebCard.sourceLabel : null;
   const previewCardPosition = getAICardOverlayPosition(displayMode, previewWidth, previewHeight);
   const previewFrameStyle =
     displayMode === 'fullscreen'
@@ -106,6 +113,7 @@ export function AICardInspector({
         };
 
   const handleRegenerateClick = async () => {
+    setImportError(null);
     if (previewWebCard) {
       setPreviewWebCard({
         ...previewWebCard,
@@ -122,9 +130,34 @@ export function AICardInspector({
     setPreviewWebCard(card.webCard);
   };
 
+  const handleImportHtmlClick = async () => {
+    if (!window.electronAPI?.selectHtmlFile) {
+      setImportError('当前环境不支持导入 HTML 文件');
+      return;
+    }
+
+    try {
+      const selectedFile = await window.electronAPI.selectHtmlFile();
+      if (!selectedFile) {
+        return;
+      }
+
+      if (!selectedFile.content.trim()) {
+        setImportError('导入的 HTML 文件内容为空，请重新选择');
+        return;
+      }
+
+      setImportError(null);
+      setPreviewWebCard(createImportedHtmlWebCardPayload(selectedFile));
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : '导入 HTML 失败');
+    }
+  };
+
   return (
     <div className={styles.root}>
       {errorMessage ? <span className={styles.errorText}>{errorMessage}</span> : null}
+      {importError ? <span className={styles.errorText}>{importError}</span> : null}
 
       <div className={styles.section} data-ai-card-section="text-content">
         <span className={styles.sectionTitle}>文字内容</span>
@@ -182,6 +215,7 @@ export function AICardInspector({
           value={displayMode}
           onChange={setDisplayMode}
           size="sm"
+          fullWidth
           className={styles.pillRow}
           itemClassName={styles.pillItem}
         />
@@ -202,6 +236,13 @@ export function AICardInspector({
 
       <div className={styles.section} data-ai-card-section="preview">
         <span className={styles.sectionTitle}>网页卡片预览</span>
+
+        {importedSourceLabel ? (
+          <div className={styles.importedSource} data-ai-card-imported-source="true">
+            <span className={styles.importedSourceBadge}>已导入 HTML</span>
+            <span className={styles.importedSourceName}>{importedSourceLabel}</span>
+          </div>
+        ) : null}
 
         <div className={styles.previewFrameShell} data-ai-card-preview-frame="true">
           {hasPreview ? (
@@ -243,7 +284,7 @@ export function AICardInspector({
 
         <div className={styles.actions}>
           {showCancel && onCancel ? (
-            <Button variant="secondary" size="sm" className={styles.secondaryAction} onClick={onCancel}>
+            <Button variant="secondary" size="sm" className={styles.actionBtn} onClick={onCancel}>
               取消
             </Button>
           ) : null}
@@ -251,7 +292,19 @@ export function AICardInspector({
           <Button
             variant="secondary"
             size="sm"
-            className={styles.secondaryAction}
+            className={styles.actionBtn}
+            leftIcon={<AppIcon name="upload" size={12} />}
+            onClick={() => {
+              void handleImportHtmlClick();
+            }}
+          >
+            导入 HTML
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            className={styles.actionBtn}
             leftIcon={
               <AppIcon
                 name="refresh-cw"
@@ -270,7 +323,7 @@ export function AICardInspector({
           <Button
             variant="primary"
             size="sm"
-            className={styles.primaryAction}
+            className={styles.actionBtn}
             leftIcon={<AppIcon name="save" size={12} />}
             onClick={() => {
               onSave(card.id, draftUpdates);
@@ -286,7 +339,7 @@ export function AICardInspector({
         <Button
           variant="destructive"
           size="sm"
-          className={styles.dangerButton}
+          fullWidth
           leftIcon={<AppIcon name="trash-2" size={13} />}
           onClick={() => onDelete?.()}
         >

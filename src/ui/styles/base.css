@@ -29,7 +29,13 @@ button,
 input,
 textarea,
 select {
-  font: inherit;
+  /* 仅继承字体族，避免 `font` 简写把 font-size 一并重置后
+     压过 Tailwind v4 的字号工具类（utilities layer 会被未分层规则覆盖）。 */
+  font-family: inherit;
+  font-feature-settings: inherit;
+  font-variation-settings: inherit;
+  letter-spacing: inherit;
+  color: inherit;
 }
 
 button {

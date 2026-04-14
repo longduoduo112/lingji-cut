@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import { createPersistedAIState, selectCoverCandidate } from '../lib/ai-persistence';
 import { getAISettingsIssue } from '../lib/ai-settings';
-import { buildStoryboardSuggestions } from '../lib/storyboard-planner';
 import {
   DEFAULT_WORKFLOW,
   loadAISettings,
@@ -387,13 +386,9 @@ export function useAIVideoWorkflow() {
             entries: useTimelineStore.getState().srtEntries,
             settings,
           })) as AIAnalysisResult;
-          const nextStoryboardPlan = buildStoryboardSuggestions(analysisResult.segments as any, {
-            summary: analysisResult.summary,
-            globalPrompt: analysisResult.globalPrompt,
-          });
 
           setAnalysisResult(analysisResult);
-          setStoryboardPlan(nextStoryboardPlan);
+          setStoryboardPlan(null);
           setCoverCandidates([]);
           await persistAIState(projectDir, analysisResult, []);
           setWorkflow({

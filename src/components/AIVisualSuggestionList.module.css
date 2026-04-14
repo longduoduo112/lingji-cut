@@ -11,23 +11,15 @@
 }
 
 .title {
-  font-size: 13px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
-  color: rgba(245, 247, 255, 0.96);
-}
-
-.toggleRow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: rgba(210, 218, 236, 0.84);
-  font-size: 11px;
+  color: var(--color-text-primary);
 }
 
 .hint {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
-  color: rgba(198, 205, 219, 0.72);
+  color: var(--color-text-secondary);
 }
 
 .list {
@@ -39,9 +31,9 @@
   display: grid;
   gap: 6px;
   padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(13, 18, 28, 0.58);
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--color-bg-hover);
+  background: var(--color-panel-bg);
 }
 
 .itemHead {
@@ -52,9 +44,9 @@
 }
 
 .itemTitle {
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 600;
-  color: rgba(245, 247, 255, 0.96);
+  color: var(--color-text-primary);
 }
 
 .meta {
@@ -65,16 +57,16 @@
 }
 
 .reason {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
-  color: rgba(222, 228, 240, 0.82);
+  color: var(--color-text-secondary);
 }
 
 .empty {
   padding: 12px;
-  border-radius: 12px;
-  border: 1px dashed rgba(255, 255, 255, 0.12);
-  color: rgba(198, 205, 219, 0.74);
-  font-size: 11px;
+  border-radius: var(--radius-2xl);
+  border: 1px dashed var(--color-outline-soft);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
   line-height: 1.6;
 }

@@ -12,6 +12,7 @@ import { addAppLog, getAppLogFilePath, getAppLogs } from './app-logger';
 import { analyzeSrt, regenerateAICard, regenerateCoverPrompt } from '../src/lib/ai-analysis';
 import { buildExportRenderConfig, type ExportConfig } from '../src/lib/export-settings';
 import { generateCoverCandidates } from '../src/lib/jimeng-client';
+import { planStoryboardFromTranscript } from '../src/lib/storyboard-planner';
 import { prepareTimelineForRemotionRender, type RenderAssetDescriptor } from '../src/lib/remotion-assets';
 import type { PersistedAIState } from '../src/lib/ai-persistence';
 import {
@@ -54,6 +55,15 @@ import { resolveDouyinVideoSource } from './video-import/douyin-downloader';
 import type { VideoImportRequest } from '../src/lib/video-import-types';
 import { createWorkbenchTabContextMenuTemplate } from './workbench-tab-context-menu';
 
+function resolveAppIconPath(): string | null {
+  const candidates = [
+    path.join(__dirname, '../build/icon.png'),
+    path.resolve(app.getAppPath(), 'build/icon.png'),
+    path.resolve(process.cwd(), 'build/icon.png'),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
 let mainWindow: BrowserWindow | null = null;
 let menuContext: MenuContext = {
   activePage: 'welcome',
@@ -90,6 +100,7 @@ function refreshApplicationMenu() {
 function createWindow() {
   const isMac = process.platform === 'darwin';
   const isDevelopment = !app.isPackaged;
+  const appIconPath = resolveAppIconPath();
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -98,6 +109,7 @@ function createWindow() {
     minHeight: 760,
     backgroundColor: '#070b14',
     title: '灵机剪影',
+    ...(appIconPath ? { icon: appIconPath } : {}),
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     ...(isMac
       ? {}
@@ -286,6 +298,45 @@ ipcMain.handle(
         'error',
         'ai-analysis',
         '字幕分析失败',
+        error instanceof Error ? error.stack ?? error.message : String(error),
+      );
+      throw error;
+    }
+  },
+);
+
+ipcMain.handle(
+  'plan-storyboard',
+  async (
+    _event,
+    args: { entries?: SrtEntry[]; srtContent?: string; settings: AISettings; globalPrompt?: string },
+  ) => {
+    writeAppLog(
+      'info',
+      'ai-analysis',
+      '收到视觉编排分析请求',
+      `entries=${args.entries?.length ?? 0}, hasSrtContent=${Boolean(args.srtContent)}`,
+    );
+    const entries = Array.isArray(args.entries) && args.entries.length > 0
+      ? args.entries
+      : parseSrt(args.srtContent ?? '');
+
+    try {
+      const plan = await planStoryboardFromTranscript(entries, args.settings, {
+        globalPrompt: args.globalPrompt,
+      });
+      writeAppLog(
+        'info',
+        'ai-analysis',
+        '视觉编排分析完成',
+        `suggestions=${plan.suggestions.length}, segments=${plan.segments.length}`,
+      );
+      return plan;
+    } catch (error) {
+      writeAppLog(
+        'error',
+        'ai-analysis',
+        '视觉编排分析失败',
         error instanceof Error ? error.stack ?? error.message : String(error),
       );
       throw error;
@@ -757,6 +808,21 @@ ipcMain.handle('select-text-file', async () => {
   return { path: filePath, content };
 });
 
+ipcMain.handle('select-html-file', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '选择 HTML 卡片文件',
+    filters: [{ name: 'HTML 文件', extensions: ['html', 'htm'] }],
+    properties: ['openFile'],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) return null;
+
+  const filePath = result.filePaths[0];
+  const content = await fs.readFile(filePath, 'utf-8');
+  return { path: filePath, content };
+});
+
 // 轻量级抖音链接解析：仅获取标题和视频 ID，不下载视频
 ipcMain.handle('resolve-douyin-url', async (_event, url: string) => {
   writeAppLog('info', 'douyin-resolve', '解析抖音链接', url);
@@ -1160,6 +1226,17 @@ registerScriptHistoryIpc();
 app.setName('灵机剪影');
 
 app.whenReady().then(async () => {
+  // 开发模式下显式设置 Dock 图标；打包后 macOS 会使用 .app 自带的 icns
+  if (process.platform === 'darwin' && !app.isPackaged) {
+    const iconPath = resolveAppIconPath();
+    if (iconPath && app.dock) {
+      try {
+        app.dock.setIcon(iconPath);
+      } catch (err) {
+        writeAppLog('warn', 'app', '设置 Dock 图标失败', String(err));
+      }
+    }
+  }
   createWindow();
   // 启动 MCP Server
   try {

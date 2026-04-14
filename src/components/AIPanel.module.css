@@ -188,6 +188,12 @@
   align-self: flex-start;
 }
 
+.emptyStateActions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .emptyStateText,
 .hintText,
 .analysisStatusText,
@@ -198,8 +204,8 @@
 }
 
 .primaryButton,
-.footerButton,
-.actionButton {
+.secondaryButton,
+.footerButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -216,6 +222,12 @@
   color: var(--color-text-primary);
   font-size: 12px;
   font-weight: 600;
+}
+
+.secondaryButton {
+  width: 100%;
+  height: 32px;
+  border-radius: 8px;
 }
 
 .analysisStatus {
@@ -240,32 +252,16 @@
 }
 
 .actionBar {
-  display: flex;
-  align-items: center;
   gap: 6px;
   min-height: 28px;
   margin-bottom: 6px;
+}
+
+.actionGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
-}
-
-.actionButton {
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 5px;
-  background: var(--color-control-bg);
-  color: var(--color-text-secondary);
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 1;
-}
-
-.actionButton:hover {
-  color: var(--color-text-primary);
-}
-
-.deleteButton {
-  background: transparent;
-  color: var(--color-danger);
 }
 
 .selectionSummary {
@@ -325,7 +321,6 @@
 
 .iconButton:disabled,
 .primaryButton:disabled,
-.actionButton:disabled,
 .footerButton:disabled {
   cursor: not-allowed;
   opacity: 0.55;

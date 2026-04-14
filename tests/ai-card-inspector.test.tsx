@@ -39,8 +39,45 @@ describe('AICardInspector', () => {
     expect(html).toContain('危险操作');
     expect(html).toContain('卡片预览区');
     expect(html).toContain('全屏模式');
+    expect(html).toContain('导入 HTML');
     expect(html).toContain('重新生成');
     expect(html).toContain('保存');
     expect(html).toContain('删除此卡片');
+  });
+
+  it('shows imported html source information when the card already uses a custom html payload', () => {
+    const html = renderToStaticMarkup(
+      <AICardInspector
+        card={{
+          id: 'card-imported',
+          type: 'summary',
+          title: '自定义卡片',
+          content: '人工智能正在改变我们的创作方式。',
+          startMs: 0,
+          endMs: 45_000,
+          displayDurationMs: 5_000,
+          displayMode: 'fullscreen',
+          template: 'summary-default',
+          enabled: true,
+          renderMode: 'web-card',
+          webCard: {
+            srcDoc: '<!doctype html><html><body><main>custom</main></body></html>',
+            sourceKind: 'imported-file',
+            sourceLabel: 'custom-card.html',
+          },
+          style: {
+            primaryColor: '#6366f1',
+            backgroundColor: '#0f172a',
+            fontSize: 48,
+          },
+        }}
+        onRegenerate={async () => null}
+        onSave={() => undefined}
+        onDelete={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('已导入 HTML');
+    expect(html).toContain('custom-card.html');
   });
 });

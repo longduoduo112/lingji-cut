@@ -1,8 +1,7 @@
 import { useCallback, type MouseEvent } from 'react';
-import { Badge, Button, Checkbox, Spinner } from '../ui';
+import { Badge, Checkbox, Spinner } from '../ui';
 import type { AICard } from '../types/ai';
 import type { MotionCardPayload } from '../types/motion';
-import { AppIcon } from './AppIcon';
 import styles from './MotionCardItem.module.css';
 
 type MotionCardStatus = 'generating' | 'ready' | 'error';
@@ -16,8 +15,6 @@ interface MotionCardItemProps {
   card: MotionCard;
   status: MotionCardStatus;
   onToggleEnabled: (cardId: string) => void;
-  onModify: (cardId: string) => void;
-  onDelete: (cardId: string) => void;
   onClick?: (cardId: string) => void;
 }
 
@@ -37,29 +34,11 @@ export function MotionCardItem({
   card,
   status,
   onToggleEnabled,
-  onModify,
-  onDelete,
   onClick,
 }: MotionCardItemProps) {
   const handleRootClick = useCallback(() => {
     onClick?.(card.id);
   }, [card.id, onClick]);
-
-  const handleModifyClick = useCallback(
-    (event: MouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      onModify(card.id);
-    },
-    [card.id, onModify],
-  );
-
-  const handleDeleteClick = useCallback(
-    (event: MouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      onDelete(card.id);
-    },
-    [card.id, onDelete],
-  );
 
   const handleCheckbox = useCallback(() => {
     onToggleEnabled(card.id);
@@ -117,28 +96,6 @@ export function MotionCardItem({
       {status === 'error' && errorMessage ? (
         <p className={styles.errorHint}>{errorMessage}</p>
       ) : null}
-
-      <footer className={styles.actionRow}>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleModifyClick}
-          disabled={isGenerating}
-          leftIcon={<AppIcon name="pencil-line" size={11} />}
-        >
-          修改
-        </Button>
-        <span className={styles.actionSpacer} />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleDeleteClick}
-          className={styles.deleteButton}
-          leftIcon={<AppIcon name="trash-2" size={11} />}
-        >
-          删除
-        </Button>
-      </footer>
     </article>
   );
 }

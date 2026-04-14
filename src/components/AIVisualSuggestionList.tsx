@@ -1,11 +1,12 @@
-import { Badge, Checkbox } from '../ui';
+import { Alert, Badge, Button, Spinner } from '../ui';
 import type { AIStoryboardPlan } from '../types/ai';
 import styles from './AIVisualSuggestionList.module.css';
 
 interface AIVisualSuggestionListProps {
   storyboardPlan: AIStoryboardPlan | null;
-  autoApplyEnabled: boolean;
-  onToggleAutoApply?: (enabled: boolean) => void;
+  isAnalyzing?: boolean;
+  error?: string | null;
+  onAnalyze?: () => void;
 }
 
 function getSuggestionLabel(type: string): string {
@@ -23,29 +24,43 @@ function getSuggestionLabel(type: string): string {
 
 export function AIVisualSuggestionList({
   storyboardPlan,
-  autoApplyEnabled,
-  onToggleAutoApply,
+  isAnalyzing = false,
+  error = null,
+  onAnalyze,
 }: AIVisualSuggestionListProps) {
   const suggestions = storyboardPlan?.suggestions ?? [];
+  const analyzeButtonLabel = isAnalyzing
+    ? '分析中...'
+    : storyboardPlan
+      ? '重新分析视觉编排'
+      : '分析视觉编排';
 
   return (
     <section className={styles.root} aria-label="视觉编排建议">
       <div className={styles.header}>
         <span className={styles.title}>视觉编排建议</span>
-        <div className={styles.toggleRow}>
-          <Checkbox
-            checked={autoApplyEnabled}
-            onChange={() => onToggleAutoApply?.(!autoApplyEnabled)}
-            aria-label="自动应用到时间轴"
-            size="sm"
-          />
-          <span>自动应用到时间轴</span>
-        </div>
+        <Button
+          variant={storyboardPlan ? 'secondary' : 'primary'}
+          size="sm"
+          onClick={onAnalyze}
+          disabled={!onAnalyze || isAnalyzing}
+        >
+          {isAnalyzing ? (
+            <>
+              <Spinner size={12} color="#FFFFFF" />
+              {analyzeButtonLabel}
+            </>
+          ) : (
+            analyzeButtonLabel
+          )}
+        </Button>
       </div>
 
       <div className={styles.hint}>
-        这些建议会把内容卡片和动画统一编排起来。默认先给建议，再决定是否自动落轨。
+        分析完成后会根据字幕自动生成对应的动画卡片，生成完成后可在下方选择并点击"上轨"应用到时间轴。
       </div>
+
+      {error ? <Alert variant="destructive">{error}</Alert> : null}
 
       {suggestions.length > 0 ? (
         <div className={styles.list}>
@@ -68,7 +83,7 @@ export function AIVisualSuggestionList({
         </div>
       ) : (
         <div className={styles.empty}>
-          还没有视觉建议。先分析内容，系统会按字幕语义自动判断哪些段落适合做卡片或动画。
+          还没有视觉建议。点击"分析视觉编排"，系统会基于字幕判断哪些段落适合做数据动画、解释动画或章节切场，并自动生成对应的动画卡片。
         </div>
       )}
     </section>

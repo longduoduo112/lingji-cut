@@ -94,6 +94,11 @@ function normalizeWebCardPayload(value: unknown): WebCardPayload | undefined {
         ? value.runtimeStatus
         : 'idle',
     lastGeneratedAt: Number.isFinite(value.lastGeneratedAt) ? Number(value.lastGeneratedAt) : Date.now(),
+    sourceKind:
+      value.sourceKind === 'imported-file' || value.sourceKind === 'generated'
+        ? value.sourceKind
+        : undefined,
+    sourceLabel: typeof value.sourceLabel === 'string' ? value.sourceLabel : undefined,
   };
 }
 
@@ -537,7 +542,7 @@ export async function planTranscriptSegments(
 
 export async function generateCardForSegment(
   entries: SrtEntry[],
-  planning: SegmentPlanningResult,
+  planning: Pick<SegmentPlanningResult, 'summary' | 'keywords' | 'globalPrompt'>,
   segment: AISegment,
   settings: AISettings,
   options: {
@@ -641,8 +646,6 @@ export async function regenerateAICard(
   const regenerated = await generateCardForSegment(
     entries,
     {
-      segments: [segment],
-      coverPrompts: [],
       summary: programSummary ?? '',
       keywords,
       globalPrompt: globalPrompt?.trim() || undefined,

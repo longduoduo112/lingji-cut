@@ -10,13 +10,14 @@ function readSource(relativePath: string): string {
 }
 
 describe('AI assistant business components use the shared UI library', () => {
-  it('keeps AI card inspector typography aligned with design.pen', () => {
-    const css = readSource('src/components/AICardInspector.module.css');
+  it('keeps AI inspectors typography aligned with design.pen', () => {
+    const cardInspectorCss = readSource('src/components/AICardInspector.module.css');
+    const motionInspectorCss = readSource('src/components/MotionCardInspector.module.css');
 
-    expect(css).toMatch(/\.textInput\s*{[^}]*font-size:\s*12px;/s);
-    expect(css).toMatch(/\.textArea\s*{[^}]*font-size:\s*11px;/s);
-    expect(css).toMatch(/\.promptArea\s*{[^}]*font-size:\s*11px;/s);
-    expect(css).toMatch(/\.dangerButton\s*{[^}]*font-size:\s*12px;/s);
+    expect(cardInspectorCss).toMatch(/\.textInput\s*{[^}]*font-size:\s*12px;/s);
+    expect(cardInspectorCss).toMatch(/\.textArea\s*{[^}]*font-size:\s*11px;/s);
+    expect(cardInspectorCss).toMatch(/\.promptArea\s*{[^}]*font-size:\s*11px;/s);
+    expect(motionInspectorCss).toMatch(/\.dangerButton\s*{[^}]*font-size:\s*12px;/s);
   });
 
   it('keeps the asset library shell aligned with design.pen', () => {

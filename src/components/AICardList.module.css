@@ -45,15 +45,6 @@
   justify-content: center;
 }
 
-.checkboxControl {
-  gap: 0;
-}
-
-.checkboxVisual {
-  border-color: #5c5c60;
-  background: transparent;
-}
-
 .badge {
   flex-shrink: 0;
   font-size: 9px;

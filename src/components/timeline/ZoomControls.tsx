@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Minus, Plus, Maximize2 } from 'lucide-react';
 import {
   clampTimelineZoom,
   zoomIn,
@@ -54,7 +55,7 @@ export function ZoomControls({
         aria-label="缩小"
         onClick={() => onZoomChange(zoomOut(zoomLevel))}
       >
-        −
+        <Minus size={14} />
       </button>
       <div className={styles.zoomPercentWrap} ref={wrapRef}>
         <button
@@ -92,7 +93,7 @@ export function ZoomControls({
         aria-label="放大"
         onClick={() => onZoomChange(zoomIn(zoomLevel))}
       >
-        +
+        <Plus size={14} />
       </button>
       <button
         type="button"
@@ -103,7 +104,7 @@ export function ZoomControls({
           onZoomChange(zoomToFit(timelineDurationMs, viewportWidth))
         }
       >
-        ⇱⇲
+        <Maximize2 size={14} />
       </button>
       <button
         type="button"
@@ -112,7 +113,7 @@ export function ZoomControls({
         aria-label="恢复 100%"
         onClick={() => onZoomChange(clampTimelineZoom(1))}
       >
-        1:1
+        <span className={styles.zoomResetLabel}>1:1</span>
       </button>
     </div>
   );

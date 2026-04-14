@@ -508,7 +508,7 @@ export function Timeline({
 
     seekTo(event.clientX, !event.altKey);
 
-    const onMove = (ev: MouseEvent) => {
+    const onMove = (ev: globalThis.MouseEvent) => {
       seekTo(ev.clientX, !ev.altKey);
     };
     const onUp = () => {

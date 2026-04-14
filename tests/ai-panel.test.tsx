@@ -69,7 +69,10 @@ const mockModules = vi.hoisted(() => {
       isAnalyzing: false,
       analysisError: null as string | null,
       coverCandidates: [],
+      motionCards: [],
       isGeneratingCovers: false,
+      isPlanningStoryboard: false,
+      storyboardError: null as string | null,
       storyboardPlan: {
         segments: [],
         suggestions: [
@@ -92,7 +95,6 @@ const mockModules = vi.hoisted(() => {
         summary: '视觉摘要',
         generatedAt: 1,
       },
-      autoApplyVisualSuggestions: false,
       activeTab: 'cards' as const,
       setAnalysisResult: () => undefined,
       setAnalyzing: () => undefined,
@@ -102,8 +104,9 @@ const mockModules = vi.hoisted(() => {
       setCoverCandidates: () => undefined,
       selectCover: () => undefined,
       setGeneratingCovers: () => undefined,
+      setPlanningStoryboard: () => undefined,
+      setStoryboardError: () => undefined,
       setStoryboardPlan: () => undefined,
-      setAutoApplyVisualSuggestions: () => undefined,
       setActiveTab: () => undefined,
       clearAnalysis: () => undefined,
     },
@@ -139,7 +142,10 @@ describe('AIPanel', () => {
     mockModules.aiStoreState.isAnalyzing = false;
     mockModules.aiStoreState.analysisError = null;
     mockModules.aiStoreState.coverCandidates = [];
+    mockModules.aiStoreState.motionCards = [];
     mockModules.aiStoreState.isGeneratingCovers = false;
+    mockModules.aiStoreState.isPlanningStoryboard = false;
+    mockModules.aiStoreState.storyboardError = null;
     mockModules.aiStoreState.storyboardPlan = {
       segments: [],
       suggestions: [
@@ -162,7 +168,6 @@ describe('AIPanel', () => {
       summary: '视觉摘要',
       generatedAt: 1,
     };
-    mockModules.aiStoreState.autoApplyVisualSuggestions = false;
     mockModules.aiStoreState.activeTab = 'cards';
     mockModules.timelineState.srtEntries = [{ index: 1, startMs: 0, endMs: 2_000, text: 'hello' }];
     mockModules.timelineState.timeline = mockModules.buildTimeline();
@@ -182,6 +187,7 @@ describe('AIPanel', () => {
     expect(html).toContain('data-ai-selection-summary="true"');
     expect(html).toContain('整体创作提示词');
     expect(html).toContain('data-ai-action-bar="true"');
+    expect(html).toContain('本期要点');
     expect(html).toContain('删除已选');
     expect(html).toContain('全选');
     expect(html).toContain('data-ai-footer-button="true"');
@@ -236,14 +242,28 @@ describe('AIPanel', () => {
     expect(html).toContain('卡片');
   });
 
-  it('renders storyboard suggestions and auto apply toggle in visual planning tab', () => {
+  it('renders the motion planning shell and regenerate action in visual planning tab', () => {
     mockModules.aiStoreState.activeTab = 'motion';
 
     const html = renderToStaticMarkup(<AIPanel compact={false} />);
 
     expect(html).toContain('视觉编排');
-    expect(html).toContain('自动应用到时间轴');
-    expect(html).toContain('这段数据值得做动画强调');
-    expect(html).toContain('kpi-countup');
+    expect(html).toContain('整体创作提示词');
+    expect(html).toContain('重新分析并生成');
+    expect(html).toContain('还没有动画卡片');
+    expect(html).not.toContain('自动应用到时间轴');
+    expect(html).not.toContain('这段数据值得做动画强调');
+  });
+
+  it('shows an independent analyze action when visual planning has not been generated', () => {
+    mockModules.aiStoreState.activeTab = 'motion';
+    mockModules.aiStoreState.storyboardPlan = null;
+
+    const html = renderToStaticMarkup(<AIPanel compact={false} />);
+
+    expect(html).toContain('分析并生成动画卡片');
+    expect(html).toContain('还没有动画卡片');
+    expect(html).not.toContain('重新分析并生成');
+    expect(html).not.toContain('这段数据值得做动画强调');
   });
 });

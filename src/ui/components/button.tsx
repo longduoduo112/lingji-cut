@@ -28,7 +28,7 @@ export type ButtonVariant =
 	| "link"
 	| "accent";
 
-export type ButtonSize = "default" | "sm" | "lg" | "icon";
+export type ButtonSize = "default" | "xs" | "sm" | "lg" | "icon";
 type ButtonSizeAlias = ButtonSize | "md";
 
 // Legacy exports for backward compatibility
@@ -84,6 +84,7 @@ const variantClasses: Record<ButtonVariant, string> = {
 const sizeClasses: Record<ButtonSizeAlias, string> = {
 	default: "h-[30px] rounded-lg px-3.5 py-[7px]",
 	md: "h-[30px] rounded-lg px-3.5 py-[7px]",
+	xs: "h-[22px] rounded-[5px] px-2 text-[10px]",
 	sm: "h-[26px] rounded-md px-2.5 text-[11px]",
 	lg: "h-9 rounded-lg px-4 text-[13px]",
 	icon: "h-[30px] w-[30px] rounded-lg",
@@ -92,6 +93,7 @@ const sizeClasses: Record<ButtonSizeAlias, string> = {
 const iconSizeClasses: Record<ButtonSizeAlias, string> = {
 	default: "w-3.5 h-3.5",
 	md: "w-3.5 h-3.5",
+	xs: "w-2.5 h-2.5",
 	sm: "w-3 h-3",
 	lg: "w-4 h-4",
 	icon: "w-3.5 h-3.5",

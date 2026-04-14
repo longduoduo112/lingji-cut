@@ -17,6 +17,7 @@ describe('project-persistence', () => {
       analysisResult: null,
       coverCandidates: [],
       motionCards: [],
+      storyboardPlan: null,
     });
     expect(data.script).toEqual({
       templateId: 'news-broadcast',
