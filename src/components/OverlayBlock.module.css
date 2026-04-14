@@ -26,11 +26,17 @@
 }
 
 .selected {
-  border-color: var(--overlay-color, var(--color-selection-blue));
+  border-color: var(--color-system-blue);
+  background: color-mix(
+    in srgb,
+    var(--color-system-blue) 14%,
+    color-mix(in srgb, var(--color-panel-elevated) 82%, var(--color-timeline-bg))
+  );
   box-shadow:
-    0 0 0 1px var(--overlay-color, var(--color-selection-blue)),
-    0 0 8px color-mix(in srgb, var(--overlay-color, var(--color-selection-blue)) 30%, transparent);
-  z-index: 1;
+    0 0 0 2px var(--color-system-blue),
+    0 0 0 4px color-mix(in srgb, var(--color-system-blue) 32%, transparent),
+    0 0 14px color-mix(in srgb, var(--color-system-blue) 48%, transparent);
+  z-index: 2;
 }
 
 /* 拖拽中的电梯效果 — 通过 data 属性触发,不占用 selected */
@@ -79,33 +85,6 @@
 .badge {
   color: var(--overlay-color, var(--color-selection-blue));
   margin-right: 6px;
-}
-
-.deleteButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  margin-right: 2px;
-  border: none;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--color-error, #ef4444) 14%, transparent);
-  color: var(--color-error, #ef4444);
-  cursor: pointer;
-  transition:
-    background var(--motion-fast, 120ms),
-    color var(--motion-fast, 120ms),
-    transform 80ms ease;
-}
-
-.deleteButton:hover {
-  background: color-mix(in srgb, var(--color-error, #ef4444) 28%, transparent);
-}
-
-.deleteButton:active {
-  transform: scale(0.88);
 }
 
 .resizeHandle {

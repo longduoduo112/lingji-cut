@@ -9,7 +9,7 @@ import {
 } from '../lib/timeline-context-menu';
 import { getRenderableVisualTracks, getVisualTracks } from '../lib/timeline-tracks';
 import { filterValidSubtitleHighlights } from '../lib/subtitle-highlights';
-import { formatTime, getEffectiveTimelineDurationMs } from '../lib/utils';
+import { formatTimecode, getEffectiveTimelineDurationMs } from '../lib/utils';
 import {
   clampTimelineZoom,
   getAnchoredTimelineScrollLeft,
@@ -101,8 +101,6 @@ export function Timeline({
   const trackRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   /** 每个 visual gap 槽位的 DOM,gapRefs.current[i] 对应屏幕顺序第 i 个 gap */
   const gapRefs = useRef<Array<HTMLDivElement | null>>([]);
-  /** 拖拽开始瞬间,源 overlay 所在轨道行的 rect.top,用于 previewDeltaY 测量 */
-  const dragSourceRowTopRef = useRef<number | null>(null);
   const [hoverTrackId, setHoverTrackId] = useState<string | null>(null);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [contextTarget, setContextTarget] = useState<TimelineContextTarget | null>(null);
@@ -137,7 +135,7 @@ export function Timeline({
     [timeline, durationMs],
   );
   const outerPadding = compact ? 8 : 10;
-  const sidebarWidth = compact ? 86 : 104;
+  const sidebarWidth = compact ? 48 : 56;
   const toolbarHeight = compact ? 36 : 40;
   const rulerHeight = 24;
   const audioTrackHeight = compact ? 26 : 30;
@@ -171,36 +169,48 @@ export function Timeline({
   );
   // canvas 外层总宽度（含左侧 sidebar），用于最外层 DOM 布局
   const canvasWidth = sidebarWidth + contentWidth;
+  // 目标:一个 major tick 大致占 90px,按 pxPerMs 反推合适的时间粒度
   const majorTickInterval = useMemo(() => {
-    if (visualEndMs <= 30_000) {
-      return 5_000;
+    const TARGET_PX = 90;
+    const CANDIDATES = [
+      10, 20, 50, 100, 200, 500,
+      1_000, 2_000, 5_000,
+      10_000, 15_000, 30_000,
+      60_000, 120_000, 300_000, 600_000,
+    ];
+    if (pxPerMs <= 0) return 5_000;
+    for (const step of CANDIDATES) {
+      if (step * pxPerMs >= TARGET_PX) return step;
     }
-
-    if (visualEndMs <= 120_000) {
-      return 10_000;
-    }
-
-    return 30_000;
-  }, [visualEndMs]);
-  const minorTickInterval = Math.max(1_000, Math.round(majorTickInterval / 5));
+    return CANDIDATES[CANDIDATES.length - 1];
+  }, [pxPerMs]);
+  // 每个 major 下面 5 个 minor(不带标签)
+  const minorTickInterval = useMemo(
+    () => Math.max(1, majorTickInterval / 5),
+    [majorTickInterval],
+  );
   // ruler 覆盖整条内容区（含尾部留白），按 pxPerMs 反推最大刻度 ms
   const totalRulerMs = useMemo(
     () => (pxPerMs > 0 ? Math.floor(contentWidth / pxPerMs) : visualEndMs),
     [contentWidth, pxPerMs, visualEndMs],
   );
   const ticks = useMemo(() => {
-    const values: number[] = [];
-
-    for (let cursor = 0; cursor <= totalRulerMs; cursor += majorTickInterval) {
-      values.push(cursor);
+    const list: Array<{ ms: number; isMajor: boolean }> = [];
+    const step = minorTickInterval;
+    if (step <= 0) return list;
+    // 为避免浮点累积误差，用整数索引驱动
+    const maxIndex = Math.floor(totalRulerMs / step);
+    for (let i = 0; i <= maxIndex; i += 1) {
+      const ms = Math.round(i * step);
+      const isMajor = i % 5 === 0;
+      list.push({ ms, isMajor });
     }
-
-    if (values.length === 0 || values[values.length - 1] !== totalRulerMs) {
-      values.push(totalRulerMs);
+    const last = list[list.length - 1];
+    if (!last || last.ms !== totalRulerMs) {
+      list.push({ ms: totalRulerMs, isMajor: true });
     }
-
-    return values;
-  }, [totalRulerMs, majorTickInterval]);
+    return list;
+  }, [totalRulerMs, minorTickInterval]);
   const overlaysByTrack = useMemo(() => {
     const groups = new Map<string, typeof timeline.overlays>();
 
@@ -640,6 +650,18 @@ export function Timeline({
         useTimelineStore
           .getState()
           .splitOverlayClipsAt(nowMs, selId ? [selId] : undefined);
+        return;
+      }
+
+      if (!mod && (event.key === 'Delete' || event.key === 'Backspace')) {
+        const { selectedOverlayId: selId } = splitCtxRef.current;
+        if (!selId) return;
+        const state = useTimelineStore.getState();
+        const target = state.timeline.overlays.find((o) => o.id === selId);
+        if (!target || target.overlayRole === 'default-background') return;
+        event.preventDefault();
+        state.removeOverlay(selId);
+        setSelectedOverlayId(null);
       }
     };
 
@@ -825,11 +847,8 @@ export function Timeline({
 
       startEvent.preventDefault();
 
-      // 记录源轨道行 rect.top,用于后续 previewDeltaY DOM 测量
-      const sourceRow = trackRowRefs.current[overlay.trackId];
-      dragSourceRowTopRef.current = sourceRow
-        ? sourceRow.getBoundingClientRect().top
-        : null;
+      // 立即标记选中态,让视觉反馈在 mousedown 就生效,而不是等到 mouseup
+      setSelectedOverlayId(overlay.id);
 
       // 启动 autoscroll
       const scrollContainer = containerRef.current;
@@ -916,28 +935,9 @@ export function Timeline({
           collision = !placement.ok;
         }
 
-        // 5. Drag preview deltaY:DOM 测量目标元素(gap 或目标轨道行)的 top,
-        //    与源轨道行 top 的差值,避免静态 rowHeight 公式在 gap 展开过渡期失真
-        let previewDeltaY = 0;
-        const sourceTop = dragSourceRowTopRef.current;
-        if (sourceTop !== null) {
-          let targetTop: number | null = null;
-          if (dropGapIndex !== null) {
-            const gapEl = gapRefs.current[dropGapIndex];
-            if (gapEl) {
-              const rect = gapEl.getBoundingClientRect();
-              targetTop = rect.top + rect.height / 2 - blockRect.height / 2;
-            }
-          } else {
-            const targetRow = trackRowRefs.current[candidateTrackId];
-            if (targetRow) {
-              targetTop = targetRow.getBoundingClientRect().top;
-            }
-          }
-          if (targetTop !== null) {
-            previewDeltaY = targetTop - sourceTop;
-          }
-        }
+        // 5. Drag preview deltaY:直接使用鼠标 clientY 相对起点的偏移,
+        //    让 clip 在拖拽过程中平滑跟随鼠标垂直移动;最终落位仍由 candidateTrackId / dropGapIndex 决定
+        const previewDeltaY = moveEvent.clientY - startClientY;
 
         const nextState: OverlayDragState = {
           overlayId: overlay.id,
@@ -1013,7 +1013,6 @@ export function Timeline({
 
         dragStateRef.current = null;
         setDragState(null);
-        dragSourceRowTopRef.current = null;
       };
 
       window.addEventListener('mousemove', handleMove);
@@ -1121,7 +1120,13 @@ export function Timeline({
             padding: outerPadding,
           }}
         >
-          <div className={styles.content} style={{ width: canvasWidth }}>
+          <div
+            className={styles.content}
+            style={{
+              width: canvasWidth,
+              ['--timeline-sidebar-width' as string]: `${sidebarWidth}px`,
+            }}
+          >
             <div
               className={styles.rulerRow}
               style={{ gridTemplateColumns: trackColumns, height: rulerHeight }}
@@ -1137,12 +1142,19 @@ export function Timeline({
               >
                 {ticks.map((tick) => (
                   <div
-                    key={tick}
-                    className={styles.tick}
-                    style={{ left: tick * pxPerMs }}
+                    key={tick.ms}
+                    className={joinClassNames(
+                      styles.tick,
+                      tick.isMajor ? '' : styles.tickMinor,
+                    )}
+                    style={{ left: tick.ms * pxPerMs }}
                   >
                     <div className={styles.tickMarker} />
-                    <div className={styles.tickLabel}>{formatTime(tick)}</div>
+                    {tick.isMajor ? (
+                      <div className={styles.tickLabel}>
+                        {formatTimecode(tick.ms, majorTickInterval)}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>

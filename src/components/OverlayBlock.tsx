@@ -1,12 +1,10 @@
 import { useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { Clipboard, Copy } from 'lucide-react';
-import { m } from 'framer-motion';
 import { getOverlayMoveDraft, type TrackDragZone } from '../lib/overlay-drag';
 import type { OverlayItem } from '../types';
 import { clamp, getFileNameFromPath } from '../lib/utils';
 import { useTimelineStore } from '../store/timeline';
 import { ContextMenu } from '../ui';
-import { springs } from '../ui/lib/motion';
 import { AppIcon } from './AppIcon';
 import { AssetThumbnail } from './AssetThumbnail';
 import styles from './OverlayBlock.module.css';
@@ -276,13 +274,6 @@ export function OverlayBlock({
       ? 'col-resize'
       : 'grab';
 
-  // Hero ① — 来自 AI 卡片的 overlay 启用 layoutId 共享元素过渡,
-  // 让 AICardList 中的卡片"飞入并吸附"到该 overlay。其它来源走普通 div,不污染性能。
-  const sharedLayoutId =
-    isAICard && overlay.aiCardData?.sourceCardId
-      ? `ai-card-${overlay.aiCardData.sourceCardId}`
-      : undefined;
-
   const blockClassName = [
     styles.root,
     isDefaultBackground ? styles.locked : '',
@@ -301,7 +292,6 @@ export function OverlayBlock({
             : undefined,
           opacity: 0.85,
           zIndex: 50,
-          pointerEvents: 'none' as const,
           transition: 'none',
         }
       : {}),
@@ -358,23 +348,6 @@ export function OverlayBlock({
         {label}
       </div>
 
-      {!isDefaultBackground && selected ? (
-        <button
-          className={styles.deleteButton}
-          onMouseDown={(event) => {
-            event.stopPropagation();
-          }}
-          onClick={(event) => {
-            event.stopPropagation();
-            removeOverlay(overlay.id);
-          }}
-          aria-label="删除"
-          title="删除"
-        >
-          <AppIcon name="trash-2" size={12} />
-        </button>
-      ) : null}
-
       {isDefaultBackground ? null : (
         <div
           data-resize="true"
@@ -387,23 +360,7 @@ export function OverlayBlock({
     </>
   );
 
-  const block = sharedLayoutId ? (
-    <m.div
-      ref={blockRef}
-      layoutId={sharedLayoutId}
-      transition={springs.smooth}
-      data-overlay-block="true"
-      data-dragging={isDragging ? 'true' : undefined}
-      onMouseDown={handleMoveMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      onContextMenu={handleContextMenu}
-      className={blockClassName}
-      style={blockStyle}
-    >
-      {innerBlock}
-    </m.div>
-  ) : (
+  const block = (
     <div
       ref={blockRef}
       data-overlay-block="true"

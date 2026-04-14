@@ -15,6 +15,32 @@ export function formatTime(ms: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+/**
+ * 按刻度粒度格式化时码，用于时间轴尺随缩放展示不同精度。
+ * stepMs >= 1000 → mm:ss
+ * stepMs >= 100  → mm:ss.f
+ * stepMs >= 10   → mm:ss.ff
+ * 其他           → mm:ss.fff
+ */
+export function formatTimecode(ms: number, stepMs: number): string {
+  const safeMs = Math.max(0, ms);
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const base = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  if (stepMs >= 1000) {
+    return base;
+  }
+  const remainder = Math.round(safeMs - totalSeconds * 1000);
+  if (stepMs >= 100) {
+    return `${base}.${Math.floor(remainder / 100)}`;
+  }
+  if (stepMs >= 10) {
+    return `${base}.${String(Math.floor(remainder / 10)).padStart(2, '0')}`;
+  }
+  return `${base}.${String(remainder).padStart(3, '0')}`;
+}
+
 export function getFileNameFromPath(filePath: string): string {
   const normalizedPath = filePath.replace(/\\/g, '/');
   return normalizedPath.split('/').pop() || filePath;
