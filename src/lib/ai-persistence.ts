@@ -103,7 +103,11 @@ function isWebCardPayload(value: unknown): value is NonNullable<AICard['webCard'
       value.runtimeStatus === 'loading' ||
       value.runtimeStatus === 'ready' ||
       value.runtimeStatus === 'error') &&
-    (value.lastGeneratedAt === undefined || Number.isFinite(value.lastGeneratedAt))
+    (value.lastGeneratedAt === undefined || Number.isFinite(value.lastGeneratedAt)) &&
+    (value.sourceKind === undefined ||
+      value.sourceKind === 'generated' ||
+      value.sourceKind === 'imported-file') &&
+    (value.sourceLabel === undefined || typeof value.sourceLabel === 'string')
   );
 }
 

@@ -1,7 +1,13 @@
 import type { ExportConfig } from './export-settings';
 import type { AppLogEntry } from './app-log';
 import type { SrtEntry } from '../types';
-import type { AICard, AISegment, AISettings, CoverCandidate } from '../types/ai';
+import type {
+  AICard,
+  AISegment,
+  AISettings,
+  AIStoryboardPlan,
+  CoverCandidate,
+} from '../types/ai';
 import type { ImportKind } from './import-files';
 import type {
   VideoImportProgress,
@@ -108,6 +114,12 @@ export interface ElectronAPI {
     settings: AISettings;
     globalPrompt?: string;
   }) => Promise<unknown>;
+  planStoryboard: (args: {
+    entries?: SrtEntry[];
+    srtContent?: string;
+    settings: AISettings;
+    globalPrompt?: string;
+  }) => Promise<AIStoryboardPlan>;
   regenerateAICard: (args: {
     entries: SrtEntry[];
     card: AICard;
@@ -174,6 +186,7 @@ export interface ElectronAPI {
   saveScriptState: (projectDir: string, state: string) => Promise<void>;
   loadScriptState: (projectDir: string) => Promise<string | null>;
   selectTextFile: () => Promise<{ path: string; content: string } | null>;
+  selectHtmlFile: () => Promise<{ path: string; content: string } | null>;
   /** 轻量级抖音链接解析：仅返回标题和视频 ID，不下载视频 */
   resolveDouyinUrl: (url: string) => Promise<{ title: string; videoId: string }>;
   importVideoSource: (request: VideoImportRequest) => Promise<VideoImportProgress>;

@@ -41,4 +41,13 @@ describe('electron menu actions', () => {
     expect(source).toContain('importVideoSource');
     expect(source).toContain('getVideoImportStatus');
   });
+
+  it('declares html import api for the ai card bridge', () => {
+    const source = readFileSync(
+      new URL('../src/lib/electron-api.ts', import.meta.url),
+      'utf8',
+    );
+
+    expect(source).toContain('selectHtmlFile');
+  });
 });

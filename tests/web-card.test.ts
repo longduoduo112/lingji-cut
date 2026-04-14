@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   appendCacheBuster,
+  createImportedHtmlWebCardPayload,
   DEFAULT_WEB_CARD_BACKGROUND,
+  extractHtmlTitle,
   normalizeWebCardSrcDoc,
 } from '../src/lib/web-card';
 
@@ -37,5 +39,39 @@ describe('normalizeWebCardSrcDoc', () => {
 
     expect(normalized).toContain("return body.querySelector('[data-web-card-stage]')||body;");
     expect(normalized).not.toContain('body.firstElementChild');
+  });
+});
+
+describe('createImportedHtmlWebCardPayload', () => {
+  it('creates a ready-to-render imported web card payload with source metadata', () => {
+    const payload = createImportedHtmlWebCardPayload(
+      {
+        path: '/tmp/cards/custom-card.html',
+        content: '<!doctype html><html><body><main>custom</main></body></html>',
+      },
+      1_715_000_000_000,
+    );
+
+    expect(payload).toEqual({
+      srcDoc: '<!doctype html><html><body><main>custom</main></body></html>',
+      runtimeStatus: 'ready',
+      lastGeneratedAt: 1_715_000_000_000,
+      sourceKind: 'imported-file',
+      sourceLabel: 'custom-card.html',
+    });
+  });
+});
+
+describe('extractHtmlTitle', () => {
+  it('prefers the html title tag and normalizes whitespace', () => {
+    expect(
+      extractHtmlTitle(
+        '<!doctype html><html><head><title>  AI&nbsp;数据 看板  </title></head><body></body></html>',
+      ),
+    ).toBe('AI 数据 看板');
+  });
+
+  it('returns null when the document does not provide a title tag', () => {
+    expect(extractHtmlTitle('<!doctype html><html><body><h1>No title</h1></body></html>')).toBeNull();
   });
 });

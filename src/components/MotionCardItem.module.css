@@ -4,7 +4,7 @@
   gap: 8px;
   padding: 10px 12px;
   border: 1px solid var(--color-separator);
-  border-radius: 9px;
+  border-radius: var(--radius-xl);
   background: var(--color-panel-elevated);
   cursor: pointer;
   transition:
@@ -19,9 +19,10 @@
 }
 
 .card[data-enabled='true'] {
-  border-color: rgba(10, 132, 255, 0.32);
+  border-color: color-mix(in srgb, var(--color-selection-blue) 32%, transparent);
 }
 
+/* generating 状态使用 AI 紫色，来自 CLAUDE.md AI 操作界面视觉反馈铁律 */
 .card[data-status='generating'] {
   border-color: rgba(192, 132, 252, 0.45);
   background: color-mix(in srgb, var(--color-panel-elevated) 80%, rgba(192, 132, 252, 0.06));
@@ -57,7 +58,7 @@
 
 .title {
   color: var(--color-text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   line-height: 1.25;
   white-space: nowrap;
@@ -83,7 +84,7 @@
 .prompt {
   margin: 0;
   padding: 0;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
   color: var(--color-text-secondary);
   display: -webkit-box;
@@ -96,31 +97,11 @@
 .errorHint {
   margin: 0;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-danger) 12%, transparent);
   color: var(--color-danger);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   line-height: 1.45;
   border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
 }
 
-.actionRow {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding-top: 6px;
-  border-top: 1px dashed color-mix(in srgb, var(--color-separator) 80%, transparent);
-}
-
-.actionSpacer {
-  flex: 1;
-}
-
-.deleteButton {
-  color: var(--color-danger) !important;
-}
-
-.deleteButton:hover {
-  background: color-mix(in srgb, var(--color-danger) 12%, transparent) !important;
-  color: var(--color-danger) !important;
-}

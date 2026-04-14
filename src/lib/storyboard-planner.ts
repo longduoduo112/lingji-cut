@@ -1,5 +1,8 @@
+import type { SrtEntry } from '../types';
+import { planTranscriptSegments } from './ai-analysis';
 import {
   buildDefaultStoryboardPlan,
+  type AISettings,
   type AISegmentAnalysis,
   type AIStoryboardPlan,
   type AIVisualSuggestion,
@@ -97,4 +100,22 @@ export function buildStoryboardSuggestions(
     });
 
   return plan;
+}
+
+export async function planStoryboardFromTranscript(
+  entries: SrtEntry[],
+  settings: AISettings,
+  options: {
+    globalPrompt?: string;
+    planSegments?: typeof planTranscriptSegments;
+  } = {},
+): Promise<AIStoryboardPlan> {
+  const planning = await (options.planSegments ?? planTranscriptSegments)(entries, settings, {
+    globalPrompt: options.globalPrompt,
+  });
+
+  return buildStoryboardSuggestions(planning.segments, {
+    summary: planning.summary,
+    globalPrompt: planning.globalPrompt,
+  });
 }

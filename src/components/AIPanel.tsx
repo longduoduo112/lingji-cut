@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { v4 as uuid } from 'uuid';
 import {
   createPersistedAIState,
   parsePersistedAIState,
@@ -8,20 +9,26 @@ import {
   toggleCardEnabledInResult,
 } from '../lib/ai-persistence';
 import { getAISettingsIssue } from '../lib/ai-settings';
-import { buildStoryboardSuggestions } from '../lib/storyboard-planner';
 import { useAIStore, loadAISettings } from '../store/ai';
 import { useTaskProgressStore } from '../store/task-progress';
 import { getProjectDir, useTimelineStore } from '../store/timeline';
 import {
+  DEFAULT_CARD_DURATION_MS,
   buildAICardTimelineDraft,
+  getDefaultCardStyle,
+  getDefaultTemplate,
+  type AICard,
   type AIAnalysisResult,
   type CoverCandidate,
 } from '../types/ai';
+import { getFileNameFromPath } from '../lib/utils';
+import { createImportedHtmlWebCardPayload, extractHtmlTitle } from '../lib/web-card';
 import { AICardList, type AICardPlacement } from './AICardList';
 import { AppIcon } from './AppIcon';
 import { AICoverPanel } from './AICoverPanel';
 import { MotionPanel } from './MotionPanel';
 import {
+  ActionBar,
   Alert,
   Badge,
   Button,
@@ -52,6 +59,18 @@ const TAB_META: Record<AITabKey, { label: string; shortLabel: string }> = {
   motion: { label: '视觉编排', shortLabel: '视觉' },
 };
 const SUB_TABS: AITabKey[] = ['cards', 'cover', 'motion'];
+const IMPORTED_CARD_TITLE_FALLBACK = '导入卡片';
+
+function getImportedCardTitle(filePath: string, html: string): string {
+  const htmlTitle = extractHtmlTitle(html);
+  if (htmlTitle) {
+    return htmlTitle;
+  }
+
+  const fileName = getFileNameFromPath(filePath);
+  const fallbackTitle = fileName.replace(/\.[^.]+$/, '').trim();
+  return fallbackTitle || IMPORTED_CARD_TITLE_FALLBACK;
+}
 
 export function AIPanel({
   compact,
@@ -292,15 +311,11 @@ export function AIPanel({
         settings,
         globalPrompt: globalPromptDraft.trim() || undefined,
       })) as AIAnalysisResult;
-      const nextStoryboardPlan = buildStoryboardSuggestions(result.segments as any, {
-        summary: result.summary,
-        globalPrompt: result.globalPrompt,
-      });
-      setStoryboardPlan(nextStoryboardPlan);
-      const persistedState = await persistAIState(result, [], nextStoryboardPlan);
+      setStoryboardPlan(null);
+      const persistedState = await persistAIState(result, [], null);
       setAnalysisResult(persistedState.analysisResult ?? result);
       setCoverCandidates(persistedState.coverCandidates);
-      setStoryboardPlan(persistedState.storyboardPlan ?? nextStoryboardPlan);
+      setStoryboardPlan(persistedState.storyboardPlan ?? null);
       useTaskProgressStore.getState().completeTask(analyzeTaskId);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '分析失败';
@@ -364,6 +379,94 @@ export function AIPanel({
     },
     [handlePersistedCovers, setGeneratingCovers, setAnalysisError],
   );
+
+  const handleImportHtmlCard = useCallback(async () => {
+    if (!window.electronAPI?.selectHtmlFile) {
+      setAnalysisError('当前环境不支持导入 HTML 卡片');
+      return;
+    }
+
+    try {
+      const selectedFile = await window.electronAPI.selectHtmlFile();
+      if (!selectedFile) {
+        return;
+      }
+
+      if (!selectedFile.content.trim()) {
+        setAnalysisError('导入的 HTML 文件内容为空，请重新选择');
+        return;
+      }
+
+      const nextCardStartMs = (analysisResult?.cards ?? []).reduce(
+        (maxEnd, card) =>
+          Math.max(maxEnd, Number.isFinite(card.endMs) ? Math.max(0, Math.round(card.endMs)) : 0),
+        0,
+      );
+      const nextCardEndMs = nextCardStartMs + DEFAULT_CARD_DURATION_MS;
+      const title = getImportedCardTitle(selectedFile.path, selectedFile.content);
+      const segmentId = `imported-segment-${uuid()}`;
+      const cardId = `imported-card-${uuid()}`;
+      const importedCard: AICard = {
+        id: cardId,
+        segmentId,
+        type: 'data',
+        title,
+        content: title,
+        startMs: nextCardStartMs,
+        endMs: nextCardEndMs,
+        displayDurationMs: DEFAULT_CARD_DURATION_MS,
+        displayMode: 'pip',
+        template: getDefaultTemplate('data'),
+        enabled: true,
+        style: getDefaultCardStyle('data'),
+        renderMode: 'web-card',
+        webCard: createImportedHtmlWebCardPayload(selectedFile),
+      };
+      const importedSegment = {
+        id: segmentId,
+        title,
+        summary: title,
+        startMs: nextCardStartMs,
+        endMs: nextCardEndMs,
+        transcriptExcerpt: `HTML 导入：${getFileNameFromPath(selectedFile.path)}`,
+      };
+
+      const nextResult: AIAnalysisResult = analysisResult
+        ? {
+            ...analysisResult,
+            segments: [...analysisResult.segments, importedSegment],
+            cards: [...analysisResult.cards, importedCard],
+          }
+        : {
+            segments: [importedSegment],
+            cards: [importedCard],
+            coverPrompts: [],
+            summary: '',
+            keywords: [],
+            globalPrompt: globalPromptDraft.trim() || undefined,
+          };
+
+      setAnalysisError(null);
+      setAnalysisResult(nextResult);
+
+      const persistedState = await persistAIState(nextResult, coverCandidates);
+      const persistedResult = persistedState.analysisResult ?? nextResult;
+      setAnalysisResult(persistedResult);
+      setCoverCandidates(persistedState.coverCandidates);
+      onOpenCardInspector?.(cardId);
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : '导入 HTML 卡片失败');
+    }
+  }, [
+    analysisResult,
+    coverCandidates,
+    globalPromptDraft,
+    onOpenCardInspector,
+    persistAIState,
+    setAnalysisError,
+    setAnalysisResult,
+    setCoverCandidates,
+  ]);
 
   const handleRegenerateCoverPrompt = useCallback(async () => {
     if (!analysisResult) {
@@ -628,25 +731,38 @@ export function AIPanel({
                 </Badge>
                 <div className={styles.emptyStateText}>{generationStateText}</div>
                 {aiSettingsIssue ? <div className={styles.hintText}>{aiSettingsIssue}</div> : null}
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className={styles.primaryButton}
-                  onClick={() => void handleAnalyze()}
-                  disabled={analyzeButtonDisabled}
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <Spinner size={12} color="#FFFFFF" />
-                      {analyzeButtonLabel}
-                    </>
-                  ) : (
-                    <>
-                      <AppIcon name={aiSettingsIssue ? 'settings-2' : 'sparkles'} size={14} />
-                      {analyzeButtonLabel}
-                    </>
-                  )}
-                </Button>
+                <div className={styles.emptyStateActions}>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className={styles.primaryButton}
+                    onClick={() => void handleAnalyze()}
+                    disabled={analyzeButtonDisabled}
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <Spinner size={12} color="#FFFFFF" />
+                        {analyzeButtonLabel}
+                      </>
+                    ) : (
+                      <>
+                        <AppIcon name={aiSettingsIssue ? 'settings-2' : 'sparkles'} size={14} />
+                        {analyzeButtonLabel}
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className={styles.secondaryButton}
+                    onClick={() => void handleImportHtmlCard()}
+                    disabled={isAnalyzing}
+                  >
+                    <AppIcon name="upload" size={14} />
+                    导入 HTML 卡片
+                  </Button>
+                </div>
 
                 {isAnalyzing ? (
                   <div className={styles.analysisStatus}>
@@ -660,28 +776,45 @@ export function AIPanel({
 
             {hasGeneratedCards ? (
               <section className={styles.cardsSection}>
-                <div className={styles.actionBar} data-ai-action-bar="true">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className={styles.actionButton}
-                    onClick={handleSelectAllCards}
-                  >
-                    {allCardsSelected ? '取消全选' : '全选'}
-                  </Button>
-                  <div className={styles.selectionSummary} data-ai-selection-summary="true">
-                    {selectedCount} / {analysisResult?.cards.length ?? 0} 已选
-                  </div>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className={joinClassNames(styles.actionButton, styles.deleteButton)}
-                    onClick={() => handleDeleteCards(enabledCardIds)}
-                    disabled={selectedCount === 0 || isAnalyzing}
-                  >
-                    删除已选
-                  </Button>
-                </div>
+                <ActionBar
+                  className={styles.actionBar}
+                  data-ai-action-bar="true"
+                  start={
+                    <div className={styles.actionGroup}>
+                      <Button
+                        variant="secondary"
+                        size="xs"
+                        onClick={() => void handleImportHtmlCard()}
+                        disabled={isAnalyzing}
+                      >
+                        导入 HTML 卡片
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        size="xs"
+                        onClick={handleSelectAllCards}
+                      >
+                        {allCardsSelected ? '取消全选' : '全选'}
+                      </Button>
+                    </div>
+                  }
+                  center={
+                    <div className={styles.selectionSummary} data-ai-selection-summary="true">
+                      {selectedCount} / {analysisResult?.cards.length ?? 0} 已选
+                    </div>
+                  }
+                  end={
+                    <Button
+                      variant="destructive"
+                      size="xs"
+                      onClick={() => handleDeleteCards(enabledCardIds)}
+                      disabled={selectedCount === 0 || isAnalyzing}
+                    >
+                      删除已选
+                    </Button>
+                  }
+                />
 
                 <div className={styles.analysisWorkspace}>
                   {analysisResult && hasGeneratedCards && isAnalyzing ? (

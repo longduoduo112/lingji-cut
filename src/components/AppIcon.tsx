@@ -32,7 +32,9 @@ import {
   Minimize2,
   Monitor,
   Music,
+  Pause,
   PencilLine,
+  Play,
   Plus,
   Quote,
   Redo2,
@@ -42,6 +44,8 @@ import {
   SendHorizontal,
   Settings,
   Settings2,
+  SkipBack,
+  SkipForward,
   Sparkles,
   Trash2,
   Type,
@@ -148,7 +152,9 @@ const lucideIconMap: Partial<Record<AppIconName, LucideIcon>> = {
   'minimize-2': Minimize2,
   monitor: Monitor,
   music: Music,
+  pause: Pause,
   'pencil-line': PencilLine,
+  play: Play,
   plus: Plus,
   quote: Quote,
   'redo-2': Redo2,
@@ -158,6 +164,8 @@ const lucideIconMap: Partial<Record<AppIconName, LucideIcon>> = {
   'send-horizontal': SendHorizontal,
   settings: Settings,
   'settings-2': Settings2,
+  'skip-back': SkipBack,
+  'skip-forward': SkipForward,
   sparkles: Sparkles,
   'trash-2': Trash2,
   type: Type,
@@ -170,72 +178,11 @@ const lucideIconMap: Partial<Record<AppIconName, LucideIcon>> = {
   'zoom-out': ZoomOut,
 };
 
-const filled = {
-  fill: 'currentColor',
-  stroke: 'none',
-} as const;
-
 export function AppIcon({ name, size = 16, ...props }: AppIconProps) {
-  const customIcon = renderCustomIconPath(name);
-
-  if (customIcon) {
-    return (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2"
-        aria-hidden="true"
-        {...props}
-      >
-        {customIcon}
-      </svg>
-    );
-  }
-
   const LucideIcon = lucideIconMap[name];
   if (!LucideIcon) {
     return null;
   }
 
   return <LucideIcon size={size} strokeWidth={1.9} aria-hidden="true" {...props} />;
-}
-
-/**
- * 仅保留播放控件的自定义填充 SVG —— 设计稿中这些图标也是自定义 path。
- * 其余所有图标统一走 Lucide 标准描边风格。
- */
-function renderCustomIconPath(name: AppIconName) {
-  switch (name) {
-    case 'play':
-      return <path {...filled} d="M8 5v14l11-7z" />;
-    case 'pause':
-      return (
-        <>
-          <rect {...filled} x="6" y="4" width="4" height="16" rx="1" />
-          <rect {...filled} x="14" y="4" width="4" height="16" rx="1" />
-        </>
-      );
-    case 'skip-forward':
-      return (
-        <>
-          <path {...filled} d="M4 5v14l11-7z" />
-          <rect {...filled} x="18" y="5" width="3" height="14" rx="0.8" />
-        </>
-      );
-    case 'skip-back':
-      return (
-        <>
-          <rect {...filled} x="3" y="5" width="3" height="14" rx="0.8" />
-          <path {...filled} d="M20 5v14l-11-7z" />
-        </>
-      );
-    default:
-      return null;
-  }
 }

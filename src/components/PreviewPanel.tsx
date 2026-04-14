@@ -207,8 +207,8 @@ function PreviewPanelComponent({
                 aria-label={isPlaying ? '暂停' : '播放'}
               >
                 {isPlaying
-                  ? <AppIcon name="pause" size={16} className={styles.playIcon} />
-                  : <AppIcon name="play" size={16} className={styles.playIcon} />
+                  ? <AppIcon name="pause" size={18} className={styles.playIcon} />
+                  : <AppIcon name="play" size={18} className={styles.playIcon} />
                 }
               </Button>
             </TooltipTrigger>

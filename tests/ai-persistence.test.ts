@@ -56,7 +56,7 @@ describe('AI persistence helpers', () => {
     expect(persisted).toBeNull();
   });
 
-  it('round-trips the persisted ai state with cover candidates under version 2', () => {
+  it('round-trips the persisted ai state with cover candidates under version 3', () => {
     const persisted = createPersistedAIState(baseAnalysisResult, [
       {
         id: 'cover-1',
@@ -66,7 +66,7 @@ describe('AI persistence helpers', () => {
       },
     ]);
 
-    expect(persisted.version).toBe(2);
+    expect(persisted.version).toBe(3);
     expect(parsePersistedAIState(persisted)).toEqual(persisted);
   });
 
@@ -100,7 +100,7 @@ describe('AI persistence helpers', () => {
       },
     ]);
 
-    expect(persisted.version).toBe(2);
+    expect(persisted.version).toBe(3);
     expect(parsePersistedAIState(persisted)).toEqual(persisted);
   });
 

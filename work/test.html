@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>产品评价分镜动画</title>
+    <!-- 引入 Tailwind CSS 进行快速布局 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 GSAP 用于复杂的 timeline 和 motion blur 动画 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <style>
+        /* 纸质背景纹理 */
+        .paper-bg {
+            background-color: #f4f4f2;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+        }
+
+        /* 字体设置 */
+        /* 现代衬线体，粗细对比强烈 */
+        .font-serif-zh {
+            font-family: 'Songti SC', 'STSong', 'Noto Serif SC', 'Times New Roman', serif;
+            font-weight: 900;
+            letter-spacing: 0.05em;
+        }
+        /* 无衬线辅助字体 */
+        .font-sans-zh {
+            font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+
+        /* 基础排版样式 */
+        .main-title {
+            font-size: clamp(3rem, 8vw, 6rem);
+            color: #1a1a1a;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .number-italic {
+            font-style: italic;
+            margin-right: 0.5rem;
+            color: #333;
+        }
+        .sub-text {
+            font-size: clamp(1rem, 2vw, 1.5rem);
+            color: rgba(0,0,0,0.4);
+            font-weight: 400;
+        }
+
+        /* SVG 绘图辅助 */
+        .draw-path {
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* 弹幕样式 */
+        .barrage-text {
+            position: absolute;
+            font-size: clamp(2rem, 5vw, 4rem);
+            color: rgba(0, 0, 0, 0.05);
+            font-weight: bold;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        /* 隐藏所有场景直到初始化完成 */
+        .scene {
+            visibility: hidden;
+            opacity: 0;
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body class="paper-bg overflow-hidden h-screen w-screen m-0 select-none">
+
+    <!-- 背景：巨大的模糊 Apple Logo -->
+    <div class="fixed inset-0 flex items-center justify-center pointer-events-none z-0">
+        <svg class="w-[70vmin] h-[70vmin] opacity-10" style="filter: blur(25px);" viewBox="0 0 384 512" fill="#000">
+            <!-- 简化版苹果图标路径 -->
+            <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/>
+        </svg>
+    </div>
+
+    <!-- 动画主舞台 -->
+    <div id="stage" class="relative w-full h-full z-10">
+        
+        <!-- 过场箭头 (全局) -->
+        <div id="transition-arrow" class="absolute top-1/2 -translate-y-1/2 -left-32 opacity-0 z-50">
+            <svg class="w-24 h-24" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+        </div>
+
+        <!-- 场景 1：性能好 -->
+        <div id="scene1" class="scene flex-col">
+            <div class="relative">
+                <h1 class="main-title font-serif-zh s1-text">
+                    <span class="number-italic">1.</span>性能<span class="relative inline-block z-10">好
+                        <!-- 手绘圆圈 SVG -->
+                        <svg id="s1-circle" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] pointer-events-none -z-10" viewBox="0 0 100 100">
+                            <path class="draw-path" stroke="#d32f2f" stroke-width="4" d="M 50 10 C 75 10 90 25 90 50 C 90 80 65 90 40 85 C 15 80 10 55 20 30 C 25 15 40 10 55 12"/>
+                        </svg>
+                    </span>
+                </h1>
+                <div class="s1-sub-top absolute -top-8 right-0 sub-text font-sans-zh">↑ 更贵的芯片</div>
+                <div class="s1-sub-bottom absolute -bottom-8 right-0 sub-text font-sans-zh">↑ 更多的散热</div>
+            </div>
+        </div>
+
+        <!-- 场景 2：又贵又沉 -->
+        <div id="scene2" class="scene">
+            <h1 class="main-title font-serif-zh s2-text">
+                <span class="number-italic">2.</span>产品又贵又沉
+            </h1>
+        </div>
+
+        <!-- 场景 3：销量差 -->
+        <div id="scene3" class="scene flex-col">
+            <div class="relative w-full max-w-3xl flex flex-col items-center">
+                <div class="w-full relative h-32 mb-4">
+                    <!-- 股市下跌折线图 SVG -->
+                    <svg id="s3-chart" class="absolute bottom-0 w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 100 50">
+                        <!-- 阴影区域 -->
+                        <path id="s3-chart-fill" d="M0,0 L20,10 L40,5 L60,25 L80,15 L100,50 L100,60 L0,60 Z" fill="rgba(211, 47, 47, 0.1)" opacity="0"/>
+                        <!-- 红色下跌线 -->
+                        <path id="s3-chart-line" class="draw-path" stroke="#d32f2f" stroke-width="3" d="M0,0 L20,10 L40,5 L60,25 L80,15 L100,50"/>
+                    </svg>
+                </div>
+                <h1 class="main-title font-serif-zh s3-text relative z-10">
+                    <span class="number-italic">3.</span>销量奇差
+                </h1>
+                <div class="s3-sub absolute -bottom-10 right-10 sub-text font-sans-zh bg-gray-200/50 px-3 py-1 rounded">无人问津</div>
+            </div>
+        </div>
+
+        <!-- 场景 4：生态差 -->
+        <div id="scene4" class="scene">
+            <div class="relative p-8">
+                <!-- 对焦框 SVG -->
+                <svg id="s4-focus" class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <path class="s4-corner draw-path" stroke="#1a1a1a" stroke-width="2" d="M 0 20 L 0 0 L 20 0" />
+                    <path class="s4-corner draw-path" stroke="#1a1a1a" stroke-width="2" d="M 100 20 L 100 0 L 80 0" />
+                    <path class="s4-corner draw-path" stroke="#1a1a1a" stroke-width="2" d="M 100 80 L 100 100 L 80 100" />
+                    <path class="s4-corner draw-path" stroke="#1a1a1a" stroke-width="2" d="M 0 80 L 0 100 L 20 100" />
+                </svg>
+                <h1 class="main-title font-serif-zh s4-text">
+                    <span class="number-italic">4.</span>应用生态差
+                </h1>
+            </div>
+        </div>
+
+        <!-- 场景 5：反转 -->
+        <div id="scene5" class="scene">
+            <!-- 弹幕文字背景 -->
+            <div class="absolute inset-0 overflow-hidden pointer-events-none z-0">
+                <div class="barrage-text top-[10%] left-[5%] font-sans-zh">价格便宜</div>
+                <div class="barrage-text top-[80%] left-[60%] font-sans-zh">理解万岁</div>
+                <div class="barrage-text top-[25%] left-[70%] font-sans-zh">又不是不能用</div>
+                <div class="barrage-text top-[65%] left-[10%] font-sans-zh">生态慢慢建</div>
+                <div class="barrage-text top-[40%] left-[80%] font-sans-zh" style="font-size: clamp(3rem, 7vw, 6rem); opacity: 0.03;">妥协</div>
+            </div>
+
+            <div class="relative flex items-center gap-12 z-10">
+                <h1 class="main-title font-serif-zh s5-text">
+                    <span class="number-italic">1.</span>性能差
+                </h1>
+                <!-- 仪表盘回退动画 SVG -->
+                <div class="relative w-32 h-32 s5-dashboard">
+                    <svg viewBox="0 0 100 100" class="w-full h-full -rotate-90">
+                        <!-- 底色圆弧 -->
+                        <circle cx="50" cy="50" r="40" fill="none" stroke="#e0e0e0" stroke-width="8" stroke-dasharray="188 251" stroke-dashoffset="0" stroke-linecap="round"/>
+                        <!-- 动态代表数值的圆弧 (从满变空) -->
+                        <circle id="s5-arc" cx="50" cy="50" r="40" fill="none" stroke="#d32f2f" stroke-width="8" stroke-dasharray="188 251" stroke-dashoffset="0" stroke-linecap="round"/>
+                    </svg>
+                    <!-- 指针 -->
+                    <div id="s5-needle" class="absolute top-1/2 left-1/2 w-1 h-12 bg-gray-800 origin-bottom rounded-full -translate-x-1/2 -translate-y-full rotate-[120deg]"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 重播按钮 -->
+        <button id="replay-btn" class="absolute bottom-10 left-1/2 -translate-x-1/2 opacity-0 font-sans-zh text-sm tracking-widest text-gray-500 hover:text-black transition-colors px-4 py-2 border border-gray-300 rounded hover:border-black pointer-events-auto cursor-pointer z-50">
+            REPLAY
+        </button>
+
+    </div>
+
+    <script>
+        // 初始化 SVG 路径动画准备 (由于不使用收费版 DrawSVG 插件，使用原生 JS 计算长度)
+        function prepDraw(svgId) {
+            const paths = document.querySelectorAll(`${svgId} .draw-path, ${svgId}.draw-path`);
+            paths.forEach(path => {
+                const length = path.getTotalLength();
+                path.style.strokeDasharray = length;
+                path.style.strokeDashoffset = length;
+            });
+        }
+
+        // 预处理所有需要绘制的 SVG
+        prepDraw('#s1-circle');
+        prepDraw('#s3-chart-line');
+        // s4-corner 需要分别处理
+        document.querySelectorAll('.s4-corner').forEach(path => {
+            const length = path.getTotalLength();
+            path.style.strokeDasharray = length;
+            path.style.strokeDashoffset = length;
+        });
+
+
+        // 创建主时间轴
+        const masterTl = gsap.timeline({ delay: 0.5 });
+
+        // 通用的文本入场动画（带运动模糊）
+        const textIn = (target, yOffset = 40) => {
+            return gsap.fromTo(target, 
+                { autoAlpha: 0, y: yOffset, scale: 1.05, filter: 'blur(15px)' },
+                { autoAlpha: 1, y: 0, scale: 1, filter: 'blur(0px)', duration: 1, ease: "expo.out" }
+            );
+        };
+
+        // 通用的文本退场动画
+        const textOut = (target) => {
+            return gsap.to(target, { 
+                autoAlpha: 0, scale: 0.95, filter: 'blur(10px)', duration: 0.6, ease: "power2.in" 
+            });
+        };
+
+        // --- 场景 1 动画 ---
+        masterTl.addLabel("scene1")
+            .set('#scene1', { autoAlpha: 1 })
+            .add(textIn('.s1-text'), "scene1")
+            // 绘制手绘圆
+            .to('#s1-circle .draw-path', { strokeDashoffset: 0, duration: 1, ease: "power2.inOut" }, "-=0.3")
+            // 辅助文字浮现
+            .fromTo('.s1-sub-top', { autoAlpha: 0, y: 10 }, { autoAlpha: 1, y: 0, duration: 0.8, ease: "back.out(1.5)" }, "-=0.5")
+            .fromTo('.s1-sub-bottom', { autoAlpha: 0, y: -10 }, { autoAlpha: 1, y: 0, duration: 0.8, ease: "back.out(1.5)" }, "<0.2")
+            // 停留
+            .to({}, {duration: 1.5})
+            // 退场
+            .add(textOut('#scene1'), "scene1Out");
+
+        // --- 过场箭头 1 -> 2 ---
+        masterTl.addLabel("trans12", "-=0.2")
+            .fromTo('#transition-arrow', 
+                { x: '-20vw', autoAlpha: 0 }, 
+                { x: '120vw', autoAlpha: 1, duration: 0.8, ease: "power4.inOut" }, 
+                "trans12"
+            );
+
+        // --- 场景 2 动画 ---
+        masterTl.addLabel("scene2", "-=0.4")
+            .set('#scene2', { autoAlpha: 1 })
+            // 配合箭头带有一定的横向位移和模糊
+            .fromTo('.s2-text', 
+                { autoAlpha: 0, x: 100, filter: 'blur(20px)' },
+                { autoAlpha: 1, x: 0, filter: 'blur(0px)', duration: 1, ease: "expo.out" },
+                "scene2"
+            )
+            .to({}, {duration: 1.5})
+            .add(textOut('#scene2'), "scene2Out");
+
+        // --- 过场箭头 2 -> 3 ---
+        masterTl.fromTo('#transition-arrow', 
+            { x: '-20vw', autoAlpha: 0 }, 
+            { x: '120vw', autoAlpha: 1, duration: 0.8, ease: "power4.inOut" }, 
+            "-=0.2"
+        );
+
+        // --- 场景 3 动画 ---
+        masterTl.addLabel("scene3", "-=0.4")
+            .set('#scene3', { autoAlpha: 1 })
+            .add(textIn('.s3-text', 20), "scene3")
+            // 绘制下跌线
+            .to('#s3-chart-line', { strokeDashoffset: 0, duration: 1.2, ease: "power1.inOut" }, "-=0.5")
+            // 阴影区域渐现
+            .to('#s3-chart-fill', { autoAlpha: 1, duration: 0.5 }, "-=0.8")
+            // 无人问津小字落下
+            .fromTo('.s3-sub', 
+                { autoAlpha: 0, y: -20, rotation: -5 }, 
+                { autoAlpha: 1, y: 0, rotation: 0, duration: 0.6, ease: "bounce.out" }, 
+                "-=0.2"
+            )
+            .to({}, {duration: 1.5})
+            .add(textOut('#scene3'), "scene3Out");
+
+        // --- 过场箭头 3 -> 4 ---
+        masterTl.fromTo('#transition-arrow', 
+            { x: '-20vw', autoAlpha: 0 }, 
+            { x: '120vw', autoAlpha: 1, duration: 0.8, ease: "power4.inOut" }, 
+            "-=0.2"
+        );
+
+        // --- 场景 4 动画 ---
+        masterTl.addLabel("scene4", "-=0.4")
+            .set('#scene4', { autoAlpha: 1 })
+            .add(textIn('.s4-text'), "scene4")
+            // 对焦框缩放锁定动画
+            .fromTo('#s4-focus', 
+                { scale: 1.5, autoAlpha: 0 }, 
+                { scale: 1, autoAlpha: 1, duration: 0.8, ease: "power3.out" }, 
+                "-=0.8"
+            )
+            // 对焦框边线画出
+            .to('.s4-corner', { strokeDashoffset: 0, duration: 0.6, ease: "power2.out", stagger: 0.1 }, "-=0.6")
+            .to({}, {duration: 1.5})
+            .add(textOut('#scene4'), "scene4Out");
+
+        // --- 场景 5 (反转) 动画 ---
+        masterTl.addLabel("scene5", "-=0.2")
+            .set('#scene5', { autoAlpha: 1 })
+            // 反转场景快速切入，不需要箭头
+            .fromTo('.s5-text', 
+                { autoAlpha: 0, scale: 0.8, filter: 'blur(10px)' }, 
+                { autoAlpha: 1, scale: 1, filter: 'blur(0px)', duration: 0.6, ease: "back.out(1.2)" }, 
+                "scene5"
+            )
+            // 仪表盘动画：从满 (188) 退回到空 (0)
+            .fromTo('#s5-arc', 
+                { strokeDashoffset: 0 }, 
+                { strokeDashoffset: 188, duration: 1.5, ease: "power2.inOut" }, 
+                "scene5+=0.2"
+            )
+            // 指针从右侧 (高水平) 旋转到左侧 (低水平)
+            .fromTo('#s5-needle',
+                { rotation: 120 },
+                { rotation: -40, duration: 1.5, ease: "power2.inOut" },
+                "scene5+=0.2"
+            )
+            // 弹幕随机浮现
+            .fromTo('.barrage-text',
+                { autoAlpha: 0, scale: 0.9, x: () => gsap.utils.random(-20, 20) },
+                { autoAlpha: 1, scale: 1, x: 0, duration: 2, ease: "power1.out", stagger: 0.15 },
+                "scene5"
+            )
+            // 动画结束，显示重播按钮
+            .to('#replay-btn', { autoAlpha: 1, y: -20, duration: 0.5, ease: "power2.out" }, "+=0.5");
+
+        // 绑定重播事件
+        document.getElementById('replay-btn').addEventListener('click', () => {
+            gsap.to('#replay-btn', { autoAlpha: 0, duration: 0.2 });
+            // 重置所有状态并重新播放
+            masterTl.restart();
+        });
+
+    </script>
+</body>
+</html>

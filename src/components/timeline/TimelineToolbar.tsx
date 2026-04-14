@@ -1,4 +1,5 @@
 import type { MouseEvent } from 'react';
+import { Undo2, Redo2, Plus, Scissors, Magnet } from 'lucide-react';
 import { useTimelineStore, type TimelineStore } from '../../store/timeline';
 import { ZoomControls } from './ZoomControls';
 import styles from './TimelineToolbar.module.css';
@@ -45,7 +46,7 @@ export function TimelineToolbar({
           disabled={!canUndo}
           onClick={handle(undo)}
         >
-          ↶
+          <Undo2 size={14} />
         </button>
         <button
           type="button"
@@ -55,7 +56,7 @@ export function TimelineToolbar({
           disabled={!canRedo}
           onClick={handle(redo)}
         >
-          ↷
+          <Redo2 size={14} />
         </button>
         <button
           type="button"
@@ -64,7 +65,7 @@ export function TimelineToolbar({
           aria-label="添加轨道"
           onClick={handle(onAddTrack)}
         >
-          ＋
+          <Plus size={14} />
         </button>
         <button
           type="button"
@@ -73,7 +74,7 @@ export function TimelineToolbar({
           aria-label="分割"
           onClick={handle(onSplit)}
         >
-          ✂
+          <Scissors size={14} />
         </button>
       </div>
       <div className={styles.spacer} />
@@ -86,7 +87,7 @@ export function TimelineToolbar({
           aria-pressed={snapEnabled}
           onClick={handle(onToggleSnap)}
         >
-          🧲
+          <Magnet size={14} />
         </button>
         <ZoomControls
           zoomLevel={zoomLevel}

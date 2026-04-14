@@ -171,7 +171,7 @@ describe('saveProjectSection', () => {
     expect(raw.script.templateId).toBe('custom');
   });
 
-  it('保存 aiAnalysis 段时会保留 motionCards', async () => {
+  it('保存 aiAnalysis 段时会保留 motionCards 与 storyboardPlan', async () => {
     await loadProjectFile(tmpDir);
 
     await saveProjectSection(tmpDir, 'aiAnalysis', {
@@ -205,11 +205,37 @@ describe('saveProjectSection', () => {
           },
         },
       ],
+      storyboardPlan: {
+        segments: [],
+        suggestions: [
+          {
+            id: 'suggestion-1',
+            segmentId: 'segment-1',
+            suggestionType: 'data-motion',
+            priority: 90,
+            reason: '这段数据适合做数字动画强调',
+            enabled: true,
+            startMs: 0,
+            endMs: 4_000,
+            displayDurationMs: 4_000,
+            displayMode: 'fullscreen',
+            templateKey: 'kpi-countup',
+            visualBrief: '同比增长 18%',
+            autoApplyEligible: true,
+          },
+        ],
+        summary: '视觉摘要',
+        generatedAt: 1,
+      },
     });
 
     const raw = JSON.parse(await fs.readFile(path.join(tmpDir, 'project.json'), 'utf-8'));
     expect(raw.aiAnalysis.motionCards).toHaveLength(1);
     expect(raw.aiAnalysis.motionCards[0].id).toBe('motion-1');
     expect(raw.aiAnalysis.motionCards[0].motionCard.prompt).toBe('做一个标题呼吸动画');
+    expect(raw.aiAnalysis.storyboardPlan).toMatchObject({
+      summary: '视觉摘要',
+      suggestions: [{ templateKey: 'kpi-countup' }],
+    });
   });
 });

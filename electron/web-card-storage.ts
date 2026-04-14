@@ -42,6 +42,8 @@ async function materializeWebCardPayload(
       src: filePath,
       runtimeStatus: webCard.runtimeStatus,
       lastGeneratedAt: webCard.lastGeneratedAt,
+      sourceKind: webCard.sourceKind,
+      sourceLabel: webCard.sourceLabel,
     },
     changed: true,
   };

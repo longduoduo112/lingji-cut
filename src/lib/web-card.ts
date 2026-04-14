@@ -2,6 +2,11 @@ export const DEFAULT_WEB_CARD_STAGE_WIDTH = 1_920;
 export const DEFAULT_WEB_CARD_STAGE_HEIGHT = 1_080;
 export const DEFAULT_WEB_CARD_BACKGROUND = '#10131a';
 
+export interface ImportedHtmlFile {
+  path: string;
+  content: string;
+}
+
 export function appendCacheBuster(url: string, cacheKey?: number): string {
   if (!url || !Number.isFinite(cacheKey)) {
     return url;
@@ -135,6 +140,43 @@ html, body {
   }
 
   return result;
+}
+
+export function createImportedHtmlWebCardPayload(
+  file: ImportedHtmlFile,
+  importedAt = Date.now(),
+): {
+  srcDoc: string;
+  runtimeStatus: 'ready';
+  lastGeneratedAt: number;
+  sourceKind: 'imported-file';
+  sourceLabel: string;
+} {
+  const normalizedPath = file.path.replace(/\\/g, '/');
+  const sourceLabel = normalizedPath.split('/').pop() || 'imported-card.html';
+
+  return {
+    srcDoc: file.content,
+    runtimeStatus: 'ready',
+    lastGeneratedAt: importedAt,
+    sourceKind: 'imported-file',
+    sourceLabel,
+  };
+}
+
+export function extractHtmlTitle(html: string): string | null {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (!match) {
+    return null;
+  }
+
+  const normalized = match[1]
+    .replace(/&(nbsp|#160|#xa0);/gi, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return normalized || null;
 }
 
 /**

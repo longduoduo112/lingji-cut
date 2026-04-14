@@ -24,6 +24,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     globalPrompt?: string;
   }) =>
     ipcRenderer.invoke('analyze-srt', args),
+  planStoryboard: (args: {
+    entries?: SrtEntry[];
+    srtContent?: string;
+    settings: AISettings;
+    globalPrompt?: string;
+  }) => ipcRenderer.invoke('plan-storyboard', args),
   regenerateAICard: (args: {
     entries: SrtEntry[];
     card: AICard;
@@ -106,6 +112,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('load-script-state', projectDir),
   selectTextFile: () =>
     ipcRenderer.invoke('select-text-file') as Promise<{ path: string; content: string } | null>,
+  selectHtmlFile: () =>
+    ipcRenderer.invoke('select-html-file') as Promise<{ path: string; content: string } | null>,
   // 轻量级抖音链接解析：仅返回标题和视频 ID
   resolveDouyinUrl: (url: string) =>
     ipcRenderer.invoke('resolve-douyin-url', url) as Promise<{ title: string; videoId: string }>,

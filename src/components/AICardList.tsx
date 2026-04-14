@@ -57,8 +57,6 @@ export function AICardList({
                   onChange={() => onToggleEnabled(card.id)}
                   aria-label={`切换 ${card.title} 是否上轨`}
                   size="sm"
-                  className={styles.checkboxControl}
-                  boxClassName={styles.checkboxVisual}
                 />
               </div>
 

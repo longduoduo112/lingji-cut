@@ -58,7 +58,8 @@ export interface AIStore {
   isGeneratingMotion: boolean;
   motionError: string | null;
   storyboardPlan: AIStoryboardPlan | null;
-  autoApplyVisualSuggestions: boolean;
+  isPlanningStoryboard: boolean;
+  storyboardError: string | null;
   activeTab: AITab;
   setAnalysisResult: (result: AIAnalysisResult) => void;
   setAnalyzing: (analyzing: boolean) => void;
@@ -75,8 +76,9 @@ export interface AIStore {
   removeMotionCard: (cardId: string) => void;
   setGeneratingMotion: (generating: boolean) => void;
   setMotionError: (error: string | null) => void;
+  setPlanningStoryboard: (planning: boolean) => void;
+  setStoryboardError: (error: string | null) => void;
   setStoryboardPlan: (plan: AIStoryboardPlan | null) => void;
-  setAutoApplyVisualSuggestions: (enabled: boolean) => void;
   clearAnalysis: () => void;
   workflow: WorkflowState;
   setWorkflow: (updates: Partial<WorkflowState>) => void;
@@ -93,7 +95,8 @@ export const useAIStore = create<AIStore>((set) => ({
   isGeneratingMotion: false,
   motionError: null,
   storyboardPlan: null,
-  autoApplyVisualSuggestions: false,
+  isPlanningStoryboard: false,
+  storyboardError: null,
   activeTab: 'cards',
   setAnalysisResult: (result) => set({ analysisResult: result, analysisError: null }),
   setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
@@ -134,8 +137,13 @@ export const useAIStore = create<AIStore>((set) => ({
     })),
   setGeneratingMotion: (generating) => set({ isGeneratingMotion: generating }),
   setMotionError: (error) => set({ motionError: error }),
-  setStoryboardPlan: (plan) => set({ storyboardPlan: plan }),
-  setAutoApplyVisualSuggestions: (enabled) => set({ autoApplyVisualSuggestions: enabled }),
+  setPlanningStoryboard: (planning) => set({ isPlanningStoryboard: planning }),
+  setStoryboardError: (error) =>
+    set((state) => ({
+      storyboardError: error,
+      isPlanningStoryboard: error ? false : state.isPlanningStoryboard,
+    })),
+  setStoryboardPlan: (plan) => set({ storyboardPlan: plan, storyboardError: null }),
   clearAnalysis: () =>
     set({
       analysisResult: null,
@@ -145,6 +153,8 @@ export const useAIStore = create<AIStore>((set) => ({
       motionError: null,
       isGeneratingMotion: false,
       storyboardPlan: null,
+      isPlanningStoryboard: false,
+      storyboardError: null,
     }),
   workflow: { ...DEFAULT_WORKFLOW },
   setWorkflow: (updates) =>

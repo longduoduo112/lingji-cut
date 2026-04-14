@@ -1,15 +1,17 @@
+import { useCallback, useMemo, useState } from 'react';
 import { Button, EmptyState } from '../ui';
-import { MotionCardInspector } from './MotionCardInspector';
+import { MotionCardInspector, type MotionCardEdits } from './MotionCardInspector';
 import { AICardInspector } from './AICardInspector';
 import { AppIcon } from './AppIcon';
 import { OverlayInspector } from './OverlayInspector';
 import { ProjectOverviewPanel, type ProjectOverviewMeta } from './ProjectOverviewPanel';
 import { SubtitleInspector } from './SubtitleInspector';
 import { useAICardInspector } from '../hooks/useAICardInspector';
-import { useAIStore } from '../store/ai';
+import { getAISettingsIssue } from '../lib/ai-settings';
+import { loadAISettings, useAIStore } from '../store/ai';
+import { createMotionCardService } from '../lib/motion-card-service';
 import { useTimelineStore } from '../store/timeline';
 import styles from './EditorInspector.module.css';
-import { useMemo } from 'react';
 
 export type InspectorSelection =
   | { type: 'empty' }
@@ -54,7 +56,85 @@ export function EditorInspector({
   } = useAICardInspector(selection.type === 'ai-card' ? selection.cardId : null);
   const motionCards = useAIStore((state) => state.motionCards);
   const setMotionCards = useAIStore((state) => state.setMotionCards);
+  const updateMotionCard = useAIStore((state) => state.updateMotionCard);
   const timeline = useTimelineStore((state) => state.timeline);
+
+  const [isModifyingMotion, setIsModifyingMotion] = useState(false);
+  const [motionModifyError, setMotionModifyError] = useState<string | null>(null);
+
+  const handleModifyMotion = useCallback(
+    async (instruction: string, edits: MotionCardEdits) => {
+      if (selection.type !== 'motion-card') return;
+      const { cardId } = selection;
+      const currentCard = motionCards.find((item) => item.id === cardId);
+      if (!currentCard) return;
+
+      setMotionModifyError(null);
+      setIsModifyingMotion(true);
+
+      try {
+        const settings = await loadAISettings();
+        const settingsIssue = getAISettingsIssue(settings);
+        if (settingsIssue || !settings) {
+          setMotionModifyError(settingsIssue ?? '请先完成 AI 配置');
+          return;
+        }
+
+        const service = createMotionCardService({ settings });
+        const currentMotionCard = currentCard.motionCard;
+        let result;
+
+        if (currentMotionCard?.sourceCode && instruction.trim()) {
+          result = await service.modify({
+            sourceCode: currentMotionCard.sourceCode,
+            instruction: instruction.trim(),
+          });
+        } else {
+          const prompt = instruction.trim() || currentCard.cardPrompt || currentMotionCard?.prompt || edits.title;
+          result = await service.generate({
+            prompt,
+            durationMs: edits.durationMs,
+            displayMode: edits.displayMode,
+          });
+        }
+
+        if (!result.success || !result.sourceCode || !result.compiledCode) {
+          throw new Error(result.error ?? '动画生成失败');
+        }
+
+        updateMotionCard(cardId, {
+          title: edits.title,
+          displayDurationMs: edits.durationMs,
+          displayMode: edits.displayMode,
+          motionCard: {
+            prompt: currentMotionCard?.prompt ?? edits.title,
+            sourceCode: result.sourceCode,
+            compiledCode: result.compiledCode,
+            compiledAt: Date.now(),
+            retryCount: result.retryCount,
+          },
+        });
+      } catch (error) {
+        setMotionModifyError(error instanceof Error ? error.message : '操作失败');
+      } finally {
+        setIsModifyingMotion(false);
+      }
+    },
+    [motionCards, selection, updateMotionCard],
+  );
+
+  const handleSaveMotion = useCallback(
+    (edits: MotionCardEdits) => {
+      if (selection.type !== 'motion-card') return;
+      const { cardId } = selection;
+      updateMotionCard(cardId, {
+        title: edits.title,
+        displayDurationMs: edits.durationMs,
+        displayMode: edits.displayMode,
+      });
+    },
+    [selection, updateMotionCard],
+  );
 
   /* ── eyebrow pill 内容 ── */
   const eyebrowLabel =
@@ -126,20 +206,21 @@ export function EditorInspector({
           cardId={selection.cardId}
           title={motionCard?.title}
           prompt={motionCard?.cardPrompt ?? motionCard?.motionCard?.prompt}
-          startMs={motionCard?.startMs}
           durationMs={motionCard?.displayDurationMs}
           displayMode={motionCard?.displayMode}
-          statusLabel={motionCard ? (isMotionOnTimeline ? '已上轨' : '准备就绪') : undefined}
-          statusHint={motionStatusHint}
           motionCard={motionCard?.motionCard ?? null}
+          isModifying={isModifyingMotion}
+          errorMessage={motionModifyError}
+          onModify={handleModifyMotion}
+          onSave={handleSaveMotion}
           onDelete={() => {
             setMotionCards(motionCards.filter((item) => item.id !== selection.cardId));
             useTimelineStore.getState().removeAICardOverlaysBySourceIds([selection.cardId]);
             onClose();
           }}
         />
-        );
-      }
+      );
+    }
 
     if (selection.type === 'overlay') {
       return (

@@ -41,6 +41,8 @@ describe('materializePersistedAIState', () => {
             renderMode: 'web-card',
             webCard: {
               srcDoc: '<!doctype html><html><body><div>hello</div></body></html>',
+              sourceKind: 'imported-file',
+              sourceLabel: 'hello.html',
             },
             style: {
               primaryColor: '#6366f1',
@@ -63,6 +65,8 @@ describe('materializePersistedAIState', () => {
     expect(result.data.analysisResult?.cards[0]?.webCard?.src).toBe(
       path.join(projectDir, 'ai-cards', 'card-1.html'),
     );
+    expect(result.data.analysisResult?.cards[0]?.webCard?.sourceKind).toBe('imported-file');
+    expect(result.data.analysisResult?.cards[0]?.webCard?.sourceLabel).toBe('hello.html');
 
     const html = await fs.readFile(path.join(projectDir, 'ai-cards', 'card-1.html'), 'utf-8');
     expect(html).toContain('data-web-card-normalized="true"');
@@ -104,6 +108,8 @@ describe('materializeTimelineWebCards', () => {
             renderMode: 'web-card',
             webCard: {
               srcDoc: '<!doctype html><html><body><div>timeline</div></body></html>',
+              sourceKind: 'imported-file',
+              sourceLabel: 'timeline.html',
             },
             style: {
               primaryColor: '#6366f1',
@@ -127,5 +133,7 @@ describe('materializeTimelineWebCards', () => {
       path.join(projectDir, 'ai-cards', 'card-1.html'),
     );
     expect(result.data.overlays[0]?.aiCardData?.webCard?.srcDoc).toBeUndefined();
+    expect(result.data.overlays[0]?.aiCardData?.webCard?.sourceKind).toBe('imported-file');
+    expect(result.data.overlays[0]?.aiCardData?.webCard?.sourceLabel).toBe('timeline.html');
   });
 });

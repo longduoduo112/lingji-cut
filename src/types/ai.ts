@@ -25,6 +25,8 @@ export interface WebCardPayload {
   srcDoc?: string;
   runtimeStatus?: 'idle' | 'loading' | 'ready' | 'error';
   lastGeneratedAt?: number;
+  sourceKind?: 'generated' | 'imported-file';
+  sourceLabel?: string;
 }
 
 export interface AISegment {

@@ -112,6 +112,7 @@ async function hydrateExistingProjectData(projectDir: string, data: ProjectData)
     analysisResult: null,
     coverCandidates: [],
     motionCards: [],
+    storyboardPlan: null,
   };
   if (Array.isArray(currentAI.motionCards)) {
     return data;
@@ -122,6 +123,7 @@ async function hydrateExistingProjectData(projectDir: string, data: ProjectData)
       analysisResult: currentAI.analysisResult ?? null,
       coverCandidates: currentAI.coverCandidates ?? [],
       motionCards: [],
+      storyboardPlan: currentAI.storyboardPlan ?? null,
     },
   };
 
@@ -177,17 +179,20 @@ export async function saveProjectSection(
         analysisResult: ProjectData['aiAnalysis']['analysisResult'];
         coverCandidates: ProjectData['aiAnalysis']['coverCandidates'];
         motionCards?: ProjectData['aiAnalysis']['motionCards'];
+        storyboardPlan?: ProjectData['aiAnalysis']['storyboardPlan'];
       };
       const { data: materialized } = await materializePersistedAIState(projectDir, {
-        version: 2,
+        version: 3,
         analysisResult: aiValue.analysisResult,
         coverCandidates: aiValue.coverCandidates,
         motionCards: aiValue.motionCards ?? [],
+        storyboardPlan: aiValue.storyboardPlan ?? null,
       });
       sectionValue = {
         analysisResult: materialized.analysisResult,
         coverCandidates: materialized.coverCandidates,
         motionCards: materialized.motionCards ?? [],
+        storyboardPlan: materialized.storyboardPlan ?? null,
       };
     }
 
