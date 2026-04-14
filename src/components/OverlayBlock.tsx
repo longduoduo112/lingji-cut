@@ -1,10 +1,12 @@
 import { useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { Clipboard, Copy } from 'lucide-react';
+import { m } from 'framer-motion';
 import { getOverlayMoveDraft, type TrackDragZone } from '../lib/overlay-drag';
 import type { OverlayItem } from '../types';
 import { clamp, getFileNameFromPath } from '../lib/utils';
 import { useTimelineStore } from '../store/timeline';
 import { ContextMenu } from '../ui';
+import { springs } from '../ui/lib/motion';
 import { AppIcon } from './AppIcon';
 import { AssetThumbnail } from './AssetThumbnail';
 import styles from './OverlayBlock.module.css';
@@ -274,59 +276,67 @@ export function OverlayBlock({
       ? 'col-resize'
       : 'grab';
 
-  const block = (
-    <div
-      ref={blockRef}
-      data-overlay-block="true"
-      onMouseDown={handleMoveMouseDown}
-      onMouseMove={(event) => {
-        if (trackLocked || isDefaultBackground) {
-          if (hoverEdge !== null) setHoverEdge(null);
-          return;
+  // Hero ① — 来自 AI 卡片的 overlay 启用 layoutId 共享元素过渡,
+  // 让 AICardList 中的卡片"飞入并吸附"到该 overlay。其它来源走普通 div,不污染性能。
+  const sharedLayoutId =
+    isAICard && overlay.aiCardData?.sourceCardId
+      ? `ai-card-${overlay.aiCardData.sourceCardId}`
+      : undefined;
+
+  const blockClassName = [
+    styles.root,
+    isDefaultBackground ? styles.locked : '',
+    selected ? styles.selected : '',
+  ].filter(Boolean).join(' ');
+
+  const blockStyle = {
+    left,
+    width,
+    height: blockHeight,
+    cursor: resolvedCursor,
+    ...(isDragging
+      ? {
+          transform: dragPreviewDeltaY
+            ? `translateY(${dragPreviewDeltaY}px)`
+            : undefined,
+          opacity: 0.85,
+          zIndex: 50,
+          pointerEvents: 'none' as const,
+          transition: 'none',
         }
-        const rect = blockRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        const offsetX = event.clientX - rect.left;
-        if (offsetX <= TRIM_HANDLE_WIDTH) {
-          if (hoverEdge !== 'start') setHoverEdge('start');
-        } else if (offsetX >= rect.width - TRIM_HANDLE_WIDTH) {
-          if (hoverEdge !== 'end') setHoverEdge('end');
-        } else if (hoverEdge !== null) {
-          setHoverEdge(null);
-        }
-      }}
-      onMouseLeave={() => {
-        if (hoverEdge !== null) setHoverEdge(null);
-      }}
-      onContextMenu={(event) => {
-        onSelect?.();
-        onContextMenu?.(event);
-      }}
-      className={[
-        styles.root,
-        isDefaultBackground ? styles.locked : '',
-        selected ? styles.selected : '',
-      ].filter(Boolean).join(' ')}
-      style={{
-        left,
-        width,
-        height: blockHeight,
-        cursor: resolvedCursor,
-        ...(isDragging
-          ? {
-              transform: dragPreviewDeltaY
-                ? `translateY(${dragPreviewDeltaY}px)`
-                : undefined,
-              opacity: 0.85,
-              zIndex: 50,
-              pointerEvents: 'none' as const,
-              transition: 'none',
-            }
-          : {}),
-        ['--overlay-color' as string]: color,
-        ['--overlay-glow' as string]: colorGlow,
-      }}
-    >
+      : {}),
+    ['--overlay-color' as string]: color,
+    ['--overlay-glow' as string]: colorGlow,
+  };
+
+  const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (trackLocked || isDefaultBackground) {
+      if (hoverEdge !== null) setHoverEdge(null);
+      return;
+    }
+    const rect = blockRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const offsetX = event.clientX - rect.left;
+    if (offsetX <= TRIM_HANDLE_WIDTH) {
+      if (hoverEdge !== 'start') setHoverEdge('start');
+    } else if (offsetX >= rect.width - TRIM_HANDLE_WIDTH) {
+      if (hoverEdge !== 'end') setHoverEdge('end');
+    } else if (hoverEdge !== null) {
+      setHoverEdge(null);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverEdge !== null) setHoverEdge(null);
+  };
+
+  const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    onSelect?.();
+    onContextMenu?.(event);
+  };
+
+  const innerBlock = (
+    <>
       <div className={styles.accentLine} />
 
       {showImageThumbnail && asset ? (
@@ -374,6 +384,38 @@ export function OverlayBlock({
       )}
 
       {collisionState === 'invalid' ? <div className={styles.collisionOverlay} /> : null}
+    </>
+  );
+
+  const block = sharedLayoutId ? (
+    <m.div
+      ref={blockRef}
+      layoutId={sharedLayoutId}
+      transition={springs.smooth}
+      data-overlay-block="true"
+      data-dragging={isDragging ? 'true' : undefined}
+      onMouseDown={handleMoveMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      onContextMenu={handleContextMenu}
+      className={blockClassName}
+      style={blockStyle}
+    >
+      {innerBlock}
+    </m.div>
+  ) : (
+    <div
+      ref={blockRef}
+      data-overlay-block="true"
+      data-dragging={isDragging ? 'true' : undefined}
+      onMouseDown={handleMoveMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      onContextMenu={handleContextMenu}
+      className={blockClassName}
+      style={blockStyle}
+    >
+      {innerBlock}
     </div>
   );
 
