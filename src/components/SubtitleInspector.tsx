@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAISettingsIssue } from "../lib/ai-settings";
 import { generateSubtitleHighlights } from "../lib/subtitle-highlight-runner";
 import { filterValidSubtitleHighlights } from "../lib/subtitle-highlights";
@@ -24,8 +24,17 @@ export function SubtitleInspector() {
   const [subtitleHighlightError, setSubtitleHighlightError] = useState<
     string | null
   >(null);
-  const { srtEntries, setSubtitleHighlights, timeline, updateSubtitleStyle } =
-    useTimelineStore();
+  const {
+    srtEntries,
+    originalSrtEntries,
+    setSubtitleHighlights,
+    setSubtitleMaxChars,
+    setAutoResegment,
+    resegmentSubtitles,
+    restoreOriginalSubtitles,
+    timeline,
+    updateSubtitleStyle,
+  } = useTimelineStore();
   const validSubtitleHighlights = useMemo(
     () =>
       filterValidSubtitleHighlights(
@@ -120,8 +129,108 @@ export function SubtitleInspector() {
     [handleSubtitleStyleUpdate],
   );
 
+  const maxCharsDebounceRef = useRef<number | null>(null);
+
+  const handleMaxCharsChange = useCallback(
+    (value: number) => {
+      // Update the stored setting immediately so the slider label reflects the change
+      updateSubtitleStyle({ maxCharsPerEntry: value });
+      if (maxCharsDebounceRef.current !== null) {
+        window.clearTimeout(maxCharsDebounceRef.current);
+      }
+      maxCharsDebounceRef.current = window.setTimeout(() => {
+        setSubtitleMaxChars(value);
+        maxCharsDebounceRef.current = null;
+      }, 300);
+    },
+    [updateSubtitleStyle, setSubtitleMaxChars],
+  );
+
+  const handleResegmentNow = useCallback(() => {
+    const { droppedHighlights } = resegmentSubtitles();
+    if (droppedHighlights > 0) {
+      // Lightweight inline notice until a full toast system is wired
+      console.warn(`[subtitle] ${droppedHighlights} 条关键词高亮因切分失效`);
+    }
+  }, [resegmentSubtitles]);
+
+  const handleRestoreOriginal = useCallback(() => {
+    restoreOriginalSubtitles();
+  }, [restoreOriginalSubtitles]);
+
+  useEffect(() => {
+    return () => {
+      if (maxCharsDebounceRef.current !== null) {
+        window.clearTimeout(maxCharsDebounceRef.current);
+      }
+    };
+  }, []);
+
+  const layoutStatusText =
+    originalSrtEntries.length === srtEntries.length && originalSrtEntries.length > 0
+      ? `未切分（${srtEntries.length} 条）`
+      : originalSrtEntries.length === 0
+        ? "等待导入字幕"
+        : `原 ${originalSrtEntries.length} 条 → 切分后 ${srtEntries.length} 条`;
+
+  const isSplitApplied =
+    originalSrtEntries.length > 0 && originalSrtEntries.length !== srtEntries.length;
+
   return (
     <div className={styles.root}>
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>字幕排版</h3>
+
+        <div className={styles.inlineRow}>
+          <span className={styles.inlineLabel}>单条最多字数</span>
+          <input
+            type="range"
+            min={20}
+            max={60}
+            step={1}
+            value={timeline.subtitle.maxCharsPerEntry}
+            onChange={(event) => handleMaxCharsChange(Number(event.target.value))}
+            className={styles.maxCharsSlider}
+            aria-label="单条最多字数"
+          />
+          <span className={styles.maxCharsValue}>{timeline.subtitle.maxCharsPerEntry}</span>
+        </div>
+
+        <div className={styles.inlineRow}>
+          <span className={styles.inlineLabel}>超过自动切分</span>
+          <div className={styles.rowSpacer} />
+          <Switch
+            checked={timeline.subtitle.autoResegment}
+            onChange={(checked) => setAutoResegment(checked)}
+            className={styles.switchControl}
+          />
+        </div>
+
+        <div className={styles.layoutActionRow}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleResegmentNow}
+            className={styles.layoutActionButton}
+          >
+            立即重新切分
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRestoreOriginal}
+            disabled={!isSplitApplied}
+            className={styles.layoutActionButton}
+          >
+            还原原始字幕
+          </Button>
+        </div>
+
+        <span className={styles.layoutStatusText}>{layoutStatusText}</span>
+      </section>
+
+      <div className={styles.separator} />
+
       <section className={styles.section}>
         <h3 className={styles.sectionTitle}>关键词高亮</h3>
 

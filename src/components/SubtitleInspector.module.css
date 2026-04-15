@@ -198,3 +198,31 @@
   font-weight: 600;
   line-height: 1;
 }
+
+.maxCharsSlider {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--color-system-blue);
+}
+
+.maxCharsValue {
+  min-width: 2.2em;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.layoutActionRow {
+  display: flex;
+  gap: 6px;
+}
+
+.layoutActionButton {
+  flex: 1;
+}
+
+.layoutStatusText {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
