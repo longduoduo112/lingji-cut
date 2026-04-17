@@ -6,6 +6,11 @@ import {
   updateCardInResult,
 } from '../lib/ai-persistence';
 import { migrateToProviders } from '../lib/llm/provider-utils';
+import { migrateImageProviders } from '../lib/llm/migrate-image-providers';
+import {
+  resolvePromptBinding,
+  type ResolvedBinding,
+} from '../lib/llm/binding-resolver';
 import { loadGlobalSettingsFile, updateGlobalSettingsFile } from '../lib/global-settings-client';
 import {
   DEFAULT_JIMENG_MODEL,
@@ -14,7 +19,10 @@ import {
   type AIStoryboardPlan,
   type AISettings,
   type CoverCandidate,
+  type PromptBinding,
+  type PromptBindingMap,
 } from '../types/ai';
+import type { PromptKind } from '../lib/prompts/types';
 import type { SaveStatus } from './timeline';
 import { getCurrentProjectDir } from './timeline';
 
@@ -46,6 +54,40 @@ export const DEFAULT_WORKFLOW: WorkflowState = {
 
 const AI_SETTINGS_LEGACY_KEY = 'podcast-editor-ai-settings';
 
+// 模块级 settings 缓存：由 loadAISettings/saveAISettings 维护，
+// 供同步 selector（如 resolveBinding）使用。
+let cachedAISettings: AISettings | null = null;
+
+function getCachedAISettings(): AISettings | null {
+  return cachedAISettings;
+}
+
+function buildDefaultAISettings(): AISettings {
+  return {
+    llmProviders: [],
+    defaultProviderId: null,
+    defaultModel: null,
+    llmBaseUrl: '',
+    llmApiKey: '',
+    llmModel: '',
+    enableThinking: true,
+    jimengApiUrl: '',
+    jimengSessionId: '',
+    jimengModel: DEFAULT_JIMENG_MODEL,
+    minimaxApiKey: '',
+    minimaxVoiceId: 'male-qn-qingse',
+    minimaxSpeed: 1.0,
+    minimaxVol: 1.0,
+    minimaxPitch: 0,
+    minimaxEmotion: '',
+    minimaxModel: 'speech-2.8-hd',
+    imageProviders: [],
+    defaultImageProviderId: null,
+    defaultImageModel: null,
+    promptBindings: {},
+  };
+}
+
 export type AITab = 'cards' | 'cover' | 'motion';
 
 export interface AIStore {
@@ -61,6 +103,14 @@ export interface AIStore {
   isPlanningStoryboard: boolean;
   storyboardError: string | null;
   activeTab: AITab;
+  // —— 提示词 × AI 绑定（项目级）——
+  projectBindings: PromptBindingMap;
+  currentProjectDir: string | null;
+  loadProjectBindings: (projectDir: string | null) => Promise<void>;
+  setProjectBinding: (kind: PromptKind, binding: PromptBinding | null) => Promise<void>;
+  setGlobalBinding: (kind: PromptKind, binding: PromptBinding | null) => Promise<void>;
+  /** 解析指定提示词 kind 的有效 LLM / Image 绑定；失败返回 null（UI 自行处理警告）。 */
+  resolveBinding: (kind: PromptKind) => ResolvedBinding | null;
   setAnalysisResult: (result: AIAnalysisResult) => void;
   setAnalyzing: (analyzing: boolean) => void;
   setAnalysisError: (error: string | null) => void;
@@ -85,7 +135,7 @@ export interface AIStore {
   resetWorkflow: () => void;
 }
 
-export const useAIStore = create<AIStore>((set) => ({
+export const useAIStore = create<AIStore>((set, get) => ({
   analysisResult: null,
   isAnalyzing: false,
   analysisError: null,
@@ -98,6 +148,74 @@ export const useAIStore = create<AIStore>((set) => ({
   isPlanningStoryboard: false,
   storyboardError: null,
   activeTab: 'cards',
+  projectBindings: {},
+  currentProjectDir: null,
+  loadProjectBindings: async (projectDir) => {
+    // 切换为无项目状态时，清空内存快照
+    if (!projectDir) {
+      set({ projectBindings: {}, currentProjectDir: null });
+      return;
+    }
+    // 非 Electron 环境（如测试渲染环境）不做任何 IO，只更新 projectDir
+    if (typeof window === 'undefined' || !window.electronAPI?.readPromptBindings) {
+      set({ projectBindings: {}, currentProjectDir: projectDir });
+      return;
+    }
+    try {
+      const bindings = await window.electronAPI.readPromptBindings('project', projectDir);
+      set({ projectBindings: bindings ?? {}, currentProjectDir: projectDir });
+    } catch (error) {
+      console.error('加载项目提示词绑定失败:', error);
+      set({ projectBindings: {}, currentProjectDir: projectDir });
+    }
+  },
+  setProjectBinding: async (kind, binding) => {
+    const { currentProjectDir, projectBindings } = get();
+    // 不可在无项目上下文写入
+    if (!currentProjectDir) {
+      console.warn('setProjectBinding: 无当前项目目录，已忽略');
+      return;
+    }
+    const next: PromptBindingMap = { ...projectBindings };
+    if (binding === null) {
+      delete next[kind];
+    } else {
+      next[kind] = binding;
+    }
+    set({ projectBindings: next });
+    if (typeof window !== 'undefined' && window.electronAPI?.writePromptBindings) {
+      try {
+        await window.electronAPI.writePromptBindings('project', next, currentProjectDir);
+      } catch (error) {
+        console.error('写入项目提示词绑定失败:', error);
+        throw error;
+      }
+    }
+  },
+  setGlobalBinding: async (kind, binding) => {
+    const current = await loadAISettings();
+    const baseSettings: AISettings = current ?? buildDefaultAISettings();
+    const nextBindings: PromptBindingMap = { ...(baseSettings.promptBindings ?? {}) };
+    if (binding === null) {
+      delete nextBindings[kind];
+    } else {
+      nextBindings[kind] = binding;
+    }
+    await saveAISettings({ ...baseSettings, promptBindings: nextBindings });
+  },
+  resolveBinding: (kind) => {
+    // 解析需要最新 settings，但 store 不持有 settings——采用同步失败兜底：
+    // 调用方若希望获得解析结果，应先通过 loadAISettings() 拿到 settings 自行调用
+    // resolvePromptBinding。此 selector 提供兜底同步路径：若无可用 settings
+    // 则返回 null；有 settings 时调用 resolver，捕获错误返回 null。
+    const settings = getCachedAISettings();
+    if (!settings) return null;
+    try {
+      return resolvePromptBinding(kind, settings, get().projectBindings);
+    } catch {
+      return null;
+    }
+  },
   setAnalysisResult: (result) => set({ analysisResult: result, analysisError: null }),
   setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
   setAnalysisError: (error) =>
@@ -192,12 +310,17 @@ export async function loadAISettings(): Promise<AISettings | null> {
           defaultImageModel: file.aiSettings.defaultImageModel ?? null,
           promptBindings: file.aiSettings.promptBindings ?? {},
         };
-        const migrated = migrateToProviders(settings);
-        // 迁移产生了新 provider，持久化
-        if (!hadProviders && migrated.llmProviders.length > 0) {
-          void saveAISettings(migrated);
+        const providerMigrated = migrateToProviders(settings);
+        const imageMigrated = migrateImageProviders(providerMigrated);
+        const llmChanged = !hadProviders && providerMigrated.llmProviders.length > 0;
+        const imageChanged = imageMigrated !== providerMigrated;
+        if (llmChanged || imageChanged) {
+          // 迁移产生变化，立即持久化（saveAISettings 会刷新缓存）
+          void saveAISettings(imageMigrated);
+        } else {
+          cachedAISettings = imageMigrated;
         }
-        return migrated;
+        return imageMigrated;
       }
     } catch {
       // fallthrough to legacy
@@ -229,8 +352,9 @@ export async function loadAISettings(): Promise<AISettings | null> {
           defaultImageModel: parsed.defaultImageModel ?? null,
           promptBindings: parsed.promptBindings ?? {},
         };
-        const settings = migrateToProviders(raw);
-        // 自动迁移到 Electron 全局存储
+        const providerMigrated = migrateToProviders(raw);
+        const settings = migrateImageProviders(providerMigrated);
+        // 自动迁移到 Electron 全局存储（saveAISettings 会刷新缓存）
         await saveAISettings(settings);
         window.localStorage.removeItem(AI_SETTINGS_LEGACY_KEY);
         return settings;
@@ -244,13 +368,15 @@ export async function loadAISettings(): Promise<AISettings | null> {
 }
 
 export async function saveAISettings(settings: AISettings): Promise<void> {
+  // 刷新同步缓存（即便无 electronAPI 也记录，便于 resolveBinding 在测试中工作）
+  cachedAISettings = {
+    ...settings,
+    jimengModel: settings.jimengModel?.trim() || DEFAULT_JIMENG_MODEL,
+  };
   if (typeof window !== 'undefined' && window.electronAPI) {
     await updateGlobalSettingsFile((current) => ({
       ...current,
-      aiSettings: {
-        ...settings,
-        jimengModel: settings.jimengModel?.trim() || DEFAULT_JIMENG_MODEL,
-      },
+      aiSettings: cachedAISettings as AISettings,
     }));
   }
 }

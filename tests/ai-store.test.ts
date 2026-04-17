@@ -40,12 +40,27 @@ describe('AI settings store helpers', () => {
       }),
     );
 
-    await expect(loadAISettings()).resolves.toMatchObject({
+    // 加载时会依次执行 migrateToProviders + migrateImageProviders，
+    // 后者会把 jimeng* 字段迁移到 imageProviders[0] 并清空旧字段。
+    const loaded = await loadAISettings();
+    expect(loaded).toMatchObject({
       enableThinking: true,
-      jimengModel: 'jimeng-5.0',
+      jimengApiUrl: '',
+      jimengSessionId: '',
+      jimengModel: '',
       minimaxApiKey: '',
       minimaxVoiceId: 'male-qn-qingse',
       minimaxSpeed: 1.0,
+      defaultImageProviderId: 'jimeng-default',
+      defaultImageModel: 'jimeng-5.0',
+    });
+    expect(loaded?.imageProviders).toHaveLength(1);
+    expect(loaded?.imageProviders[0]).toMatchObject({
+      id: 'jimeng-default',
+      type: 'jimeng',
+      baseUrl: 'https://jimeng.example.com',
+      apiKey: 'session-test',
+      models: ['jimeng-5.0'],
     });
   });
 
