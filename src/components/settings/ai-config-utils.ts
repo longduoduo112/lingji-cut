@@ -1,6 +1,13 @@
-import type { LLMProvider } from '../../types/ai';
+import type { ImageProvider, LLMProvider } from '../../types/ai';
 
 export interface ProviderDraftErrors {
+  name?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  models?: string;
+}
+
+export interface ImageProviderDraftErrors {
   name?: string;
   baseUrl?: string;
   apiKey?: string;
@@ -113,4 +120,45 @@ export function hasUnsavedAIConfigChanges(
   currentSnapshot: string,
 ): boolean {
   return lastSavedSnapshot !== currentSnapshot;
+}
+
+// ─── Image Provider 校验与归一化 ─────────────────────────────────────────
+
+export function normalizeImageProviderDraft(provider: ImageProvider): ImageProvider {
+  return {
+    ...provider,
+    name: provider.name.trim(),
+    baseUrl: provider.baseUrl.trim(),
+    apiKey: provider.apiKey.trim(),
+    models: provider.models
+      .map((model) => model.trim())
+      .filter((model, index, list) => model.length > 0 && list.indexOf(model) === index),
+  };
+}
+
+export function normalizeImageProviderDrafts(providers: ImageProvider[]): ImageProvider[] {
+  return providers.map(normalizeImageProviderDraft);
+}
+
+export function validateImageProviderDraft(provider: ImageProvider): ImageProviderDraftErrors {
+  const normalized = normalizeImageProviderDraft(provider);
+  const errors: ImageProviderDraftErrors = {};
+
+  if (!normalized.name) {
+    errors.name = '请输入 Provider 名称';
+  }
+
+  if (!normalized.baseUrl) {
+    errors.baseUrl = '请输入 Base URL';
+  }
+
+  if (!normalized.apiKey) {
+    errors.apiKey = normalized.type === 'jimeng' ? '请输入 Session ID' : '请输入 API Key';
+  }
+
+  if (normalized.models.length === 0) {
+    errors.models = '请至少添加一个模型';
+  }
+
+  return errors;
 }
