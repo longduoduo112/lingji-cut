@@ -133,7 +133,15 @@ export function AIConfigTab({ onRegisterLeaveGuard }: AIConfigTabProps) {
     try {
       const current = await loadAISettings();
       await saveAISettings({
-        ...(current ?? { minimaxApiKey: '', minimaxVoiceId: 'male-qn-qingse', minimaxSpeed: 1.0 }),
+        ...(current ?? {
+          minimaxApiKey: '',
+          minimaxVoiceId: 'male-qn-qingse',
+          minimaxSpeed: 1.0,
+          imageProviders: [],
+          defaultImageProviderId: null,
+          defaultImageModel: null,
+          promptBindings: {},
+        }),
         llmProviders: normalizedProviders,
         defaultProviderId: selection.defaultProviderId,
         defaultModel: selection.defaultModel,

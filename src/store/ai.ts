@@ -187,6 +187,10 @@ export async function loadAISettings(): Promise<AISettings | null> {
           minimaxPitch: file.aiSettings.minimaxPitch ?? 0,
           minimaxEmotion: file.aiSettings.minimaxEmotion ?? '',
           minimaxModel: file.aiSettings.minimaxModel ?? 'speech-2.8-hd',
+          imageProviders: file.aiSettings.imageProviders ?? [],
+          defaultImageProviderId: file.aiSettings.defaultImageProviderId ?? null,
+          defaultImageModel: file.aiSettings.defaultImageModel ?? null,
+          promptBindings: file.aiSettings.promptBindings ?? {},
         };
         const migrated = migrateToProviders(settings);
         // 迁移产生了新 provider，持久化
@@ -220,6 +224,10 @@ export async function loadAISettings(): Promise<AISettings | null> {
           minimaxPitch: parsed.minimaxPitch ?? 0,
           minimaxEmotion: parsed.minimaxEmotion ?? '',
           minimaxModel: parsed.minimaxModel ?? 'speech-2.8-hd',
+          imageProviders: parsed.imageProviders ?? [],
+          defaultImageProviderId: parsed.defaultImageProviderId ?? null,
+          defaultImageModel: parsed.defaultImageModel ?? null,
+          promptBindings: parsed.promptBindings ?? {},
         };
         const settings = migrateToProviders(raw);
         // 自动迁移到 Electron 全局存储

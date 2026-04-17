@@ -168,6 +168,12 @@ export interface AISettings {
   minimaxPitch?: number;
   minimaxEmotion?: string;
   minimaxModel?: string;
+  // —— 新增：图像 Provider ——
+  imageProviders: ImageProvider[];
+  defaultImageProviderId: string | null;
+  defaultImageModel: string | null;
+  // —— 新增：提示词 → AI 绑定（全局层）——
+  promptBindings: PromptBindingMap;
 }
 
 export const DEFAULT_JIMENG_MODEL = 'jimeng-5.0';
@@ -249,6 +255,28 @@ export function buildAICardOverlayData(card: AICard): AICardOverlayData {
     sourceEndMs: card.endMs,
   };
 }
+
+/** 单个 Image Provider 配置（文生图） */
+export interface ImageProvider {
+  id: string;
+  name: string;
+  type: 'jimeng' | 'openai_image' | 'custom';
+  baseUrl: string;
+  apiKey: string;          // 即梦下：实际承载 sessionId（client 层适配）
+  models: string[];
+}
+
+/** 单个提示词的 AI 绑定（null 表示继承） */
+export interface PromptBinding {
+  providerId: string | null;
+  model: string | null;
+  // 仅 cover.regeneration 写入
+  imageProviderId?: string | null;
+  imageModel?: string | null;
+}
+
+/** 提示词 → 绑定映射；缺失 key 视为继承 */
+export type PromptBindingMap = Partial<Record<import('../lib/prompts/types').PromptKind, PromptBinding>>;
 
 export function buildAICardTimelineDraft(card: AICard): AICardTimelineDraft {
   const sourceStartMs = Number.isFinite(card.startMs) ? Math.max(0, Math.round(card.startMs)) : 0;
