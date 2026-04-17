@@ -281,8 +281,8 @@ export interface ElectronAPI {
     projectDir?: string;
   }) => Promise<{ kind: PromptKind; scope: 'global' | 'project'; removed: boolean }>;
   getDefaultPrompt: (args: { kind: PromptKind }) => Promise<{ kind: PromptKind; content: string }>;
-  readBindings(scope: 'project', projectDir: string): Promise<PromptBindingMap>;
-  writeBindings(scope: 'project', bindings: PromptBindingMap, projectDir: string): Promise<void>;
+  readPromptBindings(scope: 'project', projectDir: string): Promise<PromptBindingMap>;
+  writePromptBindings(scope: 'project', bindings: PromptBindingMap, projectDir: string): Promise<void>;
 }
 
 declare global {

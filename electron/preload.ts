@@ -213,9 +213,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('prompts:delete', args),
   getDefaultPrompt: (args: { kind: string }) =>
     ipcRenderer.invoke('prompts:default', args),
-  readBindings: (scope: 'project', projectDir: string) =>
+  readPromptBindings: (scope: 'project', projectDir: string) =>
     ipcRenderer.invoke('prompts:readBindings', { scope, projectDir }),
-  writeBindings: (scope: 'project', bindings: unknown, projectDir: string) =>
+  writePromptBindings: (scope: 'project', bindings: unknown, projectDir: string) =>
     ipcRenderer.invoke('prompts:writeBindings', { scope, bindings, projectDir }),
 });
 
