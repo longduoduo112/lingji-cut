@@ -53,6 +53,14 @@ import {
 } from './global-settings';
 import { resolveWindowCloseAction } from './window-close';
 import {
+  collectBackup,
+  validateBackup,
+  backupCurrent,
+  applyBackup,
+  defaultExportFileName,
+  ConfigBackupValidationError,
+} from './config-backup';
+import {
   loadRecentProjects,
   addRecentProject,
   removeRecentProject as removeRecentProjectFromStore,
@@ -65,6 +73,8 @@ import type { VideoImportRequest } from '../src/lib/video-import-types';
 import { createWorkbenchTabContextMenuTemplate } from './workbench-tab-context-menu';
 
 const execFileAsync = promisify(execFile);
+
+const AGENT_CONFIG_PATH = path.join(os.homedir(), '.lingji', 'agent-config.json');
 
 function resolveAppIconPath(): string | null {
   const candidates = [
@@ -626,6 +636,87 @@ ipcMain.handle('save-global-settings', async (_event, data: string) => {
   const settings = JSON.parse(data) as GlobalSettingsFile;
   await saveGlobalSettings(userDataPath, settings);
 });
+
+ipcMain.handle('config-backup:export', async () => {
+  const userDataPath = app.getPath('userData');
+  const appVersion = app.getVersion();
+  const backup = await collectBackup(userDataPath, AGENT_CONFIG_PATH, appVersion);
+
+  const result = mainWindow
+    ? await dialog.showSaveDialog(mainWindow, {
+        title: '导出配置备份',
+        defaultPath: defaultExportFileName(),
+        filters: [{ name: '灵机配置备份', extensions: ['lingji-backup.json', 'json'] }],
+      })
+    : await dialog.showSaveDialog({
+        title: '导出配置备份',
+        defaultPath: defaultExportFileName(),
+        filters: [{ name: '灵机配置备份', extensions: ['lingji-backup.json', 'json'] }],
+      });
+  if (result.canceled || !result.filePath) {
+    return { canceled: true as const };
+  }
+
+  await fs.writeFile(result.filePath, JSON.stringify(backup, null, 2), 'utf-8');
+  return { canceled: false as const, filePath: result.filePath };
+});
+
+ipcMain.handle('config-backup:preview', async () => {
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, {
+        title: '选择配置备份文件',
+        filters: [{ name: '灵机配置备份', extensions: ['lingji-backup.json', 'json'] }],
+        properties: ['openFile'],
+      })
+    : await dialog.showOpenDialog({
+        title: '选择配置备份文件',
+        filters: [{ name: '灵机配置备份', extensions: ['lingji-backup.json', 'json'] }],
+        properties: ['openFile'],
+      });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true as const };
+  }
+
+  const filePath = result.filePaths[0];
+  const raw = await fs.readFile(filePath, 'utf-8');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new ConfigBackupValidationError('备份文件不是合法的 JSON');
+  }
+  const backup = validateBackup(parsed);
+  return {
+    canceled: false as const,
+    filePath,
+    schemaVersion: backup.schemaVersion,
+    exportedAt: backup.exportedAt,
+    appVersion: backup.appVersion,
+    platform: backup.platform,
+  };
+});
+
+ipcMain.handle(
+  'config-backup:import',
+  async (_event, args: { filePath: string }) => {
+    const { filePath } = args;
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const backup = validateBackup(JSON.parse(raw));
+
+    const userDataPath = app.getPath('userData');
+    const { settingsBackupPath, agentBackupPath } = await backupCurrent(
+      userDataPath,
+      AGENT_CONFIG_PATH,
+    );
+    await applyBackup(backup, userDataPath, AGENT_CONFIG_PATH);
+
+    return {
+      appliedFrom: filePath,
+      settingsBackupPath,
+      agentBackupPath,
+    };
+  },
+);
 
 ipcMain.handle('save-timeline', async (_event, projectDir: string, data: string) => {
   await fs.mkdir(projectDir, { recursive: true });
