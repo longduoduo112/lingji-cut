@@ -55,7 +55,11 @@ interface RegenerateCoverPromptOptions {
 }
 
 /**
- * 仅当显式传入 projectBindings（包括 null）时才解析绑定；undefined 时跳过（供测试 mock 调用）。
+ * 解析指定 PromptKind 的 LLM 绑定。
+ *
+ * - `projectBindings === null`：无项目级 binding，走 settings.promptBindings / default 回退链
+ * - `projectBindings === undefined`：**仅测试 mock 走此路径**。生产路径必须显式传入（null 或 map），
+ *   否则会 silently bypass 绑定体系。所有 electron/main.ts IPC 处理器均已显式传入。
  */
 function maybeResolveBinding(
   kind: PromptKind,

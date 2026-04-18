@@ -7,10 +7,6 @@ import {
 } from '../lib/ai-persistence';
 import { migrateToProviders } from '../lib/llm/provider-utils';
 import { migrateImageProviders } from '../lib/llm/migrate-image-providers';
-import {
-  resolvePromptBinding,
-  type ResolvedBinding,
-} from '../lib/llm/binding-resolver';
 import { loadGlobalSettingsFile, updateGlobalSettingsFile } from '../lib/global-settings-client';
 import {
   DEFAULT_JIMENG_MODEL,
@@ -54,13 +50,6 @@ export const DEFAULT_WORKFLOW: WorkflowState = {
 
 const AI_SETTINGS_LEGACY_KEY = 'podcast-editor-ai-settings';
 
-// 模块级 settings 缓存：由 loadAISettings/saveAISettings 维护，
-// 供同步 selector（如 resolveBinding）使用。
-let cachedAISettings: AISettings | null = null;
-
-function getCachedAISettings(): AISettings | null {
-  return cachedAISettings;
-}
 
 function buildDefaultAISettings(): AISettings {
   return {
@@ -109,8 +98,6 @@ export interface AIStore {
   loadProjectBindings: (projectDir: string | null) => Promise<void>;
   setProjectBinding: (kind: PromptKind, binding: PromptBinding | null) => Promise<void>;
   setGlobalBinding: (kind: PromptKind, binding: PromptBinding | null) => Promise<void>;
-  /** 解析指定提示词 kind 的有效 LLM / Image 绑定；失败返回 null（UI 自行处理警告）。 */
-  resolveBinding: (kind: PromptKind) => ResolvedBinding | null;
   setAnalysisResult: (result: AIAnalysisResult) => void;
   setAnalyzing: (analyzing: boolean) => void;
   setAnalysisError: (error: string | null) => void;
@@ -202,19 +189,6 @@ export const useAIStore = create<AIStore>((set, get) => ({
       nextBindings[kind] = binding;
     }
     await saveAISettings({ ...baseSettings, promptBindings: nextBindings });
-  },
-  resolveBinding: (kind) => {
-    // 解析需要最新 settings，但 store 不持有 settings——采用同步失败兜底：
-    // 调用方若希望获得解析结果，应先通过 loadAISettings() 拿到 settings 自行调用
-    // resolvePromptBinding。此 selector 提供兜底同步路径：若无可用 settings
-    // 则返回 null；有 settings 时调用 resolver，捕获错误返回 null。
-    const settings = getCachedAISettings();
-    if (!settings) return null;
-    try {
-      return resolvePromptBinding(kind, settings, get().projectBindings);
-    } catch {
-      return null;
-    }
   },
   setAnalysisResult: (result) => set({ analysisResult: result, analysisError: null }),
   setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
@@ -315,10 +289,7 @@ export async function loadAISettings(): Promise<AISettings | null> {
         const llmChanged = !hadProviders && providerMigrated.llmProviders.length > 0;
         const imageChanged = imageMigrated !== providerMigrated;
         if (llmChanged || imageChanged) {
-          // 迁移产生变化，立即持久化（saveAISettings 会刷新缓存）
           void saveAISettings(imageMigrated);
-        } else {
-          cachedAISettings = imageMigrated;
         }
         return imageMigrated;
       }
@@ -368,15 +339,14 @@ export async function loadAISettings(): Promise<AISettings | null> {
 }
 
 export async function saveAISettings(settings: AISettings): Promise<void> {
-  // 刷新同步缓存（即便无 electronAPI 也记录，便于 resolveBinding 在测试中工作）
-  cachedAISettings = {
+  const normalized: AISettings = {
     ...settings,
     jimengModel: settings.jimengModel?.trim() || DEFAULT_JIMENG_MODEL,
   };
   if (typeof window !== 'undefined' && window.electronAPI) {
     await updateGlobalSettingsFile((current) => ({
       ...current,
-      aiSettings: cachedAISettings as AISettings,
+      aiSettings: normalized,
     }));
   }
 }
