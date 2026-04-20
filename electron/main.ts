@@ -1431,10 +1431,14 @@ ipcMain.handle('read-directory', async (_event, dir: string) => {
   return readDir(dir, 0);
 });
 
-ipcMain.handle('select-output-path', async () => {
+ipcMain.handle('select-output-path', async (_event, defaultPath?: string) => {
   if (!mainWindow) return null;
+  const resolvedDefault =
+    typeof defaultPath === 'string' && defaultPath.trim().length > 0
+      ? defaultPath
+      : 'podcast-export.mp4';
   const result = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: 'podcast-export.mp4',
+    defaultPath: resolvedDefault,
     filters: [{ name: 'MP4 Video', extensions: ['mp4'] }],
   });
 

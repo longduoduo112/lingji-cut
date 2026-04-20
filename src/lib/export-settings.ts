@@ -148,6 +148,77 @@ export function getExportDimensions(
   return scaleToLongEdge(timelineWidth, timelineHeight, RESOLUTION_LONG_EDGE[resolution]);
 }
 
+const LAST_EXPORT_DIR_KEY = 'video-web.last-export-dir';
+const DEFAULT_EXPORT_FILE_NAME = 'podcast-export';
+
+function hasBrowserStorage(): boolean {
+  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+}
+
+export function getLastExportDir(): string {
+  if (!hasBrowserStorage()) {
+    return '';
+  }
+
+  return window.localStorage.getItem(LAST_EXPORT_DIR_KEY) || '';
+}
+
+export function setLastExportDir(dir: string): void {
+  if (!hasBrowserStorage() || !dir) {
+    return;
+  }
+
+  window.localStorage.setItem(LAST_EXPORT_DIR_KEY, dir);
+}
+
+// 去除文件名中不安全的字符，保留中文、字母、数字及常见符号
+export function sanitizeExportFileName(name: string): string {
+  const trimmed = (name || '').trim();
+  if (!trimmed) {
+    return DEFAULT_EXPORT_FILE_NAME;
+  }
+
+  const sanitized = trimmed
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return sanitized || DEFAULT_EXPORT_FILE_NAME;
+}
+
+function getPathSeparator(sample: string): string {
+  if (sample.includes('\\') && !sample.includes('/')) {
+    return '\\';
+  }
+  return '/';
+}
+
+export function extractDirFromPath(fullPath: string): string {
+  if (!fullPath) {
+    return '';
+  }
+
+  const separator = getPathSeparator(fullPath);
+  const idx = fullPath.lastIndexOf(separator);
+  if (idx <= 0) {
+    return '';
+  }
+
+  return fullPath.slice(0, idx);
+}
+
+export function buildDefaultExportPath(projectName: string | null | undefined): string {
+  const fileName = `${sanitizeExportFileName(projectName || '')}.mp4`;
+  const lastDir = getLastExportDir();
+  if (!lastDir) {
+    return fileName;
+  }
+
+  const separator = getPathSeparator(lastDir);
+  const trimmedDir = lastDir.replace(/[\\/]+$/, '');
+  return `${trimmedDir}${separator}${fileName}`;
+}
+
 export function buildExportRenderConfig({
   timelineWidth,
   timelineHeight,

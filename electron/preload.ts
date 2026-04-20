@@ -187,7 +187,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('tts-progress', handler);
   },
   cancelTTS: (requestId: string) => ipcRenderer.invoke('cancel-tts', requestId),
-  selectOutputPath: () => ipcRenderer.invoke('select-output-path'),
+  selectOutputPath: (defaultPath?: string) =>
+    ipcRenderer.invoke('select-output-path', defaultPath),
   showEditorContextMenu: () => ipcRenderer.invoke('show-editor-context-menu'),
   showWorkbenchTabContextMenu: (request: WorkbenchTabContextMenuRequest) =>
     ipcRenderer.invoke('show-workbench-tab-context-menu', request),

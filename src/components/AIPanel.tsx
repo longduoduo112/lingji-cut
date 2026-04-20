@@ -375,8 +375,12 @@ export function AIPanel({
   const handleGenerateCovers = useCallback(
     async (prompts: string[]) => {
       const settings = await loadAISettings();
-      if (!settings?.jimengSessionId) {
-        setAnalysisError('请先在 AI 配置中填写即梦 Session ID');
+      const hasImageProvider =
+        !!settings &&
+        settings.imageProviders.length > 0 &&
+        !!settings.defaultImageProviderId;
+      if (!hasImageProvider) {
+        setAnalysisError('请先在 AI 配置中添加至少一个图像生成 Provider');
         onOpenSettings?.();
         return;
       }

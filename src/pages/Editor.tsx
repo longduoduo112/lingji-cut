@@ -949,6 +949,7 @@ export function Editor({
         visible={isExportSettingsOpen}
         timelineWidth={timeline.width}
         timelineHeight={timeline.height}
+        projectName={projectDir ? getFileNameFromPath(projectDir) : undefined}
         onClose={() => setIsExportSettingsOpen(false)}
         onConfirm={handleConfirmExport}
       />
