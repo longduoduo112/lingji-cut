@@ -13,7 +13,8 @@
   user-select: none;
   -webkit-app-region: no-drag;
   position: relative;
-  overflow: hidden;
+  /* 提升到视频编辑器 timeline / 其他页面内容之上，避免点击摘要后面板被遮挡 */
+  z-index: 50;
 }
 
 .left {
@@ -139,6 +140,8 @@
   height: 2px;
   z-index: 1;
   pointer-events: none;
+  /* indeterminate 动画 translateX(388%) 会水平溢出，裁剪只作用于进度线本身 */
+  overflow: hidden;
 }
 
 .progressFillLine {

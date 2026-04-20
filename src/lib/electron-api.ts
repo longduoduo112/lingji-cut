@@ -226,7 +226,7 @@ export interface ElectronAPI {
   }) => Promise<{ audioPath: string; srtPath: string; durationMs: number }>;
   onTTSProgress: (callback: (pct: number) => void) => () => void;
   cancelTTS: (requestId: string) => Promise<void>;
-  selectOutputPath: () => Promise<string | null>;
+  selectOutputPath: (defaultPath?: string) => Promise<string | null>;
   showEditorContextMenu: () => Promise<void>;
   showWorkbenchTabContextMenu: (request: WorkbenchTabContextMenuRequest) => Promise<void>;
   onWorkbenchTabMenuAction: (callback: (event: WorkbenchTabMenuEvent) => void) => () => void;

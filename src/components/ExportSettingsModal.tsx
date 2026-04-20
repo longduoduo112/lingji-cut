@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  buildDefaultExportPath,
   buildExportRenderConfig,
   EXPORT_QUALITY_OPTIONS,
   EXPORT_RESOLUTION_OPTIONS,
+  extractDirFromPath,
+  setLastExportDir,
   type ExportConfig,
   type ExportQuality,
   type ExportResolution,
@@ -30,6 +33,7 @@ interface ExportSettingsModalProps {
   visible: boolean;
   timelineWidth: number;
   timelineHeight: number;
+  projectName?: string;
   onClose: () => void;
   onConfirm: (payload: {
     outputPath: string;
@@ -41,6 +45,7 @@ export function ExportSettingsModal({
   visible,
   timelineWidth,
   timelineHeight,
+  projectName,
   onClose,
   onConfirm,
 }: ExportSettingsModalProps) {
@@ -82,11 +87,16 @@ export function ExportSettingsModal({
   );
 
   const handleSelectOutputPath = async () => {
-    const savePath = await window.electronAPI.selectOutputPath();
+    const defaultPath = buildDefaultExportPath(projectName);
+    const savePath = await window.electronAPI.selectOutputPath(defaultPath);
     if (!savePath) {
       return;
     }
 
+    const dir = extractDirFromPath(savePath);
+    if (dir) {
+      setLastExportDir(dir);
+    }
     setOutputPath(savePath);
   };
 

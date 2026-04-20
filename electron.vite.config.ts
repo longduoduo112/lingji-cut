@@ -7,6 +7,7 @@ export default defineConfig({
   main: {
     build: {
       outDir: 'dist-electron',
+      emptyOutDir: false,
       lib: {
         entry: resolve('electron/main.ts'),
         formats: ['cjs'],
