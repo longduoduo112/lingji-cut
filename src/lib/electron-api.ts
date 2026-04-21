@@ -19,6 +19,10 @@ import type {
   PromptKindMeta,
   PromptScope,
   EffectivePromptTemplate,
+  PromptCategory,
+  PromptCategoryMeta,
+  UserPromptEntry,
+  UserPromptSeed,
 } from './prompts';
 
 export type AppPage = 'welcome' | 'setup' | 'editor' | 'script-workbench' | 'settings';
@@ -288,6 +292,25 @@ export interface ElectronAPI {
   getDefaultPrompt: (args: { kind: PromptKind }) => Promise<{ kind: PromptKind; content: string }>;
   readPromptBindings(scope: 'project', projectDir: string): Promise<PromptBindingMap>;
   writePromptBindings(scope: 'project', bindings: PromptBindingMap, projectDir: string): Promise<void>;
+
+  // 用户自定义提示词条目（如口播模板）
+  listUserPromptCategories: () => Promise<PromptCategoryMeta[]>;
+  listUserPrompts: (category: PromptCategory) => Promise<UserPromptEntry[]>;
+  readUserPrompt: (category: PromptCategory, id: string) => Promise<UserPromptEntry | null>;
+  writeUserPrompt: (input: {
+    category: PromptCategory;
+    id: string;
+    name: string;
+    description: string;
+    version?: number;
+    system: string;
+    user: string;
+  }) => Promise<UserPromptEntry>;
+  deleteUserPrompt: (
+    category: PromptCategory,
+    id: string,
+  ) => Promise<{ removed: boolean; restoredToSeed: boolean }>;
+  getUserPromptSeed: (category: PromptCategory, id: string) => Promise<UserPromptSeed | null>;
 }
 
 declare global {

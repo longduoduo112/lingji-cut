@@ -1,5 +1,22 @@
+import { useEffect } from 'react';
 import { Checkbox } from '../../ui';
-import { getAllTemplates } from '../../lib/script-templates';
+import { useAIStore } from '../../store/ai';
+import { SCRIPT_TEMPLATE_SEEDS } from '../../lib/prompts/script-template-defaults';
+import type { UserPromptEntry } from '../../lib/prompts/types';
+
+/** 从 seeds 构造一份 fallback 列表，防止 store 尚未 hydrate 时抽屉空白 */
+function buildFallback(): UserPromptEntry[] {
+  return SCRIPT_TEMPLATE_SEEDS.map((seed) => ({
+    id: seed.id,
+    category: seed.category,
+    name: seed.name,
+    description: seed.description,
+    version: seed.version,
+    system: seed.system,
+    user: seed.user,
+    isBuiltin: true,
+  }));
+}
 
 export function TemplateDrawerContent({
   selectedTemplate,
@@ -8,7 +25,17 @@ export function TemplateDrawerContent({
   selectedTemplate: string;
   onSelectTemplate: (templateId: string) => void;
 }) {
-  const templates = getAllTemplates();
+  const entries = useAIStore((s) => s.userPromptEntries['script-template']);
+  const loaded = useAIStore((s) => s.userPromptsLoaded['script-template']);
+  const loadUserPrompts = useAIStore((s) => s.loadUserPrompts);
+
+  // 挂载时保证已 load（幂等）
+  useEffect(() => {
+    void loadUserPrompts('script-template');
+  }, [loadUserPrompts]);
+
+  const templates: UserPromptEntry[] =
+    loaded && entries.length > 0 ? entries : entries.length > 0 ? entries : buildFallback();
 
   return (
     <div

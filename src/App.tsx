@@ -26,7 +26,8 @@ import type { AICard, AIAnalysisResult } from './types/ai';
 import { getCurrentAISaveStatus, loadAISettings, subscribeToAISaveStatus, useAIStore } from './store/ai';
 import type { ProjectData } from './lib/project-persistence';
 import { useScriptStore } from './store/script';
-import { getAllTemplates, getRoleById } from './lib/script-templates';
+import { getRoleById } from './lib/script-templates';
+import { SCRIPT_TEMPLATE_SEEDS } from './lib/prompts/script-template-defaults';
 import {
   clearCurrentProject,
   getCurrentProjectDir,
@@ -92,9 +93,13 @@ export default function App() {
   const setMotionError = useAIStore((state) => state.setMotionError);
   const setStoryboardPlan = useAIStore((state) => state.setStoryboardPlan);
 
+  const loadUserPrompts = useAIStore((state) => state.loadUserPrompts);
+
   useEffect(() => {
     void hydrateSettingsStorage();
-  }, []);
+    // 启动即加载口播模板分类，MCP / 写稿 / 抽屉都依赖这份缓存
+    void loadUserPrompts('script-template');
+  }, [loadUserPrompts]);
 
   // --- MCP 只读型 Handler（全局注册，独立于 ScriptWorkbench 页面生命周期）---
   // 这些 handler 只依赖 Zustand store，不依赖 ScriptWorkbench 的 ref/回调，
@@ -235,8 +240,23 @@ export default function App() {
     unsubs.push(
       window.mcpAPI.onGetProjectContext((payload: any) => {
         const state = useScriptStore.getState();
-        const templates = getAllTemplates();
-        const selectedTpl = templates.find((t) => t.id === state.selectedTemplate);
+        // 直接从 AIStore 读口播模板条目，避免耦合 script-templates.ts
+        const userTemplates = useAIStore.getState().userPromptEntries['script-template'] ?? [];
+        // 极早期（App hydrate 尚未完成 loadUserPrompts）时用内置种子兜底
+        const effectiveTemplates = userTemplates.length > 0
+          ? userTemplates.map((entry) => ({
+              id: entry.id,
+              name: entry.name,
+              description: entry.description,
+              systemPrompt: entry.system,
+            }))
+          : SCRIPT_TEMPLATE_SEEDS.map((seed) => ({
+              id: seed.id,
+              name: seed.name,
+              description: seed.description,
+              systemPrompt: seed.system,
+            }));
+        const selectedTpl = effectiveTemplates.find((t) => t.id === state.selectedTemplate);
         const selectedRole = getRoleById(state.selectedRole);
         window.mcpAPI!.reply(payload._replyChannel, {
           projectName: state.projectDir?.split('/').pop() ?? null,
@@ -252,12 +272,7 @@ export default function App() {
           roleInstruction: selectedRole && selectedRole.id !== 'none'
             ? `【重要】用户已选择「${selectedRole.name}」作为口播角色。写稿时请严格遵循以下角色设定：\n${selectedRole.rolePrompt}\n请将此角色风格融入模板要求中生成口播稿。`
             : null,
-          templates: templates.map((t) => ({
-            id: t.id,
-            name: t.name,
-            description: t.description,
-            systemPrompt: t.systemPrompt,
-          })),
+          templates: effectiveTemplates,
           hasOriginalFile: state.workspaceFiles.hasOriginalFile,
           hasScriptFile: state.workspaceFiles.hasScriptFile,
         });
@@ -542,25 +557,36 @@ export default function App() {
     setPage('settings');
   }, [setPage]);
 
-  const handleCreateScriptProject = useCallback(async () => {
-    const projectDir = await window.electronAPI.selectProjectDirectory();
-    if (!projectDir) {
-      return;
-    }
+  /**
+   * 导入文稿回调：在指定父目录下创建以项目名命名的文件夹，
+   * 初始化空白脚本项目状态，将原稿暂存到 store，
+   * 导航到脚本工作台后自动写入 original.md 并触发 AI 写稿。
+   */
+  const handleImportScript = useCallback(
+    async (parentDir: string, projectName: string, content: string) => {
+      const trimmedName = projectName.trim();
+      if (!parentDir || !trimmedName) {
+        throw new Error('父目录和项目名不能为空');
+      }
+      const projectDir = `${parentDir}/${trimmedName}`;
 
-    clearCurrentProject();
-    useScriptStore.getState().clearProjectSession();
-    useScriptStore.getState().restoreState(createBlankScriptProjectState(projectDir));
+      clearCurrentProject();
+      useScriptStore.getState().clearProjectSession();
+      useScriptStore.getState().restoreState(createBlankScriptProjectState(projectDir));
+      // 暂存原稿，进入工作台后由 useEffect 落盘并起飞 AI 写稿
+      useScriptStore.getState().setPendingImportedScript({ content });
 
-    setTimeline(createDefaultTimeline());
-    setSrtEntries([]);
-    clearAIAnalysis();
-    setProjectDir(projectDir);
-    await window.electronAPI.addRecentProject(projectDir);
-    void syncWorkspaceState();
-    setSetupError(null);
-    setPage('script-workbench');
-  }, [clearAIAnalysis, setSrtEntries, setTimeline, syncWorkspaceState]);
+      setTimeline(createDefaultTimeline());
+      setSrtEntries([]);
+      clearAIAnalysis();
+      setProjectDir(projectDir);
+      await window.electronAPI.addRecentProject(projectDir);
+      void syncWorkspaceState();
+      setSetupError(null);
+      setPage('script-workbench');
+    },
+    [clearAIAnalysis, setSrtEntries, setTimeline, syncWorkspaceState],
+  );
 
   /**
    * 抖音导入回调：在指定父目录下创建以视频标题命名的项目文件夹，
@@ -980,9 +1006,7 @@ export default function App() {
                   onComplete={handleSetupComplete}
                   onOpenRecentProject={openProject}
                   onRemoveRecentProject={handleRemoveRecentProject}
-                  onStartScriptWorkbench={() => {
-                    void handleCreateScriptProject();
-                  }}
+                  onImportScript={handleImportScript}
                   onOpenSettings={() => setPage('settings')}
                   onDouyinImport={handleDouyinImport}
                 />

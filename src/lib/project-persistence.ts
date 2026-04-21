@@ -8,8 +8,6 @@ export interface ProjectScriptState {
   reviewState: 'idle' | 'issues' | 'clean';
   lastReviewedDocVersion: number;
   manualStageOverride?: WorkbenchStage | null;
-  selectedProviderId?: string | null;
-  selectedModel?: string | null;
 }
 
 export interface ProjectAIAnalysis {

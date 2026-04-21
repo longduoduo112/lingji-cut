@@ -226,6 +226,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('prompts:readBindings', { scope, projectDir }),
   writePromptBindings: (scope: 'project', bindings: unknown, projectDir: string) =>
     ipcRenderer.invoke('prompts:writeBindings', { scope, bindings, projectDir }),
+
+  // ─── 用户自定义提示词条目（script-template 等分类） ──────
+  listUserPromptCategories: () => ipcRenderer.invoke('user-prompts:categories'),
+  listUserPrompts: (category: string) =>
+    ipcRenderer.invoke('user-prompts:list', { category }),
+  readUserPrompt: (category: string, id: string) =>
+    ipcRenderer.invoke('user-prompts:read', { category, id }),
+  writeUserPrompt: (input: {
+    category: string;
+    id: string;
+    name: string;
+    description: string;
+    version?: number;
+    system: string;
+    user: string;
+  }) => ipcRenderer.invoke('user-prompts:write', input),
+  deleteUserPrompt: (category: string, id: string) =>
+    ipcRenderer.invoke('user-prompts:delete', { category, id }),
+  getUserPromptSeed: (category: string, id: string) =>
+    ipcRenderer.invoke('user-prompts:seed', { category, id }),
 });
 
 // ─── Agent API ────────────────────────────────────────────

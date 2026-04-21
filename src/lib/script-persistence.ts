@@ -9,8 +9,6 @@ export interface PersistedScriptState {
   reviewState: ReviewState;
   lastReviewedDocVersion: number;
   manualStageOverride?: WorkbenchStage | null;
-  selectedProviderId?: string | null;
-  selectedModel?: string | null;
   createdAt: string;
   updatedAt: string;
   lastOperation?: string;
@@ -57,8 +55,6 @@ export function createPersistedScriptState(
   options?: {
     createdAt?: string;
     manualStageOverride?: WorkbenchStage | null;
-    selectedProviderId?: string | null;
-    selectedModel?: string | null;
     fileTreeView?: 'all' | 'resources';
   },
 ): PersistedScriptState {
@@ -69,8 +65,6 @@ export function createPersistedScriptState(
     reviewState,
     lastReviewedDocVersion: scriptDocVersion,
     manualStageOverride: options?.manualStageOverride ?? null,
-    selectedProviderId: options?.selectedProviderId ?? null,
-    selectedModel: options?.selectedModel ?? null,
     createdAt: options?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     fileTreeView: options?.fileTreeView ?? 'all',
@@ -230,8 +224,6 @@ export async function loadScriptState(
         reviewState?: ReviewState;
         lastReviewedDocVersion?: number;
         manualStageOverride?: WorkbenchStage | null;
-        selectedProviderId?: string | null;
-        selectedModel?: string | null;
       };
     };
 
@@ -244,8 +236,6 @@ export async function loadScriptState(
       reviewState: project.script.reviewState ?? 'idle',
       lastReviewedDocVersion: project.script.lastReviewedDocVersion ?? 0,
       manualStageOverride: project.script.manualStageOverride ?? null,
-      selectedProviderId: project.script.selectedProviderId ?? null,
-      selectedModel: project.script.selectedModel ?? null,
       createdAt: project.createdAt ?? new Date().toISOString(),
       updatedAt: project.updatedAt ?? new Date().toISOString(),
     };

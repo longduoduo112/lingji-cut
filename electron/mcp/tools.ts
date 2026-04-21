@@ -231,12 +231,12 @@ export function registerTools(
     'lingji_write_script',
     {
       title: '写稿 - 内置AI模板生成',
-      description: `使用编辑器内置 AI 根据模板和原始素材生成口播稿。需要用户在设置中配置内部 LLM API Key。
+      description: `使用编辑器内置 AI 根据口播模板和原始素材生成口播稿。需要用户在设置中配置内部 LLM API Key。
 
-推荐的写稿方式：用 lingji_get_project_context 获取模板写作指令 → lingji_read_script 读取素材 → 你自己按模板风格写稿 → lingji_update_script 写入编辑器。
+推荐的写稿方式：用 lingji_get_project_context 获取模板列表（id + systemPrompt）→ lingji_read_script 读取素材 → 你自己按模板风格写稿 → lingji_update_script 写入编辑器。
 本工具仅在用户明确要求"使用内置AI生成"时使用。`,
       inputSchema: {
-        templateCode: z.string().describe('脚本模板代码（如 vlog、tutorial 等）'),
+        templateCode: z.string().describe('口播模板 id，必须来自 lingji_get_project_context 返回的 templates[].id（内置如 news-broadcast / tech-review / knowledge-popular，也可能是用户自定义模板 id）'),
         rawTextFilePath: z.string().describe('原始文本素材的文件路径（支持绝对路径或相对于项目目录的相对路径），工具会自动读取文件内容'),
       },
     },
@@ -379,11 +379,13 @@ export function registerTools(
   server.registerTool(
     'lingji_get_project_context',
     {
-      title: '获取项目上下文、模板列表与角色设定',
-      description: `获取当前项目信息、可用模板列表及其完整写作指令（systemPrompt），以及当前选中的口播角色设定。
+      title: '获取项目上下文、口播模板列表与角色设定',
+      description: `获取当前项目信息、可用口播模板列表及其完整写作指令（systemPrompt），以及当前选中的口播角色设定。
 
 写稿前先调用此工具了解项目状态、模板风格要求和角色设定。
-- selectedTemplatePrompt：当前选中模板的完整写作规范
+- templates：口播模板条目数组，每项包含 id / name / description / systemPrompt；内置模板与用户自定义模板合并返回
+- selectedTemplate：当前选中的模板 id
+- selectedTemplatePrompt：当前选中模板的完整写作规范（systemPrompt）
 - selectedRole：当前选中的口播角色（包含角色名称、描述和角色提示词）
 - roleInstruction：如果用户选择了特定角色，此字段包含完整的角色指令，写稿时必须遵循
 

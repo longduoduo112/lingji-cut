@@ -138,10 +138,10 @@ interface ScriptState {
       createdAt: string;
     } | null;
   };
-  selectedProviderId: string | null;
-  selectedModel: string | null;
   /** 从欢迎页传入的待处理抖音链接，进入工作台后自动触发导入 */
   pendingDouyinUrl: string | null;
+  /** 从欢迎页传入的待写入文稿内容，进入工作台后自动写入 original.md 并起飞 AI 写稿 */
+  pendingImportedScript: { content: string } | null;
   /** 文件树当前视图：'all' 显示全部文件，'resources' 显示稿件资源过滤视图 */
   fileTreeView: 'all' | 'resources';
 }
@@ -213,8 +213,8 @@ interface ScriptActions {
   clearVideoImportState: () => void;
   enterHistoryPreview: (versionId: number, content: string, meta: ScriptState['historyPreview']['versionMeta']) => void;
   exitHistoryPreview: () => void;
-  setSelectedProvider: (providerId: string | null, model: string | null) => void;
   setPendingDouyinUrl: (url: string | null) => void;
+  setPendingImportedScript: (payload: { content: string } | null) => void;
   setFileTreeView: (view: 'all' | 'resources') => void;
 }
 
@@ -286,9 +286,8 @@ const initialState: ScriptState = {
     content: null,
     versionMeta: null,
   },
-  selectedProviderId: null,
-  selectedModel: null,
   pendingDouyinUrl: null,
+  pendingImportedScript: null,
   fileTreeView: 'all',
 };
 
@@ -576,10 +575,9 @@ export const useScriptStore = create<ScriptState & ScriptActions>((set, get) => 
       editorAgent: { readOnly: false, virtualCursorPos: null, streamingActive: false },
     }),
 
-  setSelectedProvider: (providerId, model) =>
-    set({ selectedProviderId: providerId, selectedModel: model }),
-
   setPendingDouyinUrl: (url) => set({ pendingDouyinUrl: url }),
+
+  setPendingImportedScript: (payload) => set({ pendingImportedScript: payload }),
 
   setFileTreeView: (view) => set({ fileTreeView: view }),
 }));
@@ -594,9 +592,7 @@ useScriptStore.subscribe((state, prevState) => {
     state.scriptDocVersion !== prevState.scriptDocVersion ||
     state.selectedTemplate !== prevState.selectedTemplate ||
     state.annotations !== prevState.annotations ||
-    state.manualStageOverride !== prevState.manualStageOverride ||
-    state.selectedProviderId !== prevState.selectedProviderId ||
-    state.selectedModel !== prevState.selectedModel;
+    state.manualStageOverride !== prevState.manualStageOverride;
 
   if (!changed) return;
 
@@ -606,8 +602,6 @@ useScriptStore.subscribe((state, prevState) => {
     reviewState: state.reviewState,
     lastReviewedDocVersion: state.scriptDocVersion,
     manualStageOverride: state.manualStageOverride,
-    selectedProviderId: state.selectedProviderId,
-    selectedModel: state.selectedModel,
   };
 
   debouncedSaveScriptSection(state.projectDir, scriptSection);

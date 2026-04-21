@@ -1,6 +1,27 @@
 .trigger {
   max-width: min(360px, 46vw);
   border: 1px solid var(--color-border-subtle);
+  transition: border-color var(--motion-fast), color var(--motion-fast);
+}
+
+.triggerBound {
+  border-color: var(--color-system-blue);
+  color: var(--color-system-blue);
+}
+
+.headerLabel {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.resetItem {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+}
+
+.resetItem:hover {
+  color: var(--color-text-primary);
 }
 
 .triggerLabel {

@@ -1,5 +1,11 @@
 import YAML from 'yaml';
-import { PROMPT_KIND_META, type PromptKind, type PromptTemplate } from './types';
+import {
+  PROMPT_KIND_META,
+  type PromptCategory,
+  type PromptKind,
+  type PromptTemplate,
+  type UserPromptEntry,
+} from './types';
 
 const TEMPLATE_VAR_RE = /\{\{\s*([\w.]+)\s*\}\}/g;
 
@@ -67,6 +73,79 @@ export function parsePromptYaml(raw: string, kind: PromptKind): PromptYamlParseR
 
 export function serializePromptYaml(template: PromptTemplate): string {
   return YAML.stringify(template, {
+    lineWidth: 0,
+    blockQuote: 'literal',
+  });
+}
+
+export interface UserPromptYamlBody {
+  name: string;
+  description: string;
+  version?: number;
+  system: string;
+  user: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export function parseUserPromptYaml(
+  raw: string,
+  ctx: { id: string; category: PromptCategory },
+): UserPromptEntry {
+  let data: unknown;
+  try {
+    data = YAML.parse(raw);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`用户提示词 YAML 解析失败（${ctx.category}/${ctx.id}）：${message}`);
+  }
+
+  if (!data || typeof data !== 'object') {
+    throw new Error(`用户提示词 YAML 顶层必须是对象（${ctx.category}/${ctx.id}）`);
+  }
+
+  const obj = data as Record<string, unknown>;
+  const name = typeof obj.name === 'string' ? obj.name.trim() : '';
+  const description = typeof obj.description === 'string' ? obj.description : '';
+  const system = typeof obj.system === 'string' ? obj.system : '';
+  const user = typeof obj.user === 'string' ? obj.user : '';
+  const version = typeof obj.version === 'number' ? obj.version : undefined;
+  const createdAt = typeof obj.createdAt === 'string' ? obj.createdAt : undefined;
+  const updatedAt = typeof obj.updatedAt === 'string' ? obj.updatedAt : undefined;
+
+  if (!name) {
+    throw new Error(`用户提示词 name 字段不能为空（${ctx.category}/${ctx.id}）`);
+  }
+  if (!user.trim()) {
+    throw new Error(`用户提示词 user 字段不能为空（${ctx.category}/${ctx.id}）`);
+  }
+
+  return {
+    id: ctx.id,
+    category: ctx.category,
+    name,
+    description,
+    version,
+    system,
+    user,
+    isBuiltin: false,
+    createdAt,
+    updatedAt,
+  };
+}
+
+export function serializeUserPromptYaml(body: UserPromptYamlBody): string {
+  const payload: Record<string, unknown> = {
+    name: body.name,
+    description: body.description,
+  };
+  if (typeof body.version === 'number') payload.version = body.version;
+  payload.system = body.system;
+  payload.user = body.user;
+  if (body.createdAt) payload.createdAt = body.createdAt;
+  if (body.updatedAt) payload.updatedAt = body.updatedAt;
+
+  return YAML.stringify(payload, {
     lineWidth: 0,
     blockQuote: 'literal',
   });

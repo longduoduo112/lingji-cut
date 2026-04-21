@@ -73,7 +73,17 @@ import {
   writePromptBindings,
 } from './prompt-bindings-io';
 import {
+  assertPromptCategory,
+  deleteUserPromptEntry,
+  getUserPromptSeed,
+  listUserPromptEntries,
+  migrateLegacyScriptTemplates,
+  readUserPromptEntry,
+  writeUserPromptEntry,
+} from './user-prompts-io';
+import {
   DEFAULT_PROMPT_YAML,
+  PROMPT_CATEGORY_META,
   PROMPT_KIND_META,
   PROMPT_KINDS,
   isPromptKind,
@@ -935,6 +945,90 @@ ipcMain.handle(
       args.bindings as Parameters<typeof writePromptBindings>[0],
       { projectDir: args.projectDir },
     );
+  },
+);
+
+ipcMain.handle('user-prompts:categories', async () => {
+  return Object.values(PROMPT_CATEGORY_META);
+});
+
+ipcMain.handle(
+  'user-prompts:list',
+  async (_event, args: { category: string }) => {
+    const category = assertPromptCategory(args?.category);
+    const userDataPath = app.getPath('userData');
+    const entries = await listUserPromptEntries(category, { userDataPath });
+    return entries;
+  },
+);
+
+ipcMain.handle(
+  'user-prompts:read',
+  async (_event, args: { category: string; id: string }) => {
+    const category = assertPromptCategory(args?.category);
+    const userDataPath = app.getPath('userData');
+    const entry = await readUserPromptEntry(category, args.id, { userDataPath });
+    return entry;
+  },
+);
+
+ipcMain.handle(
+  'user-prompts:write',
+  async (
+    _event,
+    args: {
+      category: string;
+      id: string;
+      name: string;
+      description: string;
+      version?: number;
+      system: string;
+      user: string;
+    },
+  ) => {
+    const category = assertPromptCategory(args?.category);
+    const userDataPath = app.getPath('userData');
+    if (!args.id || typeof args.id !== 'string') {
+      throw new Error('user-prompts:write 缺少 id');
+    }
+    if (!args.name || typeof args.name !== 'string') {
+      throw new Error('user-prompts:write 缺少 name');
+    }
+    if (typeof args.user !== 'string' || !args.user.trim()) {
+      throw new Error('user-prompts:write 缺少 user');
+    }
+    const entry = await writeUserPromptEntry(
+      {
+        id: args.id,
+        category,
+        name: args.name,
+        description: args.description ?? '',
+        version: args.version,
+        system: args.system ?? '',
+        user: args.user,
+      },
+      { userDataPath },
+    );
+    return entry;
+  },
+);
+
+ipcMain.handle(
+  'user-prompts:delete',
+  async (_event, args: { category: string; id: string }) => {
+    const category = assertPromptCategory(args?.category);
+    const userDataPath = app.getPath('userData');
+    const result = await deleteUserPromptEntry(category, args.id, { userDataPath });
+    return result;
+  },
+);
+
+ipcMain.handle(
+  'user-prompts:seed',
+  async (_event, args: { category: string; id: string }) => {
+    const category = assertPromptCategory(args?.category);
+    const seed = getUserPromptSeed(category, args.id);
+    return seed;
   },
 );
 
@@ -1873,6 +1967,20 @@ app.whenReady().then(async () => {
         writeAppLog('warn', 'app', '设置 Dock 图标失败', String(err));
       }
     }
+  }
+  // 一次性迁移：把旧 customTemplates 转为 userData/prompts/script-template/*.yaml
+  try {
+    const userDataPath = app.getPath('userData');
+    const migrateResult = await migrateLegacyScriptTemplates({ userDataPath });
+    if (!migrateResult.skipped) {
+      writeAppLog(
+        'info',
+        'user-prompts',
+        `migrated legacy script templates: ${migrateResult.migrated}`,
+      );
+    }
+  } catch (err) {
+    writeAppLog('warn', 'user-prompts', '迁移旧口播模板失败', String(err));
   }
   createWindow();
   // 启动 MCP Server

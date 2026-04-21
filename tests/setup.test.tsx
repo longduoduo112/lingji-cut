@@ -12,13 +12,14 @@ describe('Setup', () => {
         recentProjects={[]}
         onComplete={async () => undefined}
         onOpenRecentProject={async () => undefined}
-        onStartScriptWorkbench={() => undefined}
+        onImportScript={async () => undefined}
         onOpenSettings={() => undefined}
+        onDouyinImport={async () => undefined}
       />,
     );
 
     expect(html).toContain('开始创作');
-    expect(html).toContain('AI写稿');
+    expect(html).toContain('导入文稿');
     expect(html).toContain('导入音频');
     expect(html).not.toContain('所有文件均在本地处理');
   });
@@ -32,8 +33,9 @@ describe('Setup', () => {
         recentProjects={[]}
         onComplete={async () => undefined}
         onOpenRecentProject={async () => undefined}
-        onStartScriptWorkbench={() => undefined}
+        onImportScript={async () => undefined}
         onOpenSettings={() => undefined}
+        onDouyinImport={async () => undefined}
       />,
     );
 
@@ -56,8 +58,9 @@ describe('Setup', () => {
         ]}
         onComplete={async () => undefined}
         onOpenRecentProject={async () => undefined}
-        onStartScriptWorkbench={() => undefined}
+        onImportScript={async () => undefined}
         onOpenSettings={() => undefined}
+        onDouyinImport={async () => undefined}
       />,
     );
 
