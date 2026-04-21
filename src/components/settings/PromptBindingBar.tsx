@@ -6,12 +6,12 @@ import type {
   LLMProvider,
   PromptBinding,
 } from '../../types/ai';
-import type { PromptKind } from '../../lib/prompts/types';
 import styles from './PromptBindingBar.module.css';
 
 export interface PromptBindingBarProps {
   scope: 'global' | 'project';
-  kind: PromptKind;
+  /** 绑定 key：PromptKind 或 userPromptBindingKey(...) 返回的字符串 */
+  kind: string;
   /** 当前作用域的显式绑定（undefined 表示继承） */
   binding: PromptBinding | undefined;
   llmProviders: LLMProvider[];

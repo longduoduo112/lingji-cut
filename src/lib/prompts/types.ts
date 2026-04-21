@@ -17,6 +17,85 @@ export function isPromptKind(value: unknown): value is PromptKind {
 
 export type PromptScope = 'builtin' | 'global' | 'project';
 
+export type PromptGroup = 'ai-analysis' | 'script' | 'motion';
+
+export const PROMPT_CATEGORIES = ['script-template'] as const;
+export type PromptCategory = (typeof PROMPT_CATEGORIES)[number];
+
+export function isPromptCategory(value: unknown): value is PromptCategory {
+  return typeof value === 'string' && (PROMPT_CATEGORIES as readonly string[]).includes(value);
+}
+
+export interface PromptCategoryMeta {
+  category: PromptCategory;
+  label: string;
+  description: string;
+  group: PromptGroup;
+  variables: { name: string; description: string }[];
+  allowAdd: boolean;
+  allowDelete: boolean;
+}
+
+export const PROMPT_CATEGORY_META: Record<PromptCategory, PromptCategoryMeta> = {
+  'script-template': {
+    category: 'script-template',
+    label: '口播模板',
+    description: '写稿风格模板。system 段放写作指令，user 段会被原始素材替换',
+    group: 'script',
+    variables: [
+      { name: 'rawText', description: '原始素材内容（用户提供的 original.md）' },
+    ],
+    allowAdd: true,
+    allowDelete: true,
+  },
+};
+
+export interface UserPromptEntry {
+  id: string;
+  category: PromptCategory;
+  name: string;
+  description: string;
+  version?: number;
+  system: string;
+  user: string;
+  isBuiltin: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UserPromptSeed {
+  id: string;
+  category: PromptCategory;
+  name: string;
+  description: string;
+  version: number;
+  system: string;
+  user: string;
+}
+
+/**
+ * 用户自定义提示词条目的绑定 key。与 PromptKind 共享 PromptBindingMap 的 key 空间，
+ * 但通过 `user:` 前缀隔离，避免与内置 kind 冲突。
+ */
+export function userPromptBindingKey(category: PromptCategory, id: string): string {
+  return `user:${category}:${id}`;
+}
+
+/** 解析用户提示词绑定 key；非 user 前缀返回 null */
+export function parseUserPromptBindingKey(
+  key: string,
+): { category: PromptCategory; id: string } | null {
+  if (!key.startsWith('user:')) return null;
+  const rest = key.slice('user:'.length);
+  const sep = rest.indexOf(':');
+  if (sep <= 0) return null;
+  const category = rest.slice(0, sep);
+  const id = rest.slice(sep + 1);
+  if (!isPromptCategory(category)) return null;
+  if (!id) return null;
+  return { category, id };
+}
+
 export interface PromptTemplate {
   name: string;
   description?: string;
@@ -42,7 +121,7 @@ export interface PromptKindMeta {
   kind: PromptKind;
   label: string;
   description: string;
-  group: 'ai-analysis' | 'script' | 'motion';
+  group: PromptGroup;
   variables: { name: string; description: string }[];
   /** 业务契约段：每次请求自动拼接，UI 只读展示 */
   lockedContract?: LockedContract;

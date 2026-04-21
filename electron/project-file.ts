@@ -90,8 +90,6 @@ async function migrateFromLegacyFiles(projectDir: string): Promise<ProjectData> 
         reviewState: safeReviewState,
         lastReviewedDocVersion: parsed.lastReviewedDocVersion,
         manualStageOverride: parsed.manualStageOverride ?? null,
-        selectedProviderId: parsed.selectedProviderId ?? null,
-        selectedModel: parsed.selectedModel ?? null,
       };
     }
   }

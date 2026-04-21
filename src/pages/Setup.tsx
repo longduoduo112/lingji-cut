@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { m } from 'framer-motion';
-import { Plus, Sparkles, Music, Video, FolderOpen, FolderSearch, CheckCircle2, AlertCircle, Link, Loader2 } from 'lucide-react';
+import { Plus, FileText, Music, Video, FolderOpen, FolderSearch, CheckCircle2, AlertCircle, Link, Loader2 } from 'lucide-react';
 import { springs } from '../ui/lib/motion';
 import { getFileNameFromPath } from '../lib/utils';
 import type { RecentProjectEntry } from '../lib/electron-api';
@@ -19,6 +19,7 @@ import {
   Input,
 } from '../ui';
 import { ProjectList } from '../components/ProjectList';
+import { ImportScriptDialog } from '../components/script/ImportScriptDialog';
 import heroBg from '../assets/hero-bg.png';
 import styles from './Setup.module.css';
 
@@ -30,7 +31,8 @@ interface SetupProps {
   onComplete: (audioPath: string, srtPath: string) => Promise<void>;
   onOpenRecentProject: (projectDir: string) => Promise<void>;
   onRemoveRecentProject?: (projectDir: string) => Promise<void> | void;
-  onStartScriptWorkbench: () => void;
+  /** 文稿导入完成回调：传入父目录、项目名和原稿内容，由 App 层创建项目并自动写入 + 起飞 AI 写稿 */
+  onImportScript: (parentDir: string, projectName: string, content: string) => Promise<void>;
   onOpenSettings: () => void;
   /** 抖音导入完成回调：传入父目录、标题和原始链接，由 App 层创建项目并自动触发下载转录 */
   onDouyinImport: (parentDir: string, title: string, douyinUrl: string) => Promise<void>;
@@ -50,7 +52,7 @@ export function Setup({
   onComplete,
   onOpenRecentProject,
   onRemoveRecentProject,
-  onStartScriptWorkbench,
+  onImportScript,
   onOpenSettings,
   onDouyinImport,
 }: SetupProps) {
@@ -60,6 +62,11 @@ export function Setup({
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [selectedAudio, setSelectedAudio] = useState<string | null>(null);
   const [selectedSrt, setSelectedSrt] = useState<string | null>(null);
+
+  // ── 导入文稿弹窗状态 ──
+  const [importScriptOpen, setImportScriptOpen] = useState(false);
+  const [importScriptCreating, setImportScriptCreating] = useState(false);
+  const [importScriptError, setImportScriptError] = useState<string | null>(null);
 
   // ── 抖音导入弹窗状态 ──
   const [douyinDialogOpen, setDouyinDialogOpen] = useState(false);
@@ -81,6 +88,29 @@ export function Setup({
     setSelectedSrt(null);
     setImportDialogOpen(true);
   }, []);
+
+  // ── 导入文稿弹窗操作 ──
+  const handleOpenImportScript = useCallback(() => {
+    setImportScriptError(null);
+    setImportScriptCreating(false);
+    setImportScriptOpen(true);
+  }, []);
+
+  const handleConfirmImportScript = useCallback(
+    async (parentDir: string, projectNameInput: string, content: string) => {
+      setImportScriptCreating(true);
+      setImportScriptError(null);
+      try {
+        await onImportScript(parentDir, projectNameInput, content);
+        setImportScriptOpen(false);
+      } catch (err) {
+        setImportScriptError(err instanceof Error ? err.message : '创建项目失败');
+      } finally {
+        setImportScriptCreating(false);
+      }
+    },
+    [onImportScript],
+  );
 
   // ── 抖音导入弹窗操作 ──
   const handleOpenDouyinDialog = useCallback(() => {
@@ -176,7 +206,7 @@ export function Setup({
           <button
             type="button"
             className={styles.createButton}
-            onClick={onStartScriptWorkbench}
+            onClick={handleOpenImportScript}
           >
             <Plus size={18} strokeWidth={2.2} />
             开始创作
@@ -188,12 +218,12 @@ export function Setup({
           <button
             type="button"
             className={styles.quickItem}
-            onClick={onStartScriptWorkbench}
+            onClick={handleOpenImportScript}
           >
             <div className={styles.quickItemIcon}>
-              <Sparkles size={22} strokeWidth={1.5} />
+              <FileText size={22} strokeWidth={1.5} />
             </div>
-            <span className={styles.quickItemLabel}>AI写稿</span>
+            <span className={styles.quickItemLabel}>导入文稿</span>
           </button>
           <button
             type="button"
@@ -364,6 +394,15 @@ export function Setup({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── 导入文稿弹窗：粘贴/拖拽/选择文件 → 选目录 → 起飞 AI 写稿 ── */}
+      <ImportScriptDialog
+        open={importScriptOpen}
+        busy={importScriptCreating}
+        errorMessage={importScriptError}
+        onOpenChange={setImportScriptOpen}
+        onConfirm={handleConfirmImportScript}
+      />
 
       {/* ── 抖音导入弹窗：解析链接 → 选择目录 → 创建项目 ── */}
       <Dialog open={douyinDialogOpen} onOpenChange={setDouyinDialogOpen}>

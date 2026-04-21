@@ -3,13 +3,15 @@
  * 从旧 Step 组件中提取，供 ScriptWorkbench 及后续 Agent 流程复用。
  */
 
-import { generateText, streamText, streamTextWithProvider } from './llm';
-import type { LLMProvider, PromptBindingMap } from '../types/ai';
-import { getAnyTemplateById } from './script-templates';
+import { generateText, streamText } from './llm';
+import type { PromptBindingMap } from '../types/ai';
 import { reviewScript, reviewScriptStream } from './script-review';
 import { loadAISettings, useAIStore } from '../store/ai';
 import { getProjectDir } from '../store/timeline';
-import type { PromptTemplate } from './prompts';
+import { renderTemplate, type PromptTemplate } from './prompts';
+import { SCRIPT_TEMPLATE_SEEDS } from './prompts/script-template-defaults';
+import type { UserPromptEntry } from './prompts/types';
+import { resolveUserPromptBinding } from './llm/binding-resolver';
 import { getRoleById } from './script-templates';
 import type { Annotation } from '../store/script';
 import type { AISettings } from '../types/ai';
@@ -79,23 +81,44 @@ export function getFinalScriptSummary(text: string): FinalScriptSummary {
 
 // --- AI 生成 ---
 
-export async function generateScriptDraft(
+/**
+ * 从 AIStore 的 userPromptEntries['script-template'] 读取指定模板的原始条目。
+ * Store 未 hydrate 时 fallback 到 SCRIPT_TEMPLATE_SEEDS，保证测试 / mock 环境也能工作。
+ */
+function getScriptTemplateEntry(templateId: string): UserPromptEntry | undefined {
+  const entries = useAIStore.getState().userPromptEntries?.['script-template'] ?? [];
+  const fromStore = entries.find((e) => e.id === templateId);
+  if (fromStore) return fromStore;
+
+  const seed = SCRIPT_TEMPLATE_SEEDS.find((s) => s.id === templateId);
+  if (!seed) return undefined;
+  return {
+    id: seed.id,
+    category: seed.category,
+    name: seed.name,
+    description: seed.description,
+    version: seed.version,
+    system: seed.system,
+    user: seed.user,
+    isBuiltin: true,
+  };
+}
+
+/**
+ * 根据口播模板与角色构造最终的 system / user prompt。
+ * user 段通过 `renderTemplate` 注入 `{{rawText}}` 变量（原始素材）。
+ */
+function buildScriptDraftPrompt(
   originalText: string,
   templateId: string,
-  roleId?: string,
-): Promise<string> {
-  const template = getAnyTemplateById(templateId);
-  if (!template) {
+  roleId: string | undefined,
+): { systemPrompt: string; userPrompt: string } {
+  const entry = getScriptTemplateEntry(templateId);
+  if (!entry) {
     throw new Error('未找到选中的写稿模板');
   }
 
-  const settings = await loadAISettings();
-  if (!settings?.llmApiKey) {
-    throw new Error('请先在 AI 设置中配置 LLM API Key');
-  }
-
-  // 如果选择了角色，将角色指令注入到 systemPrompt 前面
-  let systemPrompt = template.systemPrompt;
+  let systemPrompt = entry.system;
   if (roleId && roleId !== 'none') {
     const role = getRoleById(roleId);
     if (role?.rolePrompt) {
@@ -103,7 +126,37 @@ export async function generateScriptDraft(
     }
   }
 
-  return generateText(settings, systemPrompt, originalText);
+  // user 段走 renderTemplate：如果模板为 `{{rawText}}` 则替换为原文，
+  // 其他变量占位符若存在也能自然生效；未声明变量会被替换成空串。
+  const userPrompt = renderTemplate(entry.user, { rawText: originalText });
+
+  return { systemPrompt, userPrompt };
+}
+
+/**
+ * 统一从 AIStore + AISettings 中解析某个口播模板在当前项目下的 LLM 绑定。
+ * 优先：项目级模板绑定 → 全局默认 LLM。
+ */
+function resolveTemplateBinding(
+  settings: AISettings,
+  templateId: string,
+): { provider: ReturnType<typeof resolveUserPromptBinding>['provider']; model: string } {
+  const projectBindings = useAIStore.getState().projectBindings;
+  return resolveUserPromptBinding('script-template', templateId, settings, projectBindings);
+}
+
+export async function generateScriptDraft(
+  originalText: string,
+  templateId: string,
+  roleId?: string,
+): Promise<string> {
+  const { systemPrompt, userPrompt } = buildScriptDraftPrompt(originalText, templateId, roleId);
+
+  const settings = await loadAISettings();
+  if (!settings) throw new Error('请先在 AI 设置中配置 LLM');
+
+  const binding = resolveTemplateBinding(settings, templateId);
+  return generateText(settings, systemPrompt, userPrompt, binding);
 }
 
 /**
@@ -118,39 +171,15 @@ export async function generateScriptDraftStream(
   onChunk: (chunk: string) => void,
   options?: {
     onReasoningChunk?: (chunk: string) => void;
-    provider?: LLMProvider;
-    model?: string;
   },
 ): Promise<string> {
-  const template = getAnyTemplateById(templateId);
-  if (!template) {
-    throw new Error('未找到选中的写稿模板');
-  }
+  const { systemPrompt, userPrompt } = buildScriptDraftPrompt(originalText, templateId, roleId);
 
   const settings = await loadAISettings();
   if (!settings) throw new Error('请先在 AI 设置中配置 LLM');
 
-  let systemPrompt = template.systemPrompt;
-  if (roleId && roleId !== 'none') {
-    const role = getRoleById(roleId);
-    if (role?.rolePrompt) {
-      systemPrompt = `【角色设定】\n${role.rolePrompt}\n\n【写作要求】\n${systemPrompt}`;
-    }
-  }
-
-  if (options?.provider && options.model) {
-    return streamTextWithProvider(
-      options.provider,
-      options.model,
-      systemPrompt,
-      originalText,
-      onChunk,
-      { onReasoningChunk: options?.onReasoningChunk },
-    );
-  }
-
-  if (!settings.llmApiKey) throw new Error('请先在 AI 设置中配置 LLM API Key');
-  return streamText(settings, systemPrompt, originalText, onChunk, options);
+  const binding = resolveTemplateBinding(settings, templateId);
+  return streamText(settings, systemPrompt, userPrompt, onChunk, options, binding);
 }
 
 // --- AI 审查 ---

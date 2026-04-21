@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Lock, RotateCcw, Save, Trash2, Variable } from 'lucide-react';
+import {
+  ChevronRight,
+  Lock,
+  Plus,
+  RotateCcw,
+  Save,
+  Trash2,
+  Variable,
+} from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -12,24 +20,34 @@ import {
   CardTitle,
   CodeEditor,
   ConfirmDialog,
+  Field,
+  Input,
   SettingsPageHeader,
   Tabs,
   TabsList,
   TabsTrigger,
+  Textarea,
   useToast,
 } from '../../ui';
 import {
+  PROMPT_CATEGORY_META,
   PROMPT_KINDS,
   PROMPT_KIND_META,
+  userPromptBindingKey,
+  type PromptCategory,
+  type PromptCategoryMeta,
   type PromptKind,
   type PromptKindMeta,
   type PromptScope,
+  type UserPromptEntry,
 } from '../../lib/prompts';
+import { SCRIPT_TEMPLATE_SEEDS } from '../../lib/prompts/script-template-defaults';
 import { getProjectDir } from '../../store/timeline';
 import { loadAISettings, useAIStore } from '../../store/ai';
 import {
   PromptBindingError,
   resolvePromptBinding,
+  resolveUserPromptBinding,
   type ResolvedBinding,
 } from '../../lib/llm/binding-resolver';
 import type {
@@ -43,6 +61,13 @@ import { PromptBindingBar } from './PromptBindingBar';
 import styles from './PromptsConfigTab.module.css';
 
 type EditableScope = 'global' | 'project';
+
+/**
+ * 当前激活条目：要么是 PromptKind（内置提示词），要么是 category + id（用户条目，如口播模板）
+ */
+type ActiveSelection =
+  | { type: 'kind'; kind: PromptKind }
+  | { type: 'user-entry'; category: PromptCategory; entryId: string };
 
 interface OverviewItem {
   kind: PromptKind;
@@ -120,13 +145,33 @@ function computeBindingBadge(
   }
 }
 
+/** 为新建条目生成 id：custom-<timestamp>-<rand4> */
+function generateCustomEntryId(): string {
+  const rand =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 6)
+      : Math.random().toString(36).slice(2, 8);
+  return `custom-${Date.now().toString(36)}-${rand}`;
+}
+
+/** 判断一个用户条目是否属于内置 seed（用于"恢复默认"按钮） */
+function isBuiltinSeedId(category: PromptCategory, id: string): boolean {
+  if (category === 'script-template') {
+    return SCRIPT_TEMPLATE_SEEDS.some((seed) => seed.id === id);
+  }
+  return false;
+}
+
 export function PromptsConfigTab() {
   const { showToast } = useToast();
   const [projectDir] = useState<string>(() => getProjectDir());
   const hasProject = Boolean(projectDir);
 
   const [overview, setOverview] = useState<OverviewItem[]>([]);
-  const [activeKind, setActiveKind] = useState<PromptKind>(PROMPT_KINDS[0]);
+  const [active, setActive] = useState<ActiveSelection>({
+    type: 'kind',
+    kind: PROMPT_KINDS[0],
+  });
   const [scope, setScope] = useState<EditableScope>('global');
   const [content, setContent] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
@@ -143,6 +188,21 @@ export function PromptsConfigTab() {
   const setProjectBinding = useAIStore((s) => s.setProjectBinding);
   const setGlobalBinding = useAIStore((s) => s.setGlobalBinding);
 
+  // ─── 用户自定义条目（口播模板等）────────────────
+  const userPromptEntries = useAIStore((s) => s.userPromptEntries);
+  const loadUserPrompts = useAIStore((s) => s.loadUserPrompts);
+  const saveUserPrompt = useAIStore((s) => s.saveUserPrompt);
+  const deleteUserPrompt = useAIStore((s) => s.deleteUserPrompt);
+
+  const scriptTemplateEntries: UserPromptEntry[] =
+    userPromptEntries['script-template'] ?? [];
+  const scriptTemplateMeta: PromptCategoryMeta = PROMPT_CATEGORY_META['script-template'];
+
+  // 口播模板编辑器的本地草稿（独立于 YAML content/originalContent）
+  const [templateDraft, setTemplateDraft] = useState<UserPromptEntry | null>(null);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [confirmDeleteTemplateId, setConfirmDeleteTemplateId] = useState<string | null>(null);
+
   const projectDirArg = hasProject ? projectDir : undefined;
 
   const refreshOverview = useCallback(async () => {
@@ -157,6 +217,11 @@ export function PromptsConfigTab() {
   useEffect(() => {
     if (!hasProject && scope === 'project') setScope('global');
   }, [hasProject, scope]);
+
+  /** 挂载时确保口播模板已加载（即使 App.tsx 已 load 过，再调一次幂等无害） */
+  useEffect(() => {
+    void loadUserPrompts('script-template');
+  }, [loadUserPrompts]);
 
   /** 加载 AI settings（提供 llmProviders / imageProviders / 全局绑定） */
   const refreshAISettings = useCallback(async () => {
@@ -206,9 +271,26 @@ export function PromptsConfigTab() {
     [projectDirArg],
   );
 
+  // 切换到 kind 编辑器时加载 YAML
   useEffect(() => {
-    void loadKind(activeKind, scope);
-  }, [activeKind, scope, loadKind]);
+    if (active.type === 'kind') {
+      void loadKind(active.kind, scope);
+    }
+  }, [active, scope, loadKind]);
+
+  // 切换到用户条目时，从 store 同步草稿
+  useEffect(() => {
+    if (active.type !== 'user-entry') {
+      setTemplateDraft(null);
+      return;
+    }
+    const list = userPromptEntries[active.category] ?? [];
+    const entry = list.find((item) => item.id === active.entryId);
+    if (entry) {
+      setTemplateDraft({ ...entry });
+    }
+    // 条目不在列表中（新建未保存）时保持既有草稿；由 handleCreateNewTemplate 设置
+  }, [active, userPromptEntries]);
 
   const dirty = content !== originalContent;
 
@@ -222,26 +304,28 @@ export function PromptsConfigTab() {
     return groups;
   }, [overview]);
 
-  const activeMeta = PROMPT_KIND_META[activeKind];
+  const activeMeta: PromptKindMeta | null =
+    active.type === 'kind' ? PROMPT_KIND_META[active.kind] : null;
 
-  // ─── 绑定相关派生数据 ───────────────────────────
+  // ─── 绑定相关派生数据（仅 kind 编辑模式使用） ────────
   const llmProviders: LLMProvider[] = aiSettings?.llmProviders ?? [];
   const imageProviders: ImageProvider[] = aiSettings?.imageProviders ?? [];
 
   /** 当前作用域下该 kind 的显式绑定（undefined 表示继承） */
   const currentScopeBinding: PromptBinding | undefined = useMemo(() => {
-    if (scope === 'project') return projectBindings[activeKind];
-    return aiSettings?.promptBindings?.[activeKind];
-  }, [scope, activeKind, projectBindings, aiSettings]);
+    if (active.type !== 'kind') return undefined;
+    if (scope === 'project') return projectBindings[active.kind];
+    return aiSettings?.promptBindings?.[active.kind];
+  }, [active, scope, projectBindings, aiSettings]);
 
   /** 解析后的有效绑定与错误（供显示继承值与失效提示） */
   const { resolved, bindingError } = useMemo<{
     resolved: ResolvedBinding | null;
     bindingError: PromptBindingError | null;
   }>(() => {
-    if (!aiSettings) return { resolved: null, bindingError: null };
+    if (active.type !== 'kind' || !aiSettings) return { resolved: null, bindingError: null };
     try {
-      const r = resolvePromptBinding(activeKind, aiSettings, projectBindings);
+      const r = resolvePromptBinding(active.kind, aiSettings, projectBindings);
       return { resolved: r, bindingError: null };
     } catch (err) {
       if (err instanceof PromptBindingError) {
@@ -249,18 +333,66 @@ export function PromptsConfigTab() {
       }
       return { resolved: null, bindingError: null };
     }
-  }, [activeKind, aiSettings, projectBindings]);
+  }, [active, aiSettings, projectBindings]);
+
+  // ─── 用户模板的项目级绑定派生（仅 script-template） ───
+  const templateBindingKey = useMemo(() => {
+    if (active.type !== 'user-entry') return null;
+    return userPromptBindingKey(active.category, active.entryId);
+  }, [active]);
+
+  const templateCurrentBinding: PromptBinding | undefined = useMemo(() => {
+    if (!templateBindingKey) return undefined;
+    return projectBindings?.[templateBindingKey];
+  }, [templateBindingKey, projectBindings]);
+
+  const { templateResolved, templateBindingError } = useMemo<{
+    templateResolved: { provider: LLMProvider; model: string } | null;
+    templateBindingError: PromptBindingError | null;
+  }>(() => {
+    if (active.type !== 'user-entry' || !aiSettings) {
+      return { templateResolved: null, templateBindingError: null };
+    }
+    try {
+      const r = resolveUserPromptBinding(
+        active.category,
+        active.entryId,
+        aiSettings,
+        projectBindings,
+      );
+      return { templateResolved: r, templateBindingError: null };
+    } catch (err) {
+      if (err instanceof PromptBindingError) {
+        return { templateResolved: null, templateBindingError: err };
+      }
+      return { templateResolved: null, templateBindingError: null };
+    }
+  }, [active, aiSettings, projectBindings]);
+
+  const handleTemplateBindingChange = useCallback(
+    async (next: PromptBinding | null) => {
+      if (!templateBindingKey) return;
+      try {
+        await setProjectBinding(templateBindingKey, next);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        showToast(message, { title: '更新模板绑定失败', type: 'error', duration: 4000 });
+      }
+    },
+    [templateBindingKey, setProjectBinding, showToast],
+  );
 
   /** 仅当当前作用域存在显式绑定、但解析失败时才显示顶部警告 */
   const showBindingWarning = Boolean(currentScopeBinding && bindingError);
 
   const handleBindingChange = useCallback(
     async (next: PromptBinding | null) => {
+      if (active.type !== 'kind') return;
       try {
         if (scope === 'project') {
-          await setProjectBinding(activeKind, next);
+          await setProjectBinding(active.kind, next);
         } else {
-          await setGlobalBinding(activeKind, next);
+          await setGlobalBinding(active.kind, next);
           await refreshAISettings();
         }
       } catch (err) {
@@ -269,8 +401,8 @@ export function PromptsConfigTab() {
       }
     },
     [
+      active,
       scope,
-      activeKind,
       setProjectBinding,
       setGlobalBinding,
       refreshAISettings,
@@ -300,12 +432,13 @@ export function PromptsConfigTab() {
   );
 
   const handleSave = useCallback(async () => {
+    if (active.type !== 'kind') return;
     if (saving) return;
     setSaving(true);
     setError(null);
     try {
       await window.electronAPI.writePrompt({
-        kind: activeKind,
+        kind: active.kind,
         scope,
         content,
         projectDir: projectDirArg,
@@ -313,7 +446,8 @@ export function PromptsConfigTab() {
       setOriginalContent(content);
       setIsOverride(true);
       await refreshOverview();
-      showToast(`已保存 ${activeMeta.label}（${SCOPE_LABEL[scope]}）`, {
+      const label = PROMPT_KIND_META[active.kind].label;
+      showToast(`已保存 ${label}（${SCOPE_LABEL[scope]}）`, {
         type: 'success',
         duration: 2500,
       });
@@ -325,8 +459,7 @@ export function PromptsConfigTab() {
       setSaving(false);
     }
   }, [
-    activeKind,
-    activeMeta.label,
+    active,
     content,
     projectDirArg,
     refreshOverview,
@@ -336,26 +469,29 @@ export function PromptsConfigTab() {
   ]);
 
   const handleResetToDefault = useCallback(async () => {
+    if (active.type !== 'kind') return;
     setError(null);
     try {
-      const def = await window.electronAPI.getDefaultPrompt({ kind: activeKind });
+      const def = await window.electronAPI.getDefaultPrompt({ kind: active.kind });
       setContent(def.content);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [activeKind]);
+  }, [active]);
 
   const handleConfirmDeleteOverride = useCallback(async () => {
+    if (active.type !== 'kind') return;
     if (!confirmReset) return;
     try {
       await window.electronAPI.deletePrompt({
-        kind: activeKind,
+        kind: active.kind,
         scope: confirmReset,
         projectDir: projectDirArg,
       });
       await refreshOverview();
-      await loadKind(activeKind, confirmReset);
-      showToast(`已删除 ${activeMeta.label} 的${SCOPE_LABEL[confirmReset]}覆盖`, {
+      await loadKind(active.kind, confirmReset);
+      const label = PROMPT_KIND_META[active.kind].label;
+      showToast(`已删除 ${label} 的${SCOPE_LABEL[confirmReset]}覆盖`, {
         type: 'success',
         duration: 2500,
       });
@@ -367,8 +503,7 @@ export function PromptsConfigTab() {
       setConfirmReset(null);
     }
   }, [
-    activeKind,
-    activeMeta.label,
+    active,
     confirmReset,
     loadKind,
     projectDirArg,
@@ -376,11 +511,130 @@ export function PromptsConfigTab() {
     showToast,
   ]);
 
+  // ─── 口播模板编辑器逻辑 ─────────────────────────
+
+  const handleCreateNewTemplate = useCallback(() => {
+    const newId = generateCustomEntryId();
+    const draft: UserPromptEntry = {
+      id: newId,
+      category: 'script-template',
+      name: '',
+      description: '',
+      version: 1,
+      system: '',
+      user: '{{rawText}}',
+      isBuiltin: false,
+    };
+    setTemplateDraft(draft);
+    setActive({ type: 'user-entry', category: 'script-template', entryId: newId });
+  }, []);
+
+  const handleSelectTemplate = useCallback(
+    (entryId: string) => {
+      setActive({ type: 'user-entry', category: 'script-template', entryId });
+    },
+    [],
+  );
+
+  const handleSaveTemplate = useCallback(async () => {
+    if (!templateDraft) return;
+    if (templateSaving) return;
+    const name = templateDraft.name.trim();
+    const system = templateDraft.system.trim();
+    if (!name) {
+      showToast('请先填写模板名称', { type: 'error', duration: 3000 });
+      return;
+    }
+    if (!system) {
+      showToast('请先填写系统提示词', { type: 'error', duration: 3000 });
+      return;
+    }
+    setTemplateSaving(true);
+    try {
+      const saved = await saveUserPrompt({
+        category: 'script-template',
+        id: templateDraft.id,
+        name,
+        description: templateDraft.description.trim(),
+        version: templateDraft.version ?? 1,
+        system,
+        user: templateDraft.user || '{{rawText}}',
+      });
+      setTemplateDraft({ ...saved });
+      showToast(`已保存「${saved.name}」`, { type: 'success', duration: 2500 });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast(message, { title: '保存失败', type: 'error', duration: 4000 });
+    } finally {
+      setTemplateSaving(false);
+    }
+  }, [templateDraft, templateSaving, saveUserPrompt, showToast]);
+
+  const handleCancelTemplateEdit = useCallback(() => {
+    if (!templateDraft) return;
+    const list = userPromptEntries['script-template'] ?? [];
+    const persisted = list.find((item) => item.id === templateDraft.id);
+    if (persisted) {
+      // 已保存的条目：还原为持久化版本
+      setTemplateDraft({ ...persisted });
+    } else {
+      // 未保存的新草稿：切回默认 kind 选中
+      setActive({ type: 'kind', kind: PROMPT_KINDS[0] });
+    }
+  }, [templateDraft, userPromptEntries]);
+
+  const handleConfirmDeleteTemplate = useCallback(async () => {
+    const id = confirmDeleteTemplateId;
+    if (!id) return;
+    try {
+      await deleteUserPrompt('script-template', id);
+      showToast('已删除模板', { type: 'success', duration: 2500 });
+      // 删除后切回列表首项或默认 kind
+      const listNext = useAIStore.getState().userPromptEntries['script-template'] ?? [];
+      if (listNext.length > 0) {
+        setActive({
+          type: 'user-entry',
+          category: 'script-template',
+          entryId: listNext[0].id,
+        });
+      } else {
+        setActive({ type: 'kind', kind: PROMPT_KINDS[0] });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast(message, { title: '删除失败', type: 'error', duration: 4000 });
+    } finally {
+      setConfirmDeleteTemplateId(null);
+    }
+  }, [confirmDeleteTemplateId, deleteUserPrompt, showToast]);
+
+  /** 口播模板是否未保存（name/description/system/user 与持久化版本不同） */
+  const templateDirty = useMemo(() => {
+    if (!templateDraft) return false;
+    const list = userPromptEntries['script-template'] ?? [];
+    const persisted = list.find((item) => item.id === templateDraft.id);
+    if (!persisted) {
+      // 新草稿：任一字段非默认空即 dirty
+      return Boolean(
+        templateDraft.name.trim() ||
+          templateDraft.description.trim() ||
+          templateDraft.system.trim() ||
+          (templateDraft.user && templateDraft.user !== '{{rawText}}'),
+      );
+    }
+    return (
+      persisted.name !== templateDraft.name ||
+      persisted.description !== templateDraft.description ||
+      persisted.system !== templateDraft.system ||
+      persisted.user !== templateDraft.user
+    );
+  }, [templateDraft, userPromptEntries]);
+
   return (
     <div className={styles.root}>
       <SettingsPageHeader
         title="提示词配置"
-        description="编辑 AI 内容卡片、封面图与 Motion 动效的提示词模板，支持全局或项目级覆盖。"
+        description="编辑 AI 内容卡片、封面图、Motion 动效以及口播模板的提示词，支持全局或项目级覆盖。"
       />
 
       {!hasProject && (
@@ -401,7 +655,8 @@ export function PromptsConfigTab() {
               <div className={styles.group} key={group}>
                 <div className={styles.groupTitle}>{GROUP_LABEL[group]}</div>
                 {groupedKinds[group].map((item) => {
-                  const isActive = item.kind === activeKind;
+                  const isActive =
+                    active.type === 'kind' && item.kind === active.kind;
                   const bindingBadge = computeBindingBadge(
                     item.kind,
                     scope,
@@ -415,7 +670,7 @@ export function PromptsConfigTab() {
                         variant={isActive ? 'secondary' : 'ghost'}
                         size="sm"
                         className={styles.kindButton}
-                        onClick={() => setActiveKind(item.kind)}
+                        onClick={() => setActive({ type: 'kind', kind: item.kind })}
                       >
                         <span>{item.meta.label}</span>
                         <span className={styles.kindBadges}>
@@ -433,145 +688,378 @@ export function PromptsConfigTab() {
                     </div>
                   );
                 })}
+
+                {/* 口播模板子分区挂在 "script" 大组下 */}
+                {group === 'script' && (
+                  <div className={styles.subGroup}>
+                    <div className={styles.subGroupTitle}>
+                      <span className={styles.subGroupLabel}>
+                        {scriptTemplateMeta.label}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={styles.subGroupAddBtn}
+                        onClick={handleCreateNewTemplate}
+                        aria-label="新增口播模板"
+                      >
+                        <Plus size={12} />
+                        新增
+                      </Button>
+                    </div>
+
+                    {scriptTemplateEntries.length === 0 ? (
+                      <div className={styles.entryDescription}>
+                        暂无模板，点击上方"新增"创建
+                      </div>
+                    ) : null}
+
+                    {scriptTemplateEntries.map((entry) => {
+                      const isActive =
+                        active.type === 'user-entry' &&
+                        active.category === 'script-template' &&
+                        active.entryId === entry.id;
+                      return (
+                        <div className={styles.kindRow} key={entry.id}>
+                          <Button
+                            type="button"
+                            variant={isActive ? 'secondary' : 'ghost'}
+                            size="sm"
+                            className={styles.kindButton}
+                            onClick={() => handleSelectTemplate(entry.id)}
+                          >
+                            <span>{entry.name || '未命名模板'}</span>
+                            <span className={styles.kindBadges}>
+                              <Badge
+                                variant={entry.isBuiltin ? 'outline' : 'info'}
+                                size="xs"
+                              >
+                                {entry.isBuiltin ? '内置' : '自定义'}
+                              </Badge>
+                            </span>
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ))}
           </CardContent>
         </Card>
 
-        <Card className={styles.editorCard}>
-          <CardHeader className={styles.editorHeader}>
-            <div className={styles.editorHeaderText}>
-              <CardTitle>{activeMeta.label}</CardTitle>
-              <CardDescription>{activeMeta.description}</CardDescription>
-            </div>
-            <Tabs
-              value={scope}
-              onValueChange={(next) => setScope(next as EditableScope)}
-            >
-              <TabsList>
-                <TabsTrigger value="global">全局</TabsTrigger>
-                <TabsTrigger value="project" disabled={!hasProject}>
-                  当前项目
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </CardHeader>
-
-          <CardContent className={styles.editorBody}>
-            {showBindingWarning && bindingError && (
-              <div className={styles.warning}>
-                {bindingError.message} —— 请在下方重选 Provider / Model
+        {/* ─── 右侧编辑器：根据 active 类型切换 ──────────── */}
+        {active.type === 'kind' && activeMeta ? (
+          <Card className={styles.editorCard}>
+            <CardHeader className={styles.editorHeader}>
+              <div className={styles.editorHeaderText}>
+                <CardTitle>{activeMeta.label}</CardTitle>
+                <CardDescription>{activeMeta.description}</CardDescription>
               </div>
-            )}
+              <Tabs
+                value={scope}
+                onValueChange={(next) => setScope(next as EditableScope)}
+              >
+                <TabsList>
+                  <TabsTrigger value="global">全局</TabsTrigger>
+                  <TabsTrigger value="project" disabled={!hasProject}>
+                    当前项目
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </CardHeader>
 
-            {activeKind !== 'motion.system' && (
-              <PromptBindingBar
-                scope={scope}
-                kind={activeKind}
-                binding={currentScopeBinding}
-                llmProviders={llmProviders}
-                effectiveProviderId={resolved?.provider?.id ?? null}
-                effectiveModel={resolved?.model ?? null}
-                onChange={(next) => {
-                  void handleBindingChange(next);
-                }}
-                showImageBinding={activeKind === 'cover.regeneration'}
-                imageProviders={imageProviders}
-                effectiveImageProviderId={resolved?.imageProvider?.id ?? null}
-                effectiveImageModel={resolved?.imageModel ?? null}
-                onImageChange={(next) => {
-                  void handleImageBindingChange(next);
-                }}
-              />
-            )}
-
-            {error && <Alert variant="error" description={error} />}
-
-            <div className={styles.editorWrap}>
-              <CodeEditor
-                value={content}
-                onChange={setContent}
-                language="yaml"
-                minHeight="100%"
-                ariaLabel={`${activeMeta.label} 提示词 YAML 编辑器`}
-                variables={activeMeta.variables}
-              />
-            </div>
-
-            {activeMeta.variables.length > 0 && (
-              <details className={styles.collapsible}>
-                <summary className={styles.collapsibleSummary}>
-                  <ChevronRight size={12} className={styles.collapsibleChevron} />
-                  <Variable size={12} />
-                  <span className={styles.collapsibleTitle}>可用变量</span>
-                  <span className={styles.collapsibleMeta}>
-                    {activeMeta.variables.length} 个 · 以 {'{{name}}'} 形式插入
-                  </span>
-                </summary>
-                <div className={styles.collapsibleBody}>
-                  <div className={styles.varHintGrid}>
-                    {activeMeta.variables.map((v) => (
-                      <div key={v.name} className={styles.varHintItem}>
-                        <code>{`{{${v.name}}}`}</code>
-                        <span>— {v.description}</span>
-                      </div>
-                    ))}
-                  </div>
+            <CardContent className={styles.editorBody}>
+              {showBindingWarning && bindingError && (
+                <div className={styles.warning}>
+                  {bindingError.message} —— 请在下方重选 Provider / Model
                 </div>
-              </details>
-            )}
+              )}
 
-            {activeMeta.lockedContract && (
-              <details className={`${styles.collapsible} ${styles.collapsibleLocked}`}>
-                <summary className={styles.collapsibleSummary}>
-                  <ChevronRight size={12} className={styles.collapsibleChevron} />
-                  <Lock size={12} />
-                  <span className={styles.collapsibleTitle}>业务契约</span>
-                  <span className={styles.collapsibleMeta}>
-                    不可编辑 · 自动拼接到每次请求末尾
-                  </span>
-                </summary>
-                <div className={styles.collapsibleBody}>
-                  <div className={styles.lockedReason}>
-                    {activeMeta.lockedContract.reason}
+              {active.kind !== 'motion.system' && (
+                <PromptBindingBar
+                  scope={scope}
+                  kind={active.kind}
+                  binding={currentScopeBinding}
+                  llmProviders={llmProviders}
+                  effectiveProviderId={resolved?.provider?.id ?? null}
+                  effectiveModel={resolved?.model ?? null}
+                  onChange={(next) => {
+                    void handleBindingChange(next);
+                  }}
+                  showImageBinding={active.kind === 'cover.regeneration'}
+                  imageProviders={imageProviders}
+                  effectiveImageProviderId={resolved?.imageProvider?.id ?? null}
+                  effectiveImageModel={resolved?.imageModel ?? null}
+                  onImageChange={(next) => {
+                    void handleImageBindingChange(next);
+                  }}
+                />
+              )}
+
+              {error && <Alert variant="error" description={error} />}
+
+              <div className={styles.editorWrap}>
+                <CodeEditor
+                  value={content}
+                  onChange={setContent}
+                  language="yaml"
+                  minHeight="100%"
+                  ariaLabel={`${activeMeta.label} 提示词 YAML 编辑器`}
+                  variables={activeMeta.variables}
+                />
+              </div>
+
+              {activeMeta.variables.length > 0 && (
+                <details className={styles.collapsible}>
+                  <summary className={styles.collapsibleSummary}>
+                    <ChevronRight size={12} className={styles.collapsibleChevron} />
+                    <Variable size={12} />
+                    <span className={styles.collapsibleTitle}>可用变量</span>
+                    <span className={styles.collapsibleMeta}>
+                      {activeMeta.variables.length} 个 · 以 {'{{name}}'} 形式插入
+                    </span>
+                  </summary>
+                  <div className={styles.collapsibleBody}>
+                    <div className={styles.varHintGrid}>
+                      {activeMeta.variables.map((v) => (
+                        <div key={v.name} className={styles.varHintItem}>
+                          <code>{`{{${v.name}}}`}</code>
+                          <span>— {v.description}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <pre className={styles.lockedContent}>{activeMeta.lockedContract.content}</pre>
-                </div>
-              </details>
-            )}
+                </details>
+              )}
 
-            <div className={styles.statusBar}>
-              <Badge variant={isOverride ? SCOPE_BADGE_VARIANT[scope] : 'outline'} size="xs">
-                当前编辑：{SCOPE_LABEL[scope]}
-              </Badge>
-              <span>{isOverride ? '已存在覆盖文件' : '使用内置默认（保存后才会创建覆盖文件）'}</span>
-              {dirty && <Badge variant="warning" size="xs">未保存</Badge>}
-            </div>
-          </CardContent>
+              {activeMeta.lockedContract && (
+                <details className={`${styles.collapsible} ${styles.collapsibleLocked}`}>
+                  <summary className={styles.collapsibleSummary}>
+                    <ChevronRight size={12} className={styles.collapsibleChevron} />
+                    <Lock size={12} />
+                    <span className={styles.collapsibleTitle}>业务契约</span>
+                    <span className={styles.collapsibleMeta}>
+                      不可编辑 · 自动拼接到每次请求末尾
+                    </span>
+                  </summary>
+                  <div className={styles.collapsibleBody}>
+                    <div className={styles.lockedReason}>
+                      {activeMeta.lockedContract.reason}
+                    </div>
+                    <pre className={styles.lockedContent}>{activeMeta.lockedContract.content}</pre>
+                  </div>
+                </details>
+              )}
 
-          <CardFooter className={styles.editorFooter}>
-            <Button
-              variant="primary"
-              onClick={handleSave}
-              disabled={saving || loading || !dirty}
-            >
-              <Save size={14} />
-              保存到 {SCOPE_LABEL[scope]}
-            </Button>
-            <Button variant="secondary" onClick={handleResetToDefault} disabled={loading}>
-              <RotateCcw size={14} />
-              重置为内置默认
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => setConfirmReset(scope)}
-              disabled={loading || !isOverride}
-            >
-              <Trash2 size={14} />
-              删除当前 {SCOPE_LABEL[scope]} 覆盖
-            </Button>
-          </CardFooter>
-        </Card>
+              <div className={styles.statusBar}>
+                <Badge variant={isOverride ? SCOPE_BADGE_VARIANT[scope] : 'outline'} size="xs">
+                  当前编辑：{SCOPE_LABEL[scope]}
+                </Badge>
+                <span>{isOverride ? '已存在覆盖文件' : '使用内置默认（保存后才会创建覆盖文件）'}</span>
+                {dirty && <Badge variant="warning" size="xs">未保存</Badge>}
+              </div>
+            </CardContent>
+
+            <CardFooter className={styles.editorFooter}>
+              <Button
+                variant="primary"
+                onClick={handleSave}
+                disabled={saving || loading || !dirty}
+              >
+                <Save size={14} />
+                保存到 {SCOPE_LABEL[scope]}
+              </Button>
+              <Button variant="secondary" onClick={handleResetToDefault} disabled={loading}>
+                <RotateCcw size={14} />
+                重置为内置默认
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setConfirmReset(scope)}
+                disabled={loading || !isOverride}
+              >
+                <Trash2 size={14} />
+                删除当前 {SCOPE_LABEL[scope]} 覆盖
+              </Button>
+            </CardFooter>
+          </Card>
+        ) : null}
+
+        {active.type === 'user-entry' && templateDraft ? (
+          <Card className={styles.editorCard}>
+            <CardHeader className={styles.editorHeader}>
+              <div className={styles.editorHeaderText}>
+                <CardTitle>
+                  {templateDraft.name.trim() || '未命名模板'}
+                  <Badge
+                    variant={templateDraft.isBuiltin ? 'outline' : 'info'}
+                    size="xs"
+                    style={{ marginLeft: 8 }}
+                  >
+                    {templateDraft.isBuiltin ? '内置' : '自定义'}
+                  </Badge>
+                </CardTitle>
+                <CardDescription>{scriptTemplateMeta.description}</CardDescription>
+              </div>
+            </CardHeader>
+
+            <CardContent className={styles.editorBody}>
+              {hasProject ? (
+                <Field
+                  label="AI 绑定"
+                  hint="仅在当前项目生效；未绑定时使用全局默认 LLM"
+                >
+                  {aiSettings && templateBindingError && templateCurrentBinding ? (
+                    <Alert variant="destructive" className={styles.bindingAlert}>
+                      当前绑定已失效：{templateBindingError.message}
+                    </Alert>
+                  ) : null}
+                  <PromptBindingBar
+                    scope="project"
+                    kind={templateBindingKey ?? ''}
+                    binding={templateCurrentBinding}
+                    llmProviders={aiSettings?.llmProviders ?? []}
+                    effectiveProviderId={templateResolved?.provider?.id ?? null}
+                    effectiveModel={templateResolved?.model ?? null}
+                    onChange={handleTemplateBindingChange}
+                  />
+                </Field>
+              ) : (
+                <Alert variant="info" className={styles.bindingAlert}>
+                  AI 绑定需要在打开一个项目后配置（口播模板绑定仅在项目内生效）。
+                </Alert>
+              )}
+
+              <Field label="名称" required>
+                <Input
+                  value={templateDraft.name}
+                  onChange={(e) =>
+                    setTemplateDraft({ ...templateDraft, name: e.target.value })
+                  }
+                  placeholder="如：财经解读"
+                />
+              </Field>
+
+              <Field label="描述">
+                <Input
+                  value={templateDraft.description}
+                  onChange={(e) =>
+                    setTemplateDraft({ ...templateDraft, description: e.target.value })
+                  }
+                  placeholder="一句话描述风格特点"
+                />
+              </Field>
+
+              <Field label="系统提示词（system）" required>
+                <Textarea
+                  value={templateDraft.system}
+                  onChange={(e) =>
+                    setTemplateDraft({ ...templateDraft, system: e.target.value })
+                  }
+                  placeholder="输入完整的写作指令..."
+                  rows={12}
+                  size="sm"
+                  resize="vertical"
+                />
+              </Field>
+
+              <Field
+                label="用户提示词模板（user）"
+                hint="会被送入 LLM 的 user 消息；支持 {{rawText}} 占位"
+              >
+                <Textarea
+                  value={templateDraft.user}
+                  onChange={(e) =>
+                    setTemplateDraft({ ...templateDraft, user: e.target.value })
+                  }
+                  placeholder="{{rawText}}"
+                  rows={3}
+                  size="sm"
+                  resize="vertical"
+                />
+              </Field>
+
+              {scriptTemplateMeta.variables.length > 0 && (
+                <details className={styles.collapsible}>
+                  <summary className={styles.collapsibleSummary}>
+                    <ChevronRight size={12} className={styles.collapsibleChevron} />
+                    <Variable size={12} />
+                    <span className={styles.collapsibleTitle}>可用变量</span>
+                    <span className={styles.collapsibleMeta}>
+                      {scriptTemplateMeta.variables.length} 个 · 以 {'{{name}}'} 形式插入
+                    </span>
+                  </summary>
+                  <div className={styles.collapsibleBody}>
+                    <div className={styles.varHintGrid}>
+                      {scriptTemplateMeta.variables.map((v) => (
+                        <div key={v.name} className={styles.varHintItem}>
+                          <code>{`{{${v.name}}}`}</code>
+                          <span>— {v.description}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+              )}
+
+              <div className={styles.statusBar}>
+                <Badge
+                  variant={templateDraft.isBuiltin ? 'outline' : 'info'}
+                  size="xs"
+                >
+                  {templateDraft.isBuiltin ? '内置模板' : '自定义模板'}
+                </Badge>
+                <span>口播模板的 AI 绑定仅在当前项目生效，未绑定时使用全局默认</span>
+                {templateDirty && <Badge variant="warning" size="xs">未保存</Badge>}
+              </div>
+            </CardContent>
+
+            <CardFooter className={styles.editorFooter}>
+              <Button
+                variant="primary"
+                onClick={handleSaveTemplate}
+                disabled={templateSaving || !templateDirty}
+              >
+                <Save size={14} />
+                保存
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={handleCancelTemplateEdit}
+                disabled={templateSaving || !templateDirty}
+              >
+                取消
+              </Button>
+
+              {/* 内置条目：仅在被覆盖/修改时显示"恢复默认"；恢复即删除自定义覆盖 */}
+              {templateDraft.isBuiltin &&
+                isBuiltinSeedId('script-template', templateDraft.id) && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => setConfirmDeleteTemplateId(templateDraft.id)}
+                    disabled={templateSaving}
+                  >
+                    <RotateCcw size={14} />
+                    恢复默认
+                  </Button>
+                )}
+
+              {/* 自定义条目：提供删除 */}
+              {!templateDraft.isBuiltin && (
+                <Button
+                  variant="ghost"
+                  onClick={() => setConfirmDeleteTemplateId(templateDraft.id)}
+                  disabled={templateSaving}
+                >
+                  <Trash2 size={14} />
+                  删除模板
+                </Button>
+              )}
+            </CardFooter>
+          </Card>
+        ) : null}
       </div>
 
       <ConfirmDialog
@@ -589,6 +1077,36 @@ export function PromptsConfigTab() {
         cancelText="取消"
         confirmVariant="destructive"
         onConfirm={handleConfirmDeleteOverride}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteTemplateId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteTemplateId(null);
+        }}
+        title={
+          confirmDeleteTemplateId &&
+          isBuiltinSeedId('script-template', confirmDeleteTemplateId)
+            ? '恢复默认模板'
+            : '删除模板'
+        }
+        description={
+          <p>
+            {confirmDeleteTemplateId &&
+            isBuiltinSeedId('script-template', confirmDeleteTemplateId)
+              ? '将删除你对该内置模板的自定义覆盖，恢复为内置默认内容。此操作不可撤销。'
+              : '将删除该自定义模板，其他项目中若仍引用会回退到默认模板。此操作不可撤销。'}
+          </p>
+        }
+        confirmText={
+          confirmDeleteTemplateId &&
+          isBuiltinSeedId('script-template', confirmDeleteTemplateId)
+            ? '恢复默认'
+            : '确认删除'
+        }
+        cancelText="取消"
+        confirmVariant="destructive"
+        onConfirm={handleConfirmDeleteTemplate}
       />
     </div>
   );

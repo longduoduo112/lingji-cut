@@ -5,7 +5,7 @@ import type {
   PromptBinding,
   PromptBindingMap,
 } from '../../types/ai';
-import type { PromptKind } from '../prompts/types';
+import { userPromptBindingKey, type PromptCategory, type PromptKind } from '../prompts/types';
 
 export type PromptBindingErrorCode =
   | 'PROVIDER_MISSING'
@@ -16,7 +16,7 @@ export type PromptBindingErrorCode =
 export class PromptBindingError extends Error {
   constructor(
     public readonly code: PromptBindingErrorCode,
-    public readonly kind: PromptKind,
+    public readonly kind: string,
     message: string,
   ) {
     super(message);
@@ -38,13 +38,15 @@ function pickFirstNonNull<T>(...values: Array<T | null | undefined>): T | null {
   return null;
 }
 
-function resolveLlm(
-  kind: PromptKind,
+function resolveLlmByKey(
+  key: string,
   settings: AISettings,
   project: PromptBindingMap | null,
+  options: { allowGlobalBinding?: boolean } = {},
 ): { provider: LLMProvider; model: string } {
-  const projectB: PromptBinding | undefined = project?.[kind];
-  const globalB: PromptBinding | undefined = settings.promptBindings?.[kind];
+  const allowGlobal = options.allowGlobalBinding ?? true;
+  const projectB: PromptBinding | undefined = project?.[key];
+  const globalB: PromptBinding | undefined = allowGlobal ? settings.promptBindings?.[key] : undefined;
 
   const providerId = pickFirstNonNull(
     projectB?.providerId,
@@ -60,26 +62,34 @@ function resolveLlm(
   if (!providerId || !model) {
     throw new PromptBindingError(
       'PROVIDER_MISSING',
-      kind,
-      `提示词 ${kind} 未绑定 LLM 且无全局默认 Provider/Model`,
+      key,
+      `提示词 ${key} 未绑定 LLM 且无全局默认 Provider/Model`,
     );
   }
   const provider = settings.llmProviders.find((p) => p.id === providerId);
   if (!provider) {
     throw new PromptBindingError(
       'PROVIDER_MISSING',
-      kind,
-      `提示词 ${kind} 绑定的 Provider ${providerId} 不存在`,
+      key,
+      `提示词 ${key} 绑定的 Provider ${providerId} 不存在`,
     );
   }
   if (!provider.models.includes(model)) {
     throw new PromptBindingError(
       'MODEL_NOT_IN_PROVIDER',
-      kind,
-      `提示词 ${kind} 绑定的模型 ${model} 不在 Provider ${provider.name} 的模型列表里`,
+      key,
+      `提示词 ${key} 绑定的模型 ${model} 不在 Provider ${provider.name} 的模型列表里`,
     );
   }
   return { provider, model };
+}
+
+function resolveLlm(
+  kind: PromptKind,
+  settings: AISettings,
+  project: PromptBindingMap | null,
+): { provider: LLMProvider; model: string } {
+  return resolveLlmByKey(kind, settings, project);
 }
 
 function resolveImage(
@@ -137,4 +147,33 @@ export function resolvePromptBinding(
     return { ...llm, ...img };
   }
   return llm;
+}
+
+/**
+ * 解析用户自定义提示词条目的绑定（如口播模板）。
+ * 仅查项目级绑定，未绑定时回落到全局默认 LLM（AISettings.defaultProviderId / defaultModel）。
+ * 不支持全局级模板绑定——用户模板的绑定统一由项目管理。
+ */
+export function resolveUserPromptBinding(
+  category: PromptCategory,
+  id: string,
+  settings: AISettings,
+  project: PromptBindingMap | null,
+): { provider: LLMProvider; model: string } {
+  const key = userPromptBindingKey(category, id);
+  return resolveLlmByKey(key, settings, project, { allowGlobalBinding: false });
+}
+
+/**
+ * 读取某个用户模板在当前项目下的绑定原值（不做回退，未设置时返回 null）。
+ * 用于 UI 展示"是否绑定 / 绑定了什么"。
+ */
+export function getUserPromptProjectBinding(
+  category: PromptCategory,
+  id: string,
+  project: PromptBindingMap | null,
+): PromptBinding | null {
+  if (!project) return null;
+  const key = userPromptBindingKey(category, id);
+  return project[key] ?? null;
 }

@@ -24,9 +24,9 @@ import {
 import { ReviewCursorAnimator } from '../lib/review-cursor-animator';
 import { useScriptStore } from '../store/script';
 import { useTaskProgressStore } from '../store/task-progress';
-import { loadAISettings } from '../store/ai';
+import { loadAISettings, useAIStore } from '../store/ai';
+import { resolveUserPromptBinding } from '../lib/llm/binding-resolver';
 import { useTimelineStore } from '../store/timeline';
-import { resolveProvider } from '../lib/llm/provider-utils';
 import { replaceEditorContent } from '../lib/editor-document';
 import { clearVirtualCursor } from '../lib/virtual-cursor';
 import { openSearchPanel } from '@codemirror/search';
@@ -137,10 +137,10 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor }: ScriptWorkbenchP
     setLastVideoImport,
     clearVideoImportState,
     historyPreview,
-    selectedProviderId,
-    selectedModel,
     pendingDouyinUrl,
     setPendingDouyinUrl,
+    pendingImportedScript,
+    setPendingImportedScript,
   } = useScriptStore();
 
   const hasAICardOverlays = useTimelineStore(
@@ -920,14 +920,9 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor }: ScriptWorkbenchP
         useTaskProgressStore.getState().updateTask(streamId, { phase: '写入中' });
         let didEnqueueStreamText = false;
 
-        // 解析当前选择的 Provider / Model
-        const aiSettings = await loadAISettings();
-        const currentProvider = aiSettings
-          ? resolveProvider(aiSettings.llmProviders, state.selectedProviderId, aiSettings.defaultProviderId)
-          : null;
-        const currentModel = state.selectedModel ?? undefined;
-
         // 流式调用 LLM：chunk 先进入实时播放器，再逐段写入编辑器
+        // provider/model 由 script-utils 内部通过 resolveUserPromptBinding 自动解析：
+        // 优先使用该模板在当前项目的绑定，未绑定时回落到全局默认 LLM。
         const result = await generateScriptDraftStream(
           rawText,
           templateCode,
@@ -951,8 +946,6 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor }: ScriptWorkbenchP
               if (!chunk) return;
               setThinkingText((prev) => prev + chunk);
             },
-            provider: currentProvider ?? undefined,
-            model: currentModel,
           },
         );
 
@@ -993,16 +986,35 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor }: ScriptWorkbenchP
           await window.electronAPI.saveScriptFile(dir, 'script.md', result);
           await refreshFileTree(dir);
 
-          // 创建版本历史记录
+          // 创建版本历史记录：解析当前模板在项目下的实际生效绑定用于归档
           if (result && window.scriptHistoryAPI) {
+            let providerId: string | null = null;
+            let providerName: string | null = null;
+            let modelName: string | null = null;
+            try {
+              const aiSettings = await loadAISettings();
+              if (aiSettings) {
+                const b = resolveUserPromptBinding(
+                  'script-template',
+                  templateCode,
+                  aiSettings,
+                  useAIStore.getState().projectBindings,
+                );
+                providerId = b.provider.id;
+                providerName = b.provider.name;
+                modelName = b.model;
+              }
+            } catch {
+              // 解析失败时不阻塞版本记录落盘
+            }
             void window.scriptHistoryAPI.create({
               projectId: dir,
               fileName: 'script.md',
               content: result,
               source: 'ai_generate',
-              providerId: currentProvider?.id ?? null,
-              providerName: currentProvider?.name ?? null,
-              modelName: currentModel ?? aiSettings?.defaultModel ?? null,
+              providerId,
+              providerName,
+              modelName,
             });
           }
         }
@@ -1291,8 +1303,6 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor }: ScriptWorkbenchP
         useScriptStore.getState().annotations,
         {
           manualStageOverride: useScriptStore.getState().manualStageOverride,
-          selectedProviderId: useScriptStore.getState().selectedProviderId,
-          selectedModel: useScriptStore.getState().selectedModel,
           fileTreeView: useScriptStore.getState().fileTreeView,
         },
       ),
@@ -1410,6 +1420,39 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor }: ScriptWorkbenchP
     setDouyinImportOpen(true);
     void handleImportDouyin(url);
   }, [pendingDouyinUrl, setPendingDouyinUrl, handleImportDouyin]);
+
+  // ── 从欢迎页带入的导入文稿：写入 original.md 后自动起飞 AI 写稿 ──
+  useEffect(() => {
+    if (!pendingImportedScript) return;
+    const payload = pendingImportedScript;
+    // 立即清除，避免重复触发
+    setPendingImportedScript(null);
+    void (async () => {
+      const dir = useScriptStore.getState().projectDir;
+      if (!dir) return;
+      try {
+        await window.electronAPI.saveScriptFile(dir, 'original.md', payload.content);
+        setOriginalText(payload.content);
+        setWorkspaceFiles({ hasOriginalFile: true });
+        await refreshFileTree(dir);
+        openFileTab('script.md');
+        // 等编辑器挂好再起飞，避免首字符落空
+        await waitForEditorViewReady();
+        await handleFirstGenerate();
+      } catch (err) {
+        console.error('[ImportScript] 写入 original.md 或起飞 AI 写稿失败', err);
+      }
+    })();
+  }, [
+    pendingImportedScript,
+    setPendingImportedScript,
+    setOriginalText,
+    setWorkspaceFiles,
+    refreshFileTree,
+    openFileTab,
+    waitForEditorViewReady,
+    handleFirstGenerate,
+  ]);
 
   // 后台化操作已移除：用户点击编辑器区域不再中断 AI 流式输出。
   // 如需后台化功能，应由用户主动触发（如 QuickActionBar 按钮），而非全局 pointerdown。

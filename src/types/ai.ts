@@ -305,8 +305,13 @@ export interface PromptBinding {
   imageModel?: string | null;
 }
 
-/** 提示词 → 绑定映射；缺失 key 视为继承 */
-export type PromptBindingMap = Partial<Record<PromptKind, PromptBinding>>;
+/**
+ * 提示词 → 绑定映射；缺失 key 视为继承。
+ * Key 空间：
+ * - PromptKind（如 'script.review', 'planning.segment'）
+ * - `user:<category>:<id>`（如 'user:script-template:news-broadcast'）—— 用户自定义提示词条目的项目级绑定
+ */
+export type PromptBindingMap = Partial<Record<string, PromptBinding>>;
 
 export function buildAICardTimelineDraft(card: AICard): AICardTimelineDraft {
   const sourceStartMs = Number.isFinite(card.startMs) ? Math.max(0, Math.round(card.startMs)) : 0;

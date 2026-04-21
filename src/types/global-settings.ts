@@ -18,11 +18,17 @@ export interface CustomRole {
   updatedAt: string;
 }
 
+export interface GlobalSettingsMigrations {
+  /** 把 customTemplates[] 迁移到 userData/prompts/script-template/*.yaml 后标记 'done' */
+  scriptTemplateToUserPrompts?: 'done';
+}
+
 export interface GlobalSettingsFile {
   aiSettings?: AISettings;
   customTemplates?: CustomScriptTemplate[];
   customRoles?: CustomRole[];
   selectedRole?: string;
+  migrations?: GlobalSettingsMigrations;
 }
 
 export const DEFAULT_SELECTED_ROLE = 'none';
@@ -38,5 +44,6 @@ export function normalizeGlobalSettingsFile(
       typeof input?.selectedRole === 'string' && input.selectedRole.trim()
         ? input.selectedRole
         : DEFAULT_SELECTED_ROLE,
+    migrations: input?.migrations,
   };
 }

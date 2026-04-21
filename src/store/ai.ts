@@ -18,7 +18,12 @@ import {
   type PromptBinding,
   type PromptBindingMap,
 } from '../types/ai';
-import type { PromptKind } from '../lib/prompts/types';
+import type {
+  PromptCategory,
+  PromptKind,
+  UserPromptEntry,
+} from '../lib/prompts/types';
+import { SCRIPT_TEMPLATE_SEEDS } from '../lib/prompts/script-template-defaults';
 import type { SaveStatus } from './timeline';
 import { getCurrentProjectDir } from './timeline';
 
@@ -96,8 +101,26 @@ export interface AIStore {
   projectBindings: PromptBindingMap;
   currentProjectDir: string | null;
   loadProjectBindings: (projectDir: string | null) => Promise<void>;
-  setProjectBinding: (kind: PromptKind, binding: PromptBinding | null) => Promise<void>;
+  /**
+   * 写入/清除单个提示词在当前项目下的 AI 绑定。
+   * key 支持：PromptKind（如 'script.review'）或 userPromptBindingKey(...)（如 'user:script-template:xxx'）
+   */
+  setProjectBinding: (key: string, binding: PromptBinding | null) => Promise<void>;
   setGlobalBinding: (kind: PromptKind, binding: PromptBinding | null) => Promise<void>;
+  // —— 用户自定义提示词条目（分类：script-template 等）——
+  userPromptEntries: Record<PromptCategory, UserPromptEntry[]>;
+  userPromptsLoaded: Record<PromptCategory, boolean>;
+  loadUserPrompts: (category: PromptCategory) => Promise<void>;
+  saveUserPrompt: (input: {
+    category: PromptCategory;
+    id: string;
+    name: string;
+    description: string;
+    version?: number;
+    system: string;
+    user: string;
+  }) => Promise<UserPromptEntry>;
+  deleteUserPrompt: (category: PromptCategory, id: string) => Promise<void>;
   setAnalysisResult: (result: AIAnalysisResult) => void;
   setAnalyzing: (analyzing: boolean) => void;
   setAnalysisError: (error: string | null) => void;
@@ -137,6 +160,73 @@ export const useAIStore = create<AIStore>((set, get) => ({
   activeTab: 'cards',
   projectBindings: {},
   currentProjectDir: null,
+  userPromptEntries: { 'script-template': [] },
+  userPromptsLoaded: { 'script-template': false },
+  loadUserPrompts: async (category) => {
+    if (typeof window === 'undefined' || !window.electronAPI?.listUserPrompts) {
+      // 非 Electron 环境：直接使用内置 seeds 作为 fallback
+      if (category === 'script-template') {
+        const fallback: UserPromptEntry[] = SCRIPT_TEMPLATE_SEEDS.map((seed) => ({
+          id: seed.id,
+          category: seed.category,
+          name: seed.name,
+          description: seed.description,
+          version: seed.version,
+          system: seed.system,
+          user: seed.user,
+          isBuiltin: true,
+        }));
+        set((state) => ({
+          userPromptEntries: { ...state.userPromptEntries, [category]: fallback },
+          userPromptsLoaded: { ...state.userPromptsLoaded, [category]: true },
+        }));
+      }
+      return;
+    }
+    try {
+      const entries = await window.electronAPI.listUserPrompts(category);
+      set((state) => ({
+        userPromptEntries: { ...state.userPromptEntries, [category]: entries },
+        userPromptsLoaded: { ...state.userPromptsLoaded, [category]: true },
+      }));
+    } catch (err) {
+      console.error('加载用户提示词失败:', err);
+    }
+  },
+  saveUserPrompt: async (input) => {
+    if (typeof window === 'undefined' || !window.electronAPI?.writeUserPrompt) {
+      throw new Error('当前环境不支持写入用户提示词');
+    }
+    const entry = await window.electronAPI.writeUserPrompt(input);
+    set((state) => {
+      const list = state.userPromptEntries[input.category] ?? [];
+      const idx = list.findIndex((e) => e.id === entry.id);
+      const nextList = idx >= 0
+        ? list.map((e, i) => (i === idx ? entry : e))
+        : [...list, entry];
+      return {
+        userPromptEntries: { ...state.userPromptEntries, [input.category]: nextList },
+      };
+    });
+    return entry;
+  },
+  deleteUserPrompt: async (category, id) => {
+    if (typeof window === 'undefined' || !window.electronAPI?.deleteUserPrompt) {
+      throw new Error('当前环境不支持删除用户提示词');
+    }
+    const result = await window.electronAPI.deleteUserPrompt(category, id);
+    // 删除后重新从主进程拉一次（以便 seed 恢复/自定义消失都能一致反映）
+    if (result.removed) {
+      try {
+        const entries = await window.electronAPI.listUserPrompts(category);
+        set((state) => ({
+          userPromptEntries: { ...state.userPromptEntries, [category]: entries },
+        }));
+      } catch (err) {
+        console.error('删除后刷新用户提示词失败:', err);
+      }
+    }
+  },
   loadProjectBindings: async (projectDir) => {
     // 切换为无项目状态时，清空内存快照
     if (!projectDir) {
@@ -156,7 +246,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
       set({ projectBindings: {}, currentProjectDir: projectDir });
     }
   },
-  setProjectBinding: async (kind, binding) => {
+  setProjectBinding: async (key, binding) => {
     const { currentProjectDir, projectBindings } = get();
     // 不可在无项目上下文写入
     if (!currentProjectDir) {
@@ -165,9 +255,9 @@ export const useAIStore = create<AIStore>((set, get) => ({
     }
     const next: PromptBindingMap = { ...projectBindings };
     if (binding === null) {
-      delete next[kind];
+      delete next[key];
     } else {
-      next[kind] = binding;
+      next[key] = binding;
     }
     set({ projectBindings: next });
     if (typeof window !== 'undefined' && window.electronAPI?.writePromptBindings) {
