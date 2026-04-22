@@ -1,26 +1,41 @@
+const fs = require('node:fs');
 const path = require('node:path');
 
 const STAGED_PROJECT_ROOTS = new Set(['dist', 'dist-electron', 'src']);
-const RUNTIME_ROOT_PACKAGES = new Set([
-  '@langchain/core',
-  '@langchain/openai',
-  '@modelcontextprotocol/sdk',
-  '@remotion/bundler',
-  '@remotion/media',
-  '@remotion/media-utils',
-  '@remotion/motion-blur',
-  '@remotion/noise',
-  '@remotion/paths',
-  '@remotion/player',
-  '@remotion/renderer',
-  '@remotion/shapes',
-  '@remotion/transitions',
-  'chokidar',
-  'react',
-  'react-dom',
-  'remotion',
-  'uuid',
+
+// 仅在 renderer（Vite bundle）中使用、主进程从不 require 的包可在此排除，
+// 以减小 .app 体积。漏排不会导致启动崩溃，只会让 app 变大。
+const RENDERER_ONLY_PACKAGES = new Set([
+  'lucide-react',
+  'react-day-picker',
 ]);
+
+// 额外强制纳入的包（例如 peer/optional deps 未出现在 dependencies 中但主进程确有 require）。
+const EXTRA_RUNTIME_PACKAGES = new Set([]);
+
+const rootPackageJsonPath = path.resolve(__dirname, '..', 'package.json');
+
+function readRootDependencies() {
+  try {
+    const raw = fs.readFileSync(rootPackageJsonPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Object.keys(parsed.dependencies || {});
+  } catch {
+    return [];
+  }
+}
+
+function buildRuntimeRootPackages() {
+  const names = new Set(EXTRA_RUNTIME_PACKAGES);
+  for (const name of readRootDependencies()) {
+    if (!RENDERER_ONLY_PACKAGES.has(name)) {
+      names.add(name);
+    }
+  }
+  return names;
+}
+
+const RUNTIME_ROOT_PACKAGES = buildRuntimeRootPackages();
 
 function normalizeRelativePath(relativePath) {
   return relativePath.split(path.sep).join('/').replace(/^\/+/, '');
