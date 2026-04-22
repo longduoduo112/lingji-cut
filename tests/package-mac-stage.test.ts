@@ -57,4 +57,10 @@ describe('package mac staging helpers', () => {
     expect(shouldStageNodeModulePath('lucide-react/dist/lucide-react.js')).toBe(false);
     expect(shouldStageNodeModulePath('react-day-picker/dist/index.js')).toBe(false);
   });
+
+  it('includes any package declared in root dependencies automatically', () => {
+    // 新增 npm 依赖不再需要手动维护白名单——只要出现在 package.json 的 dependencies 中，
+    // 除非明确列入 RENDERER_ONLY_PACKAGES 排除，否则都应被 stage。
+    expect(shouldStageNodeModulePath('@langchain/google-genai/dist/index.js')).toBe(true);
+  });
 });
