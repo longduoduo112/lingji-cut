@@ -28,6 +28,7 @@ const pageTitleMap: Record<Exclude<AppPage, 'editor'>, string> = {
   setup: '欢迎页',
   'script-workbench': 'AI 写稿工作台',
   settings: '系统设置',
+  'auto-run': '一键成稿',
 };
 
 const pageStatusMap: Record<Exclude<AppPage, 'editor'>, string> = {
@@ -35,6 +36,7 @@ const pageStatusMap: Record<Exclude<AppPage, 'editor'>, string> = {
   setup: '未打开工程',
   'script-workbench': '脚本创作流程',
   settings: '全局配置',
+  'auto-run': '一键成稿运行中',
 };
 
 export function Toolbar({
