@@ -207,15 +207,18 @@ export function extractDirFromPath(fullPath: string): string {
   return fullPath.slice(0, idx);
 }
 
-export function buildDefaultExportPath(projectName: string | null | undefined): string {
+export function buildDefaultExportPath(
+  projectName: string | null | undefined,
+  projectDir?: string | null,
+): string {
   const fileName = `${sanitizeExportFileName(projectName || '')}.mp4`;
-  const lastDir = getLastExportDir();
-  if (!lastDir) {
+  const preferredDir = (projectDir || '').trim() || getLastExportDir();
+  if (!preferredDir) {
     return fileName;
   }
 
-  const separator = getPathSeparator(lastDir);
-  const trimmedDir = lastDir.replace(/[\\/]+$/, '');
+  const separator = getPathSeparator(preferredDir);
+  const trimmedDir = preferredDir.replace(/[\\/]+$/, '');
   return `${trimmedDir}${separator}${fileName}`;
 }
 

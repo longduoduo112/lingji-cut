@@ -27,6 +27,14 @@ import {
   type PromptTemplate,
 } from './prompts';
 
+export interface AnalyzeSrtProgress {
+  phase: 'planning' | 'cards' | 'done';
+  percent: number;
+  message?: string;
+  cardIndex?: number;
+  cardTotal?: number;
+}
+
 interface AnalyzeSrtOptions {
   maxTokens?: number;
   generateStructuredData?: typeof generateStructuredData;
@@ -34,6 +42,7 @@ interface AnalyzeSrtOptions {
   planningTemplate?: PromptTemplate;
   cardTemplate?: PromptTemplate;
   projectBindings?: PromptBindingMap | null;
+  onProgress?: (progress: AnalyzeSrtProgress) => void;
 }
 
 interface RegenerateCardOptions {
@@ -536,7 +545,10 @@ export async function analyzeSrt(
     planningTemplate,
     cardTemplate,
     projectBindings,
+    onProgress,
   } = options;
+
+  onProgress?.({ phase: 'planning', percent: 0, message: '规划分段与封面提示词…' });
 
   const planning = await planTranscriptSegments(entries, settings, {
     generateStructuredData: requestStructuredData,
@@ -545,17 +557,37 @@ export async function analyzeSrt(
     projectBindings,
   });
 
+  const total = planning.segments.length;
+  onProgress?.({
+    phase: 'cards',
+    percent: total > 0 ? 30 : 95,
+    message: total > 0 ? `生成内容卡片 0/${total}` : '规划完成',
+    cardIndex: 0,
+    cardTotal: total,
+  });
+
   const cards: AICard[] = [];
-  for (const segment of planning.segments) {
-    cards.push(
-      await generateCardForSegment(entries, planning, segment, settings, {
-        generateStructuredData: requestStructuredData,
-        globalPrompt: planning.globalPrompt,
-        cardTemplate,
-        projectBindings,
-      }),
-    );
+  for (let i = 0; i < planning.segments.length; i++) {
+    const segment = planning.segments[i];
+    const card = await generateCardForSegment(entries, planning, segment, settings, {
+      generateStructuredData: requestStructuredData,
+      globalPrompt: planning.globalPrompt,
+      cardTemplate,
+      projectBindings,
+    });
+    cards.push(card);
+    const done = i + 1;
+    const percent = Math.min(95, Math.round(30 + (done / Math.max(1, total)) * 65));
+    onProgress?.({
+      phase: 'cards',
+      percent,
+      message: `生成内容卡片 ${done}/${total}`,
+      cardIndex: done,
+      cardTotal: total,
+    });
   }
+
+  onProgress?.({ phase: 'done', percent: 100, message: '内容分析完成' });
 
   return {
     segments: planning.segments,

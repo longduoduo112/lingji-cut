@@ -129,6 +129,28 @@ describe('createApplicationMenuTemplate', () => {
     });
   });
 
+  it('项目菜单底部提供退出应用入口并绑定 CmdOrCtrl+Q', () => {
+    const { template } = createTemplate({
+      activePage: 'welcome',
+      isDevelopment: false,
+      debugMode: false,
+      hasProject: false,
+      recentProjects: [],
+    });
+
+    const projectMenu = template.find((item) => item.label === '项目');
+    const submenu = Array.isArray(projectMenu?.submenu) ? projectMenu.submenu : [];
+    const quitItem = submenu.find(
+      (item) => 'label' in item && item.label === '退出应用',
+    );
+
+    expect(quitItem).toMatchObject({
+      label: '退出应用',
+      accelerator: 'CmdOrCtrl+Q',
+      role: 'quit',
+    });
+  });
+
   it('在帮助菜单中提供调试与日志能力入口', () => {
     const { template } = createTemplate({
       activePage: 'welcome',

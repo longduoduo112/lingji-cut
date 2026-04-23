@@ -108,6 +108,12 @@ export function createApplicationMenuTemplate(
               action: 'show-project-in-folder',
             }),
         },
+        { type: 'separator' },
+        {
+          label: '退出应用',
+          accelerator: 'CmdOrCtrl+Q',
+          role: 'quit',
+        },
       ],
     },
     {

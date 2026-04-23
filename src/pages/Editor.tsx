@@ -985,6 +985,7 @@ export function Editor({
         timelineWidth={timeline.width}
         timelineHeight={timeline.height}
         projectName={projectDir ? getFileNameFromPath(projectDir) : undefined}
+        projectDir={projectDir || undefined}
         onClose={() => setIsExportSettingsOpen(false)}
         onConfirm={handleConfirmExport}
       />

@@ -196,6 +196,43 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('tts-progress', handler);
     return () => ipcRenderer.removeListener('tts-progress', handler);
   },
+  onAnalyzeProgress: (
+    callback: (progress: {
+      phase: 'planning' | 'cards' | 'done';
+      percent: number;
+      message?: string;
+      cardIndex?: number;
+      cardTotal?: number;
+    }) => void,
+  ) => {
+    const handler = (
+      _event: unknown,
+      progress: {
+        phase: 'planning' | 'cards' | 'done';
+        percent: number;
+        message?: string;
+        cardIndex?: number;
+        cardTotal?: number;
+      },
+    ) => callback(progress);
+    ipcRenderer.on('analyze-progress', handler);
+    return () => ipcRenderer.removeListener('analyze-progress', handler);
+  },
+  onCoverProgress: (
+    callback: (progress: {
+      percent: number;
+      phase: string;
+      message: string;
+      total: number;
+    }) => void,
+  ) => {
+    const handler = (
+      _event: unknown,
+      progress: { percent: number; phase: string; message: string; total: number },
+    ) => callback(progress);
+    ipcRenderer.on('cover-progress', handler);
+    return () => ipcRenderer.removeListener('cover-progress', handler);
+  },
   cancelTTS: (requestId: string) => ipcRenderer.invoke('cancel-tts', requestId),
   selectOutputPath: (defaultPath?: string) =>
     ipcRenderer.invoke('select-output-path', defaultPath),
