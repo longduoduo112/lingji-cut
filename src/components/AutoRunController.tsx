@@ -43,6 +43,8 @@ export function AutoRunController({ setPage }: AutoRunControllerProps) {
   const startedRef = useRef(false);
   const douyinKickedRef = useRef(false);
   const douyinTaskIdRef = useRef<string | null>(null);
+  // 取消 / 离开 auto-run 后置位，用于阻止在途 IPC 完成时回写 workflow 状态。
+  const abortedRef = useRef(false);
   // 订阅 task store 的 douyin 任务快照，供 overlay 展示"第 0 步"进度
   const douyinTask = useTaskProgressStore((s) =>
     douyinTaskIdRef.current ? s.tasks.get(douyinTaskIdRef.current) ?? null : null,
@@ -61,6 +63,7 @@ export function AutoRunController({ setPage }: AutoRunControllerProps) {
     if (source !== 'douyin') return;
     if (!pendingDouyinUrl || !projectDir) return;
     if (douyinKickedRef.current) return;
+    abortedRef.current = false; // 新一次 auto-run 起跑，重置取消标记
     douyinKickedRef.current = true;
     const url = pendingDouyinUrl;
     // 立即清掉 pendingDouyinUrl，防止 ScriptWorkbench 后续二次消费
@@ -74,6 +77,7 @@ export function AutoRunController({ setPage }: AutoRunControllerProps) {
         syncToOriginal: true,
       })
       .catch((err: unknown) => {
+        if (abortedRef.current) return;
         // 进度错误通常会通过 onDouyinImportProgress 的 error snapshot 反映；
         // 这里兜底：若 IPC Promise 在任何 progress 事件前先 reject，
         // 直接把 workflow 设为 error 以便 overlay 展示错误 UI。
@@ -113,6 +117,14 @@ export function AutoRunController({ setPage }: AutoRunControllerProps) {
       if (!id) return;
       if (snapshot.status === 'error') {
         useTaskProgressStore.getState().failTask(id, snapshot.error ?? '抖音导入失败');
+        useAIStore.getState().setWorkflow({
+          step: 'error',
+          progress: 0,
+          stepLabel: '',
+          error: snapshot.error ?? '抖音导入失败',
+          failedStep: 'douyin_importing',
+          canCancel: false,
+        });
         return;
       }
       if (snapshot.status === 'done') {
@@ -134,12 +146,14 @@ export function AutoRunController({ setPage }: AutoRunControllerProps) {
   useEffect(() => {
     if (startedRef.current) return;
     if (!pendingAutoParams || !projectDir) return;
+    abortedRef.current = false; // 起跑前清理一次
 
     if (source === 'text') {
       startedRef.current = true;
       void (async () => {
         const original =
           (await window.electronAPI.loadScriptFile(projectDir, 'original.md')) ?? '';
+        if (abortedRef.current) return;
         await start('', {
           autoMode: true,
           autoParams: pendingAutoParams,
@@ -152,6 +166,7 @@ export function AutoRunController({ setPage }: AutoRunControllerProps) {
       void (async () => {
         const original =
           (await window.electronAPI.loadScriptFile(projectDir, 'original.md')) ?? '';
+        if (abortedRef.current) return;
         await start('', {
           autoMode: true,
           autoParams: pendingAutoParams,
@@ -168,15 +183,36 @@ export function AutoRunController({ setPage }: AutoRunControllerProps) {
       setPendingAutoParams(null);
       useScriptStore.getState().setPendingDouyinUrl(null);
       startedRef.current = false;
+      abortedRef.current = true;
       setPage('editor');
     } else if (workflow.step === 'error' && workflow.error === '任务已取消') {
       setPendingAutoParams(null);
       useScriptStore.getState().setPendingDouyinUrl(null);
       startedRef.current = false;
+      abortedRef.current = true;
       setPage('script-workbench');
     }
     // 真实错误（非取消）保持在 overlay 上由用户点击跳转
   }, [workflow.step, workflow.error, setPage, setPendingAutoParams]);
+
+  // 统一取消处理：抖音前置阶段 useAIVideoWorkflow 还没起跑，cancel() 是 no-op，
+  // 这里要主动失败掉 douyin 任务，再清空所有 pending state 并打上 aborted 标记。
+  const handleCancel = () => {
+    if (douyinTaskIdRef.current) {
+      const douyinTask = useTaskProgressStore.getState().tasks.get(douyinTaskIdRef.current);
+      if (douyinTask?.status === 'active') {
+        useTaskProgressStore.getState().failTask(douyinTaskIdRef.current, '任务已取消');
+      }
+    }
+    cancel();
+    setPendingAutoParams(null);
+    useScriptStore.getState().setPendingDouyinUrl(null);
+    startedRef.current = false;
+    douyinKickedRef.current = false;
+    douyinTaskIdRef.current = null;
+    abortedRef.current = true;
+    setPage('script-workbench');
+  };
 
   // ── overlay 展示用：抖音下载期间把 workflow.step 虚拟成 'douyin_importing' ──
   // 此时 useAIVideoWorkflow 还没 start（或刚 start 尚未推进到 tts），
@@ -204,23 +240,19 @@ export function AutoRunController({ setPage }: AutoRunControllerProps) {
           ? { message: workflow.error, failedStep: workflow.failedStep ?? 'arranging' }
           : null
       }
-      onCancel={() => {
-        cancel();
-        setPendingAutoParams(null);
-        useScriptStore.getState().setPendingDouyinUrl(null);
-        startedRef.current = false;
-        setPage('script-workbench');
-      }}
+      onCancel={handleCancel}
       onJumpToScriptWorkbench={() => {
         setPendingAutoParams(null);
         useScriptStore.getState().setPendingDouyinUrl(null);
         startedRef.current = false;
+        abortedRef.current = true;
         setPage('script-workbench');
       }}
       onJumpToEditor={() => {
         setPendingAutoParams(null);
         useScriptStore.getState().setPendingDouyinUrl(null);
         startedRef.current = false;
+        abortedRef.current = true;
         setPage('editor');
       }}
     />
