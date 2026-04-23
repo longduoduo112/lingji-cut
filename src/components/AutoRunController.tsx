@@ -179,6 +179,8 @@ export function AutoRunController({ setPage }: AutoRunControllerProps) {
 
   // 监听完成 / 取消 → 跳页，同时清掉 pendingDouyinUrl（I-1）
   useEffect(() => {
+    // handleCancel / jump 已经做过清理 + 跳页，避免双发
+    if (abortedRef.current) return;
     if (workflow.step === 'done') {
       setPendingAutoParams(null);
       useScriptStore.getState().setPendingDouyinUrl(null);
@@ -198,6 +200,9 @@ export function AutoRunController({ setPage }: AutoRunControllerProps) {
   // 统一取消处理：抖音前置阶段 useAIVideoWorkflow 还没起跑，cancel() 是 no-op，
   // 这里要主动失败掉 douyin 任务，再清空所有 pending state 并打上 aborted 标记。
   const handleCancel = () => {
+    // 先打 aborted 旗：cancel() 触发 workflow.error='任务已取消'，watch-effect 会复跑，
+    // 此时通过 abortedRef 早退避免清理双发
+    abortedRef.current = true;
     if (douyinTaskIdRef.current) {
       const douyinTask = useTaskProgressStore.getState().tasks.get(douyinTaskIdRef.current);
       if (douyinTask?.status === 'active') {
@@ -210,7 +215,6 @@ export function AutoRunController({ setPage }: AutoRunControllerProps) {
     startedRef.current = false;
     douyinKickedRef.current = false;
     douyinTaskIdRef.current = null;
-    abortedRef.current = true;
     setPage('script-workbench');
   };
 
