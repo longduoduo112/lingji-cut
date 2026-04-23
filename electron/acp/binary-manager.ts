@@ -22,24 +22,40 @@ export class BinaryManager {
 
   /**
    * 在应用启动时调用，确保 nvm/fnm/volta 管理的 node 在 PATH 中。
-   * 同时将用户本地 npm prefix 的 bin 目录加入 PATH。
+   * 同时将用户本地 npm prefix 的 bin 目录、常见系统级 node 目录加入 PATH。
    */
   ensureNodeInPath(): void {
-    // 如果 node 已在 PATH 中，跳过
+    // Homebrew / 系统级 node 兜底：macOS 打包后的 .app 默认 PATH 只有 /usr/bin:/bin:/usr/sbin:/sbin
+    for (const sysBin of ['/opt/homebrew/bin', '/usr/local/bin']) {
+      if (existsSync(sysBin)) {
+        this.prependToPathIfMissing(sysBin);
+      }
+    }
+
+    // 如果 node 已在 PATH 中，跳过 nvm/fnm/volta 检测
     const nodePath = this.whichSync('node');
     if (!nodePath) {
       const binDir = this.findNodeBinDir();
       if (binDir) {
-        this.prependToPath(binDir);
+        this.prependToPathIfMissing(binDir);
       }
     }
 
     // 确保用户本地 npm prefix bin 目录在 PATH 中
     const userBinDir = path.join(this.userNpmPrefix, 'bin');
-    const currentPath = process.env.PATH ?? '';
-    if (!currentPath.split(':').includes(userBinDir)) {
-      this.prependToPath(userBinDir);
+    this.prependToPathIfMissing(userBinDir);
+  }
+
+  /**
+   * 在所有 nvm/fnm/volta 管理的 node 版本 bin 目录中查找指定二进制。
+   * 用于解决 “default node 版本没装 X，但其他版本装了 X” 的场景。
+   */
+  findBinaryInNodeVersions(binName: string): string | null {
+    for (const binDir of this.collectNodeVersionBinDirs()) {
+      const candidate = path.join(binDir, binName);
+      if (existsSync(candidate)) return candidate;
     }
+    return null;
   }
 
   /** 移除 npm_* 环境变量，避免 npm run dev 时继承的 npm 内部配置干扰子进程 */
@@ -144,14 +160,34 @@ export class BinaryManager {
   /**
    * 返回 spawn 命令：直接使用全局安装的二进制名称，而非 npx 包装。
    * 调用方应在 spawn 时传入 getCleanEnv() 的环境变量。
+   *
+   * 查找顺序：
+   * 1. PATH 上的 `which claude-agent-acp`
+   * 2. 扫描所有 nvm/fnm/volta 管理的 node 版本 bin 目录
+   * 3. 用户本地 npm prefix (`~/.lingji/npm-global/bin`)
+   * 4. 回退到裸二进制名（由 spawn 自行解析 PATH；通常会 ENOENT）
    */
   getSpawnCommand(_version: string): { command: string; args: string[] } {
-    // 尝试解析完整路径，找不到则回退到二进制名称（依赖 PATH）
     const resolved = this.whichSync(AGENT_BIN_NAME);
-    return {
-      command: resolved ?? AGENT_BIN_NAME,
-      args: [],
-    };
+    if (resolved) return { command: resolved, args: [] };
+
+    const scanned = this.findBinaryInNodeVersions(AGENT_BIN_NAME);
+    if (scanned) {
+      // 将该版本 bin 目录加入 PATH，方便子进程内部再次 spawn 同目录工具
+      this.prependToPathIfMissing(path.dirname(scanned));
+      return { command: scanned, args: [] };
+    }
+
+    const userPrefixCandidate = path.join(this.userNpmPrefix, 'bin', AGENT_BIN_NAME);
+    if (existsSync(userPrefixCandidate)) {
+      return { command: userPrefixCandidate, args: [] };
+    }
+
+    console.warn(
+      `[ACP] 未找到 ${AGENT_BIN_NAME} 二进制；spawn 将依赖 PATH 解析，可能触发 ENOENT。` +
+        ` 已尝试路径：which、nvm/fnm/volta 全部版本、${this.userNpmPrefix}/bin`,
+    );
+    return { command: AGENT_BIN_NAME, args: [] };
   }
 
   // ── 内部方法 ──────────────────────────────────────────────────────────
@@ -227,40 +263,49 @@ export class BinaryManager {
     }
   }
 
-  /** 检测 nvm/fnm/volta 管理的 node 的 bin 目录 */
+  /** 首选的 node bin 目录：nvm default → nvm 最新 → fnm 最新 → volta */
   private findNodeBinDir(): string | null {
+    for (const binDir of this.collectNodeVersionBinDirs()) {
+      if (existsSync(path.join(binDir, 'node'))) return binDir;
+    }
+    return null;
+  }
+
+  /**
+   * 枚举所有 nvm/fnm/volta 版本 bin 目录。
+   * 顺序：nvm default（若存在）→ nvm 其余版本（新→旧）→ fnm（新→旧）→ volta。
+   */
+  private collectNodeVersionBinDirs(): string[] {
+    const dirs: string[] = [];
     const home = os.homedir();
 
     // nvm
     const nvmDir = process.env.NVM_DIR ?? path.join(home, '.nvm');
     const nvmVersionsDir = path.join(nvmDir, 'versions', 'node');
     if (existsSync(nvmVersionsDir)) {
-      // 优先使用 default alias 指向的版本
+      const entries = safeReaddir(nvmVersionsDir).sort().reverse();
+      let defaultEntry: string | null = null;
+
       const defaultAlias = path.join(nvmDir, 'alias', 'default');
       if (existsSync(defaultAlias)) {
         try {
           const alias = readFileSync(defaultAlias, 'utf-8').trim();
-          const entries = readdirSync(nvmVersionsDir);
-          for (const entry of entries) {
-            const stripped = entry.replace(/^v/, '');
-            if (stripped.startsWith(alias) || entry.startsWith(alias)) {
-              const binDir = path.join(nvmVersionsDir, entry, 'bin');
-              if (existsSync(path.join(binDir, 'node'))) return binDir;
-            }
-          }
+          defaultEntry =
+            entries.find((entry) => {
+              const stripped = entry.replace(/^v/, '');
+              return stripped.startsWith(alias) || entry.startsWith(alias);
+            }) ?? null;
         } catch {
           // ignore
         }
       }
-      // 回退：使用最新版本
-      try {
-        const entries = readdirSync(nvmVersionsDir).sort().reverse();
-        for (const entry of entries) {
-          const binDir = path.join(nvmVersionsDir, entry, 'bin');
-          if (existsSync(path.join(binDir, 'node'))) return binDir;
-        }
-      } catch {
-        // ignore
+
+      if (defaultEntry) {
+        dirs.push(path.join(nvmVersionsDir, defaultEntry, 'bin'));
+      }
+      for (const entry of entries) {
+        if (entry === defaultEntry) continue;
+        dirs.push(path.join(nvmVersionsDir, entry, 'bin'));
       }
     }
 
@@ -268,27 +313,32 @@ export class BinaryManager {
     const fnmDir = process.env.FNM_DIR ?? path.join(home, '.local', 'share', 'fnm');
     const fnmVersions = path.join(fnmDir, 'node-versions');
     if (existsSync(fnmVersions)) {
-      try {
-        const entries = readdirSync(fnmVersions).sort().reverse();
-        for (const entry of entries) {
-          const binDir = path.join(fnmVersions, entry, 'installation', 'bin');
-          if (existsSync(path.join(binDir, 'node'))) return binDir;
-        }
-      } catch {
-        // ignore
+      for (const entry of safeReaddir(fnmVersions).sort().reverse()) {
+        dirs.push(path.join(fnmVersions, entry, 'installation', 'bin'));
       }
     }
 
     // volta
     const voltaHome = process.env.VOLTA_HOME ?? path.join(home, '.volta');
     const voltaBin = path.join(voltaHome, 'bin');
-    if (existsSync(path.join(voltaBin, 'node'))) return voltaBin;
+    if (existsSync(path.join(voltaBin, 'node'))) {
+      dirs.push(voltaBin);
+    }
 
-    return null;
+    return dirs;
   }
 
-  private prependToPath(dir: string): void {
+  private prependToPathIfMissing(dir: string): void {
     const current = process.env.PATH ?? '';
+    if (current.split(':').includes(dir)) return;
     process.env.PATH = `${dir}:${current}`;
+  }
+}
+
+function safeReaddir(dir: string): string[] {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
   }
 }

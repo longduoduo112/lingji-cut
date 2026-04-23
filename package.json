@@ -5,7 +5,7 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "electron-vite dev --watch",
-    "build": "electron-vite build && node scripts/obfuscate-build.cjs",
+    "build": "electron-vite build && node scripts/obfuscate-build.cjs && node scripts/bundle-remotion.cjs",
     "package:mac": "node scripts/package-mac.cjs",
     "dist:mac": "npm run build && npm run package:mac",
     "test": "vitest run",

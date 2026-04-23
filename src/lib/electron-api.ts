@@ -248,6 +248,23 @@ export interface ElectronAPI {
     projectDir: string;
   }) => Promise<{ audioPath: string; srtPath: string; durationMs: number }>;
   onTTSProgress: (callback: (pct: number) => void) => () => void;
+  onAnalyzeProgress: (
+    callback: (progress: {
+      phase: 'planning' | 'cards' | 'done';
+      percent: number;
+      message?: string;
+      cardIndex?: number;
+      cardTotal?: number;
+    }) => void,
+  ) => () => void;
+  onCoverProgress: (
+    callback: (progress: {
+      percent: number;
+      phase: string;
+      message: string;
+      total: number;
+    }) => void,
+  ) => () => void;
   cancelTTS: (requestId: string) => Promise<void>;
   selectOutputPath: (defaultPath?: string) => Promise<string | null>;
   showEditorContextMenu: () => Promise<void>;

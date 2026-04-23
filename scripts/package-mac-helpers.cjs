@@ -1,7 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const STAGED_PROJECT_ROOTS = new Set(['dist', 'dist-electron', 'src']);
+const STAGED_PROJECT_ROOTS = new Set(['dist', 'dist-electron', 'dist-remotion', 'src']);
+const REMOTION_ASAR_UNPACK_DIRS = '{dist-remotion,node_modules/@remotion/compositor-*}';
 
 // 仅在 renderer（Vite bundle）中使用、主进程从不 require 的包可在此排除，
 // 以减小 .app 体积。漏排不会导致启动崩溃，只会让 app 变大。
@@ -100,6 +101,7 @@ function shouldStageNodeModulePath(relativePath) {
 }
 
 module.exports = {
+  REMOTION_ASAR_UNPACK_DIRS,
   RUNTIME_ROOT_PACKAGES,
   buildReleaseManifest,
   getNodeModuleRootPackage,

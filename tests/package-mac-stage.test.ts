@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
+  REMOTION_ASAR_UNPACK_DIRS,
   buildReleaseManifest,
   shouldStageProjectPath,
   shouldStageNodeModulePath,
@@ -62,5 +63,11 @@ describe('package mac staging helpers', () => {
     // 新增 npm 依赖不再需要手动维护白名单——只要出现在 package.json 的 dependencies 中，
     // 除非明确列入 RENDERER_ONLY_PACKAGES 排除，否则都应被 stage。
     expect(shouldStageNodeModulePath('@langchain/google-genai/dist/index.js')).toBe(true);
+  });
+
+  it('unpacks remotion runtime artifacts from app.asar for packaged exports', () => {
+    expect(REMOTION_ASAR_UNPACK_DIRS).toBe(
+      '{dist-remotion,node_modules/@remotion/compositor-*}',
+    );
   });
 });

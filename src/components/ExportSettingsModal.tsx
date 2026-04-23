@@ -34,6 +34,7 @@ interface ExportSettingsModalProps {
   timelineWidth: number;
   timelineHeight: number;
   projectName?: string;
+  projectDir?: string;
   onClose: () => void;
   onConfirm: (payload: {
     outputPath: string;
@@ -46,6 +47,7 @@ export function ExportSettingsModal({
   timelineWidth,
   timelineHeight,
   projectName,
+  projectDir,
   onClose,
   onConfirm,
 }: ExportSettingsModalProps) {
@@ -61,9 +63,9 @@ export function ExportSettingsModal({
 
     setResolution("720p");
     setQuality("balanced");
-    setOutputPath("");
+    setOutputPath(buildDefaultExportPath(projectName, projectDir));
     setIsSubmitting(false);
-  }, [visible]);
+  }, [visible, projectName, projectDir]);
 
   const renderConfig = useMemo(
     () =>
@@ -87,7 +89,7 @@ export function ExportSettingsModal({
   );
 
   const handleSelectOutputPath = async () => {
-    const defaultPath = buildDefaultExportPath(projectName);
+    const defaultPath = outputPath || buildDefaultExportPath(projectName, projectDir);
     const savePath = await window.electronAPI.selectOutputPath(defaultPath);
     if (!savePath) {
       return;

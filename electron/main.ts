@@ -2,7 +2,7 @@ import { bundle } from '@remotion/bundler';
 import { getVideoMetadata, renderMedia, selectComposition } from '@remotion/renderer';
 import chokidar from 'chokidar';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from 'electron';
-import { createWriteStream, existsSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -109,6 +109,10 @@ import { getVideoImportService } from './video-import/import-service';
 import { resolveDouyinVideoSource } from './video-import/douyin-downloader';
 import type { VideoImportRequest } from '../src/lib/video-import-types';
 import { createWorkbenchTabContextMenuTemplate } from './workbench-tab-context-menu';
+import {
+  ensureRemotionDownloadsCwd,
+  resolveRemotionBinariesDirectory,
+} from './remotion-paths';
 
 const execFileAsync = promisify(execFile);
 
@@ -134,6 +138,7 @@ const activeTtsRequests = new Map<string, AbortController>();
 let isAppQuitting = false;
 const videoImportService = getVideoImportService();
 let appConfig: ResolvedAppConfig | null = null;
+const remotionBinariesDirectory = resolveRemotionRendererBinariesDir();
 
 function sendMenuEvent(event: MenuEvent) {
   mainWindow?.webContents.send('menu-action', event);
@@ -401,6 +406,39 @@ function resolveCompositionEntryPath(): string {
   return entryPath;
 }
 
+function resolvePrebuiltRemotionBundleDir(): string | null {
+  // 打包态优先使用 app.asar.unpacked 下的真实路径，避免 fs.cp 等 API 在
+  // asar 虚拟路径上行为不一致（Electron 对 fs.cp 的 asar 兼容性较弱）。
+  const appPath = app.getAppPath();
+  const asarUnpackedPath = appPath.endsWith('.asar')
+    ? `${appPath}.unpacked`
+    : null;
+
+  const candidates = [
+    asarUnpackedPath ? path.resolve(asarUnpackedPath, 'dist-remotion') : null,
+    path.resolve(appPath, 'dist-remotion'),
+    path.resolve(__dirname, '../dist-remotion'),
+    path.resolve(process.cwd(), 'dist-remotion'),
+  ].filter((candidate): candidate is string => typeof candidate === 'string');
+
+  return (
+    candidates.find(
+      (candidate) => existsSync(candidate) && existsSync(path.join(candidate, 'index.html')),
+    ) ?? null
+  );
+}
+
+function resolveRemotionRendererBinariesDir(): string | null {
+  return resolveRemotionBinariesDirectory({
+    appPath: app.getAppPath(),
+    cwd: process.cwd(),
+    moduleDir: __dirname,
+    platform: process.platform,
+    arch: process.arch,
+    existsSync,
+  });
+}
+
 async function materializeRenderAssets(
   publicDir: string,
   assets: RenderAssetDescriptor[],
@@ -419,6 +457,22 @@ async function materializeRenderAssets(
   );
 }
 
+async function copyDirectoryRecursive(sourceDir: string, targetDir: string): Promise<void> {
+  await fs.mkdir(targetDir, { recursive: true });
+  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+  await Promise.all(
+    entries.map(async (entry) => {
+      const sourcePath = path.join(sourceDir, entry.name);
+      const targetPath = path.join(targetDir, entry.name);
+      if (entry.isDirectory()) {
+        await copyDirectoryRecursive(sourcePath, targetPath);
+      } else if (entry.isFile()) {
+        await fs.copyFile(sourcePath, targetPath);
+      }
+    }),
+  );
+}
+
 async function createRenderPublicDir(
   timeline: TimelineData,
 ): Promise<{ timeline: TimelineData; publicDir: string }> {
@@ -429,6 +483,59 @@ async function createRenderPublicDir(
   return {
     timeline: renderTimeline,
     publicDir,
+  };
+}
+
+interface PreparedRenderBundle {
+  timeline: TimelineData;
+  serveUrl: string;
+  cleanup: () => Promise<void>;
+  isPrebuilt: boolean;
+}
+
+async function prepareRenderBundle(
+  timeline: TimelineData,
+): Promise<PreparedRenderBundle> {
+  const prebuiltDir = resolvePrebuiltRemotionBundleDir();
+
+  if (prebuiltDir) {
+    // 打包环境下：把预构建的 bundle 复制到 tmp 目录，再把素材写入 public/。
+    // 这样既避开了 app.asar 不能 chdir 的问题，也能让 serve-handler 正常读取素材。
+    const tmpBundleDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'lingjijianying-bundle-'),
+    );
+    await copyDirectoryRecursive(prebuiltDir, tmpBundleDir);
+
+    const publicDir = path.join(tmpBundleDir, 'public');
+    await fs.mkdir(publicDir, { recursive: true });
+
+    const { timeline: renderTimeline, assets } = prepareTimelineForRemotionRender(timeline);
+    await materializeRenderAssets(publicDir, assets);
+
+    return {
+      timeline: renderTimeline,
+      serveUrl: tmpBundleDir,
+      cleanup: async () => {
+        await fs.rm(tmpBundleDir, { recursive: true, force: true });
+      },
+      isPrebuilt: true,
+    };
+  }
+
+  // 开发环境：沿用运行时 bundle()。
+  const { timeline: renderTimeline, publicDir } = await createRenderPublicDir(timeline);
+  const serveUrl = await bundle({
+    entryPoint: resolveCompositionEntryPath(),
+    publicDir,
+  });
+
+  return {
+    timeline: renderTimeline,
+    serveUrl,
+    cleanup: async () => {
+      await fs.rm(publicDir, { recursive: true, force: true });
+    },
+    isPrebuilt: false,
   };
 }
 
@@ -479,7 +586,9 @@ ipcMain.handle('parse-srt-file', async (_event, filePath: string) => {
 });
 
 ipcMain.handle('get-audio-duration', async (_event, filePath: string) => {
-  const metadata = await getVideoMetadata(filePath);
+  const metadata = await getVideoMetadata(filePath, {
+    binariesDirectory: remotionBinariesDirectory,
+  });
   return Math.max(1_000, Math.round((metadata.durationInSeconds ?? 0) * 1000));
 });
 
@@ -520,6 +629,9 @@ ipcMain.handle(
         planningTemplate,
         cardTemplate,
         projectBindings: args.projectBindings ?? null,
+        onProgress: (progress) => {
+          mainWindow?.webContents.send('analyze-progress', progress);
+        },
       });
       writeAppLog(
         'info',
@@ -700,11 +812,25 @@ ipcMain.handle(
     if (!binding.imageProvider || !binding.imageModel) {
       throw new Error('cover.regeneration 未绑定 ImageProvider/Model');
     }
+    const total = args.prompts.length;
+    const coverProgressCtx = {
+      taskId: 'cover-generation',
+      signal: new AbortController().signal,
+      onProgress: (update: { percent?: number; phase?: string; message?: string }) => {
+        mainWindow?.webContents.send('cover-progress', {
+          percent: update.percent ?? 0,
+          phase: update.phase ?? 'rendering',
+          message: update.message ?? '',
+          total,
+        });
+      },
+    };
     return generateCoverCandidates(
       args.prompts,
       binding.imageProvider,
       binding.imageModel,
       coversDir,
+      coverProgressCtx,
     );
   },
 );
@@ -1270,7 +1396,9 @@ ipcMain.handle('add-asset', async () => {
 
   if (isVideo || isAudio) {
     try {
-      const metadata = await getVideoMetadata(assetPath);
+      const metadata = await getVideoMetadata(assetPath, {
+        binariesDirectory: remotionBinariesDirectory,
+      });
       const seconds = metadata.durationInSeconds;
       if (typeof seconds === 'number' && seconds > 0) {
         durationMs = Math.max(500, Math.round(seconds * 1000));
@@ -1349,7 +1477,9 @@ ipcMain.handle('scan-project-assets', async (_event, projectDir: string) => {
 
       if (assetType === 'video' || assetType === 'audio') {
         try {
-          const metadata = await getVideoMetadata(fullPath);
+          const metadata = await getVideoMetadata(fullPath, {
+            binariesDirectory: remotionBinariesDirectory,
+          });
           const seconds = metadata.durationInSeconds;
           if (typeof seconds === 'number' && seconds > 0) {
             durationMs = Math.max(500, Math.round(seconds * 1000));
@@ -1592,6 +1722,17 @@ ipcMain.handle(
     activeTtsRequests.set(requestId, controller);
     mainWindow?.webContents.send('tts-progress', 0);
 
+    // MiniMax t2a_v2 是同步接口，等待 30~120s。期间无回调信号，用估算心跳把进度从 2% 缓慢推到 30%，
+    // 避免 UI 视觉上"卡在 0%"。fetch 返回后会立刻覆盖到 35%。
+    let heartbeatPct = 2;
+    const HEARTBEAT_CEIL = 30;
+    const heartbeat = setInterval(() => {
+      if (heartbeatPct < HEARTBEAT_CEIL) {
+        heartbeatPct = Math.min(HEARTBEAT_CEIL, heartbeatPct + 1);
+        mainWindow?.webContents.send('tts-progress', heartbeatPct);
+      }
+    }, 1500);
+
     try {
       const response = await fetch('https://api.minimaxi.com/v1/t2a_v2', {
         method: 'POST',
@@ -1705,7 +1846,9 @@ ipcMain.handle(
       let durationMs = getMinimaxDurationMs(result, subtitleSentences);
       if (durationMs <= 0) {
         try {
-          const metadata = await getVideoMetadata(audioPath);
+          const metadata = await getVideoMetadata(audioPath, {
+            binariesDirectory: remotionBinariesDirectory,
+          });
           durationMs = Math.max(1_000, Math.round((metadata.durationInSeconds ?? 0) * 1000));
         } catch (error) {
           writeAppLog(
@@ -1726,6 +1869,7 @@ ipcMain.handle(
       }
       throw error;
     } finally {
+      clearInterval(heartbeat);
       activeTtsRequests.delete(requestId);
     }
   },
@@ -1820,7 +1964,6 @@ ipcMain.handle(
     const timelineData = JSON.parse(args.timeline) as TimelineData;
     const srtContent = await fs.readFile(timelineData.podcast.srtPath, 'utf-8');
     const srtEntries = parseSrt(srtContent);
-    const { timeline: renderTimeline, publicDir } = await createRenderPublicDir(timelineData);
     const renderConfig = buildExportRenderConfig({
       timelineWidth: timelineData.width,
       timelineHeight: timelineData.height,
@@ -1849,18 +1992,24 @@ ipcMain.handle(
       });
     }
 
-    try {
-      const bundleStart = Date.now();
-      const serveUrl = await bundle({
-        entryPoint: resolveCompositionEntryPath(),
-        publicDir,
-      });
-      if (isDev) {
-        console.log(
-          `${renderLogPrefix} bundle 完成 耗时=${((Date.now() - bundleStart) / 1000).toFixed(2)}s @${timestamp()}`,
-        );
-      }
+    const bundlePrepStart = Date.now();
+    const preparedBundle = await prepareRenderBundle(timelineData);
+    const {
+      timeline: renderTimeline,
+      serveUrl,
+      cleanup: cleanupBundle,
+      isPrebuilt,
+    } = preparedBundle;
 
+    if (isDev) {
+      console.log(
+        `${renderLogPrefix} bundle 准备完成 mode=${isPrebuilt ? 'prebuilt' : 'runtime'} 耗时=${(
+          (Date.now() - bundlePrepStart) / 1000
+        ).toFixed(2)}s @${timestamp()}`,
+      );
+    }
+
+    try {
       const inputProps = {
         timeline: renderTimeline,
         srtEntries,
@@ -1871,6 +2020,7 @@ ipcMain.handle(
         serveUrl,
         id: 'PodcastComposition',
         inputProps,
+        binariesDirectory: remotionBinariesDirectory,
       });
       if (isDev) {
         console.log(
@@ -1889,6 +2039,7 @@ ipcMain.handle(
         codec: 'h264',
         outputLocation: args.outputPath,
         inputProps,
+        binariesDirectory: remotionBinariesDirectory,
         concurrency: explicitConcurrency,
         x264Preset: renderConfig.x264Preset,
         videoBitrate: renderConfig.videoBitrate,
@@ -1966,7 +2117,7 @@ ipcMain.handle(
       }
       throw err;
     } finally {
-      await fs.rm(publicDir, { recursive: true, force: true });
+      await cleanupBundle();
     }
   },
 );
@@ -1993,8 +2144,35 @@ registerScriptHistoryIpc();
 // 设置 macOS 系统菜单栏应用名称
 app.setName('灵机剪影');
 
+function ensureRemotionCwdForPackagedApp() {
+  if (!app.isPackaged) {
+    return;
+  }
+  try {
+    const cacheDir = ensureRemotionDownloadsCwd({
+      userDataPath: app.getPath('userData'),
+      existsSync,
+      mkdirSync,
+      writeFileSync,
+      chdir: (dir) => process.chdir(dir),
+    });
+    writeAppLog('info', 'remotion', 'Remotion 下载缓存目录已就绪', cacheDir);
+  } catch (err) {
+    writeAppLog(
+      'error',
+      'remotion',
+      '无法切换 Remotion 下载缓存目录，视频导出可能失败',
+      err instanceof Error ? err.stack || err.message : String(err),
+    );
+  }
+}
+
 app.whenReady().then(async () => {
   refreshAppConfig();
+  // 在任何 Remotion API（renderMedia / selectComposition / getVideoMetadata）
+  // 调用之前把 cwd 切到 userData 下的受控目录，避免 macOS 从 Finder 启动
+  // .app 时 cwd=`/` 导致 Remotion 试图 mkdir `/.remotion` 失败。
+  ensureRemotionCwdForPackagedApp();
   // 开发模式下显式设置 Dock 图标；打包后 macOS 会使用 .app 自带的 icns
   if (process.platform === 'darwin' && !app.isPackaged) {
     const iconPath = resolveAppIconPath();
