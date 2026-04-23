@@ -30,6 +30,8 @@ const defaultAsrRunner: VideoImportAsrRunner = {
 class DefaultVideoImportService implements VideoImportService {
   private readonly tasks = new Map<string, VideoImportTaskSnapshot>();
 
+  private readonly progressListeners = new Set<(snapshot: VideoImportTaskSnapshot) => void>();
+
   private readonly downloader;
 
   private readonly mediaExtractor;
@@ -47,6 +49,23 @@ class DefaultVideoImportService implements VideoImportService {
 
   getImportStatus(importId: string): VideoImportTaskSnapshot | null {
     return this.tasks.get(importId) ?? null;
+  }
+
+  onProgress(callback: (snapshot: VideoImportTaskSnapshot) => void): () => void {
+    this.progressListeners.add(callback);
+    return () => {
+      this.progressListeners.delete(callback);
+    };
+  }
+
+  private emitProgress(snapshot: VideoImportTaskSnapshot): void {
+    for (const listener of this.progressListeners) {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        console.error('[video-import] progress listener error', error);
+      }
+    }
   }
 
   startImport(request: VideoImportRequest): VideoImportProgress {
@@ -67,7 +86,7 @@ class DefaultVideoImportService implements VideoImportService {
   private beginTask(request: VideoImportRequest): string {
     const importId = `${request.sourceType}_${Date.now()}`;
     const startedAt = this.now().toISOString();
-    this.tasks.set(importId, {
+    const snapshot: VideoImportTaskSnapshot = {
       importId,
       sourceType: request.sourceType,
       status: 'downloading',
@@ -75,7 +94,9 @@ class DefaultVideoImportService implements VideoImportService {
       stepLabel: '准备导入抖音视频',
       request,
       startedAt,
-    });
+    };
+    this.tasks.set(importId, snapshot);
+    this.emitProgress(snapshot);
     return importId;
   }
 
@@ -91,13 +112,15 @@ class DefaultVideoImportService implements VideoImportService {
       return;
     }
 
-    this.tasks.set(importId, {
+    const next: VideoImportTaskSnapshot = {
       ...current,
       status,
       progress,
       stepLabel,
       ...extras,
-    });
+    };
+    this.tasks.set(importId, next);
+    this.emitProgress(next);
   }
 
   private async executeImport(

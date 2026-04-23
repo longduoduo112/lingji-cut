@@ -14,6 +14,7 @@ import type {
   VideoImportProgress,
   VideoImportRequest,
 } from './video-import-types';
+import type { VideoImportTaskSnapshot } from '../../electron/video-import/types';
 import type {
   PromptKind,
   PromptKindMeta,
@@ -229,6 +230,9 @@ export interface ElectronAPI {
   resolveDouyinUrl: (url: string) => Promise<{ title: string; videoId: string }>;
   importVideoSource: (request: VideoImportRequest) => Promise<VideoImportProgress>;
   getVideoImportStatus: (importId: string) => Promise<VideoImportProgress | null>;
+  onDouyinImportProgress: (
+    callback: (snapshot: VideoImportTaskSnapshot) => void,
+  ) => () => void;
   startWatching: (dir: string) => Promise<void>;
   stopWatching: () => Promise<void>;
   onFileChanged: (callback: (data: { file: string; content: string }) => void) => () => void;
