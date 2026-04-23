@@ -137,6 +137,11 @@ let fileWatcher: FSWatcher | null = null;
 const activeTtsRequests = new Map<string, AbortController>();
 let isAppQuitting = false;
 const videoImportService = getVideoImportService();
+videoImportService.onProgress((snapshot) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('douyin-import-progress', snapshot);
+  }
+});
 let appConfig: ResolvedAppConfig | null = null;
 const remotionBinariesDirectory = resolveRemotionRendererBinariesDir();
 

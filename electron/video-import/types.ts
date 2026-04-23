@@ -71,4 +71,5 @@ export interface VideoImportService {
   importVideoSource: (request: VideoImportRequest) => Promise<VideoImportResult>;
   startImport: (request: VideoImportRequest) => VideoImportProgress;
   getImportStatus: (importId: string) => VideoImportTaskSnapshot | null;
+  onProgress: (callback: (snapshot: VideoImportTaskSnapshot) => void) => () => void;
 }

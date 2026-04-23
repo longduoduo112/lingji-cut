@@ -13,6 +13,7 @@ import type { SrtEntry } from '../src/types';
 import type { AICard, AISegment, AISettings, PromptBindingMap } from '../src/types/ai';
 import type { ConversationAPI } from '../src/types/conversation';
 import type { VideoImportRequest } from '../src/lib/video-import-types';
+import type { VideoImportTaskSnapshot } from './video-import/types';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   parseSrtFile: (filePath: string) => ipcRenderer.invoke('parse-srt-file', filePath),
@@ -164,6 +165,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('import-video-source', request),
   getVideoImportStatus: (importId: string) =>
     ipcRenderer.invoke('get-video-import-status', importId),
+  onDouyinImportProgress: (callback: (snapshot: VideoImportTaskSnapshot) => void) => {
+    const handler = (_event: unknown, snapshot: VideoImportTaskSnapshot) => callback(snapshot);
+    ipcRenderer.on('douyin-import-progress', handler);
+    return () => ipcRenderer.removeListener('douyin-import-progress', handler);
+  },
   startWatching: (dir: string) => ipcRenderer.invoke('start-watching', dir),
   stopWatching: () => ipcRenderer.invoke('stop-watching'),
   onFileChanged: (callback: (data: { file: string; content: string }) => void) => {
