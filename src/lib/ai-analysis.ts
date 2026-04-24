@@ -5,6 +5,7 @@ import {
   getDefaultTemplate,
   isAICardType,
   isDataContent,
+  type AIAnalysisCardError,
   type AIAnalysisResult,
   type AICard,
   type AISegmentAnalysis,
@@ -358,6 +359,60 @@ export function buildSrtText(entries: SrtEntry[]): string {
     .join('\n');
 }
 
+// 仅截取与 [startMs, endMs] 有重叠的字幕条目，再追加上下 paddingMs 缓冲
+// 用于卡片生成时只把"本段及邻接"逐字稿喂给模型，避免每次都注入整篇全文
+export function buildSrtTextRange(
+  entries: SrtEntry[],
+  startMs: number,
+  endMs: number,
+  paddingMs = 2000,
+): string {
+  const lo = Math.max(0, startMs - paddingMs);
+  const hi = endMs + paddingMs;
+  const sliced = entries.filter((entry) => entry.endMs >= lo && entry.startMs <= hi);
+  return buildSrtText(sliced);
+}
+
+// 节目级浓缩上下文：只给定位用，不复述全文
+function buildProgramContext(params: {
+  programSummary?: string;
+  keywords?: string[];
+  segment: AISegment;
+  segmentIndex?: number;
+  totalSegments?: number;
+  prevSegment?: AISegment;
+  nextSegment?: AISegment;
+}): string {
+  const {
+    programSummary,
+    keywords = [],
+    segment,
+    segmentIndex,
+    totalSegments,
+    prevSegment,
+    nextSegment,
+  } = params;
+
+  const lines: string[] = [];
+  lines.push(`节目摘要：${programSummary?.trim() || '无'}`);
+  lines.push(`节目关键词：${keywords.length > 0 ? keywords.join('、') : '无'}`);
+
+  if (typeof segmentIndex === 'number' && typeof totalSegments === 'number' && totalSegments > 0) {
+    lines.push(`当前段位置：第 ${segmentIndex + 1} 段，共 ${totalSegments} 段`);
+  }
+  lines.push(`当前段标题：${segment.title || '无'}`);
+  if (segment.summary) {
+    lines.push(`当前段摘要：${segment.summary}`);
+  }
+  if (prevSegment) {
+    lines.push(`上一段标题：${prevSegment.title || '无'}`);
+  }
+  if (nextSegment) {
+    lines.push(`下一段标题：${nextSegment.title || '无'}`);
+  }
+  return lines.join('\n');
+}
+
 export function buildSegmentPlanningPrompt(
   globalPrompt?: string,
   template?: PromptTemplate,
@@ -386,7 +441,7 @@ export function buildCoverPromptRegenerationPrompt(
 
 export function buildSegmentCardPrompt(
   params: {
-    fullTranscript: string;
+    programContext: string;
     segment: AISegment;
     globalPrompt?: string;
     cardPrompt?: string;
@@ -397,7 +452,7 @@ export function buildSegmentCardPrompt(
   template?: PromptTemplate,
 ): string {
   const {
-    fullTranscript,
+    programContext,
     segment,
     globalPrompt,
     cardPrompt,
@@ -438,7 +493,10 @@ export function buildSegmentCardPrompt(
     segmentTranscriptExcerpt: segment.transcriptExcerpt || '无',
     cardPrompt: cardPrompt?.trim() || '无',
     currentCardSection,
-    fullTranscript,
+    programContext,
+    // 旧版自定义模板可能仍在使用 {{fullTranscript}}；这里给它注入与 programContext
+    // 同值的浓缩上下文，避免破坏存量模板，同时不再发送整篇全文。
+    fullTranscript: programContext,
   });
 }
 
@@ -464,6 +522,7 @@ export async function planTranscriptSegments(
     buildSegmentPlanningPrompt(globalPrompt, planningTemplate),
     buildSrtText(entries),
     binding,
+    { label: 'planning.segment' },
   );
   const parsed = parseSegmentPlanningResult(payload);
   if (!parsed) {
@@ -488,6 +547,10 @@ export async function generateCardForSegment(
     currentCard?: AICard;
     cardTemplate?: PromptTemplate;
     projectBindings?: PromptBindingMap | null;
+    segmentIndex?: number;
+    totalSegments?: number;
+    prevSegment?: AISegment;
+    nextSegment?: AISegment;
   } = {},
 ): Promise<AICard> {
   const {
@@ -497,19 +560,38 @@ export async function generateCardForSegment(
     currentCard,
     cardTemplate,
     projectBindings,
+    segmentIndex,
+    totalSegments,
+    prevSegment,
+    nextSegment,
   } = options;
 
   if (entries.length === 0) {
     throw new Error('没有可用于生成卡片的字幕内容');
   }
 
-  const fullTranscript = buildSrtText(entries);
+  // 只发段内逐字稿（含 ±2s 缓冲），而不是整篇 SRT，显著降低单次请求体积
+  const segmentTranscript = buildSrtTextRange(entries, segment.startMs, segment.endMs);
+  const programContext = buildProgramContext({
+    programSummary: planning.summary,
+    keywords: planning.keywords,
+    segment,
+    segmentIndex,
+    totalSegments,
+    prevSegment,
+    nextSegment,
+  });
+
   const binding = maybeResolveBinding('cards.segment', settings, projectBindings);
+  const positionLabel =
+    typeof segmentIndex === 'number' && typeof totalSegments === 'number'
+      ? `cards.segment#${segmentIndex + 1}/${totalSegments}（${segment.id}）`
+      : `cards.segment（${segment.id}）`;
   const payload = await requestStructuredData(
     settings,
     buildSegmentCardPrompt(
       {
-        fullTranscript,
+        programContext,
         segment,
         globalPrompt: globalPrompt?.trim() || planning.globalPrompt,
         cardPrompt,
@@ -519,8 +601,9 @@ export async function generateCardForSegment(
       },
       cardTemplate,
     ),
-    fullTranscript,
+    segmentTranscript,
     binding,
+    { label: positionLabel },
   );
   const parsed = normalizeCard(payload, 0, segment.id, cardPrompt);
   if (!parsed) {
@@ -566,28 +649,70 @@ export async function analyzeSrt(
     cardTotal: total,
   });
 
-  const cards: AICard[] = [];
-  for (let i = 0; i < planning.segments.length; i++) {
-    const segment = planning.segments[i];
-    const card = await generateCardForSegment(entries, planning, segment, settings, {
-      generateStructuredData: requestStructuredData,
-      globalPrompt: planning.globalPrompt,
-      cardTemplate,
-      projectBindings,
-    });
-    cards.push(card);
-    const done = i + 1;
-    const percent = Math.min(95, Math.round(30 + (done / Math.max(1, total)) * 65));
-    onProgress?.({
-      phase: 'cards',
-      percent,
-      message: `生成内容卡片 ${done}/${total}`,
-      cardIndex: done,
-      cardTotal: total,
-    });
-  }
+  // 并发池：同时跑 CARD_CONCURRENCY 个段的卡片生成；进度按"完成顺序"累加
+  // 单段失败不阻塞其它段——失败段记入 cardErrors，UI 可引导用户对该段单独重生成
+  const CARD_CONCURRENCY = 4;
+  const cardSlots: (AICard | null)[] = new Array(planning.segments.length).fill(null);
+  const cardErrors: AIAnalysisCardError[] = [];
+  let done = 0;
+  let failed = 0;
+  let cursor = 0;
 
-  onProgress?.({ phase: 'done', percent: 100, message: '内容分析完成' });
+  const runOne = async (): Promise<void> => {
+    while (true) {
+      const i = cursor;
+      cursor += 1;
+      if (i >= planning.segments.length) return;
+      const segment = planning.segments[i];
+      try {
+        const card = await generateCardForSegment(entries, planning, segment, settings, {
+          generateStructuredData: requestStructuredData,
+          globalPrompt: planning.globalPrompt,
+          cardTemplate,
+          projectBindings,
+          segmentIndex: i,
+          totalSegments: total,
+          prevSegment: i > 0 ? planning.segments[i - 1] : undefined,
+          nextSegment: i + 1 < planning.segments.length ? planning.segments[i + 1] : undefined,
+        });
+        cardSlots[i] = card;
+        done += 1;
+      } catch (error) {
+        failed += 1;
+        cardErrors.push({
+          segmentId: segment.id,
+          segmentTitle: segment.title,
+          segmentIndex: i,
+          totalSegments: total,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+      const completed = done + failed;
+      const percent = Math.min(95, Math.round(30 + (completed / Math.max(1, total)) * 65));
+      const message =
+        failed > 0
+          ? `生成内容卡片 ${completed}/${total}（成功 ${done}，失败 ${failed}）`
+          : `生成内容卡片 ${completed}/${total}`;
+      onProgress?.({
+        phase: 'cards',
+        percent,
+        message,
+        cardIndex: completed,
+        cardTotal: total,
+      });
+    }
+  };
+
+  const workerCount = Math.min(CARD_CONCURRENCY, Math.max(1, planning.segments.length));
+  await Promise.all(Array.from({ length: workerCount }, () => runOne()));
+  const cards: AICard[] = cardSlots.filter((card): card is AICard => card !== null);
+
+  onProgress?.({
+    phase: 'done',
+    percent: 100,
+    message:
+      failed > 0 ? `内容分析完成（成功 ${done}，失败 ${failed}）` : '内容分析完成',
+  });
 
   return {
     segments: planning.segments,
@@ -596,6 +721,7 @@ export async function analyzeSrt(
     summary: planning.summary,
     keywords: planning.keywords,
     globalPrompt: planning.globalPrompt,
+    cardErrors: cardErrors.length > 0 ? cardErrors : undefined,
   };
 }
 

@@ -133,6 +133,14 @@ export interface CoverCandidate {
 
 export type { CoverEditState, CoverTextOverlay } from '../lib/cover-editor/contracts';
 
+export interface AIAnalysisCardError {
+  segmentId: string;
+  segmentTitle?: string;
+  segmentIndex?: number;
+  totalSegments?: number;
+  message: string;
+}
+
 export interface AIAnalysisResult {
   segments: AISegment[];
   cards: AICard[];
@@ -140,6 +148,11 @@ export interface AIAnalysisResult {
   summary: string;
   keywords: string[];
   globalPrompt?: string;
+  /**
+   * 段卡片生成中失败的段（不阻塞其它段）。UI 可据此在 Editor 里
+   * 引导用户对失败段单独执行"重生成卡片"。
+   */
+  cardErrors?: AIAnalysisCardError[];
 }
 
 /** LM Studio 默认 OpenAI 兼容端点 */
@@ -279,6 +292,7 @@ export type ImageProviderType =
   | 'doubao'
   | 'imagen'
   | 'wanx'
+  | 'apimart'
   | 'custom';
 
 /** 图像宽高比公共集 */

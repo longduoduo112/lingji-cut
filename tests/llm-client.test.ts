@@ -1,27 +1,50 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AISettings } from '../src/types/ai';
 
-const { invokeMock, bindInvokeMock, bindMock, streamMock, chatOpenAIMock } = vi.hoisted(() => {
-  const invoke = vi.fn();
-  const bindInvoke = vi.fn();
-  const bind = vi.fn(() => ({
-    invoke: bindInvoke,
-  }));
-  const stream = vi.fn();
-  const chatOpenAI = vi.fn().mockImplementation(() => ({
-    invoke,
-    bind,
-    stream,
-  }));
+const { invokeMock, bindInvokeMock, bindStreamMock, bindMock, streamMock, chatOpenAIMock } =
+  vi.hoisted(() => {
+    const invoke = vi.fn();
+    const bindInvoke = vi.fn();
+    const bindStream = vi.fn();
+    const bind = vi.fn(() => ({
+      invoke: bindInvoke,
+      stream: bindStream,
+    }));
+    const stream = vi.fn();
+    const chatOpenAI = vi.fn().mockImplementation(() => ({
+      invoke,
+      bind,
+      stream,
+    }));
 
+    return {
+      invokeMock: invoke,
+      bindInvokeMock: bindInvoke,
+      bindStreamMock: bindStream,
+      bindMock: bind,
+      streamMock: stream,
+      chatOpenAIMock: chatOpenAI,
+    };
+  });
+
+// 帮 generateStructuredData 的流式 mock 构造一次性 chunk 流
+function asAsyncIterable(...chunks: Array<{ content: unknown }>): AsyncIterable<{ content: unknown }> {
   return {
-    invokeMock: invoke,
-    bindInvokeMock: bindInvoke,
-    bindMock: bind,
-    streamMock: stream,
-    chatOpenAIMock: chatOpenAI,
+    [Symbol.asyncIterator]() {
+      let i = 0;
+      return {
+        async next() {
+          if (i >= chunks.length) return { value: undefined, done: true } as const;
+          const value = chunks[i++];
+          return { value, done: false } as const;
+        },
+        async return() {
+          return { value: undefined, done: true } as const;
+        },
+      };
+    },
   };
-});
+}
 
 vi.mock('@langchain/openai', () => ({
   ChatOpenAI: chatOpenAIMock,
@@ -42,15 +65,14 @@ describe('llm-client langchain adapter', () => {
   beforeEach(() => {
     invokeMock.mockReset();
     bindInvokeMock.mockReset();
+    bindStreamMock.mockReset();
     bindMock.mockClear();
     streamMock.mockReset();
     chatOpenAIMock.mockClear();
   });
 
-  it('passes enableThinking=false via modelKwargs and uses json mode binding', async () => {
-    bindInvokeMock.mockResolvedValue({
-      content: '{"ok":true}',
-    });
+  it('passes enableThinking=false via modelKwargs and uses json mode binding via stream', async () => {
+    bindStreamMock.mockResolvedValue(asAsyncIterable({ content: '{"ok":true}' }));
 
     await generateStructuredData(
       {
@@ -79,8 +101,8 @@ describe('llm-client langchain adapter', () => {
     expect(bindMock).toHaveBeenCalledWith({
       response_format: { type: 'json_object' },
     });
-    expect(bindInvokeMock).toHaveBeenCalledTimes(1);
-    expect(bindInvokeMock.mock.calls[0]?.[0]).toEqual(
+    expect(bindStreamMock).toHaveBeenCalledTimes(1);
+    expect(bindStreamMock.mock.calls[0]?.[0]).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ content: '系统提示' }),
         expect.objectContaining({ content: '用户输入' }),
