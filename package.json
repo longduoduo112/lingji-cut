@@ -7,7 +7,9 @@
     "dev": "electron-vite dev --watch",
     "build": "electron-vite build && node scripts/obfuscate-build.cjs && node scripts/bundle-remotion.cjs",
     "package:mac": "node scripts/package-mac.cjs",
+    "dmg:mac": "node scripts/make-dmg-mac.cjs",
     "dist:mac": "npm run build && npm run package:mac",
+    "dist:dmg:mac": "npm run dist:mac && npm run dmg:mac",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -25,6 +27,7 @@
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.7.0",
     "electron": "^41.1.0",
+    "electron-installer-dmg": "^5.0.1",
     "electron-vite": "^5.0.0",
     "javascript-obfuscator": "^5.4.1",
     "tailwindcss": "^4.2.2",
