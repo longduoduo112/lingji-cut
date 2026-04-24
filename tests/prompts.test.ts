@@ -129,9 +129,12 @@ describe('renderUserPromptWithLock', () => {
         cardPrompt: '无',
         currentCardSection: '当前卡片线索：无',
         programContext: '节目级浓缩上下文',
+        sandboxReference: '沙箱 API 示例',
       },
     );
-    expect(cards).toContain('webCard');
+    // 卡片生成链路已收敛到 Motion Card：契约段必须提及 motionCard / renderMode
+    expect(cards).toContain('motionCard');
     expect(cards).toContain('renderMode');
+    expect(cards).not.toContain('webCard');
   });
 });

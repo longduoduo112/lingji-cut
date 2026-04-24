@@ -156,7 +156,7 @@ describe('AI type definitions', () => {
       },
       renderMode: 'legacy',
       cardPrompt: undefined,
-      webCard: undefined,
+      motionCard: undefined,
       sourceStartMs: 12_000,
       sourceEndMs: 28_000,
     });

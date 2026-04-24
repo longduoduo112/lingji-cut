@@ -90,10 +90,10 @@ user: |-
 `;
 
 const CARDS_SEGMENT = `name: cards.segment
-description: 围绕单个 segment 生成网页信息卡
-version: 2
+description: 围绕单个 segment 生成 Motion Card（Remotion 动画组件）
+version: 3
 user: |-
-  你是一个播客内容分析助手，同时也是一个网页信息卡设计师。现在要围绕单个内容段落生成一张网页信息卡。
+  你是一个播客内容分析助手，同时也是一个 Remotion 动画组件生成器。现在要围绕单个内容段落生成一张 Motion Card，输出一段**可直接被 Babel 编译**的 React/Remotion JSX 组件源码。
 
   整期创作提示词：
   {{globalPrompt}}
@@ -121,18 +121,25 @@ user: |-
   - startMs 必须对应"观众真正听到该主题"的那句字幕开始时间
   - 不要把铺垫、转场、提问或上一话题的时间提前算进来
   - endMs 必须对应该主题核心表达完成的那句字幕结束时间
-  - displayDurationMs 必须覆盖这张卡片对应的核心表达，不能在主题刚讲到时就结束
+  - displayDurationMs 必须覆盖这张卡片对应的核心表达
   - 如果一个主题在后半段才真正展开，宁可把 startMs 设晚，也不要让卡片提前出现
 
-  统一视觉基线（首次生成与二次重生成都必须遵守）：
-  - 必须按 1920x1080 的 16:9 画布设计，并默认铺满整个画面
-  - 禁止只做居中的窄卡片、手机比例、小弹窗或大量留白布局
-  - 不要把主要内容限制在很小的 max-width 容器里
-  - 尽量做成信息层级清晰、视觉冲击力强的 16:9 卡片
-  - 不要输出 markdown 代码块
-  - 内容必须忠于字幕事实，不要编造
-  - 禁止输出任何"数据来源""来源：""Source""数据统计口径"之类的底部标注、免责声明、署名或角标文案
-  - 请保留 card 的 title/content 作为结构化兜底文本
+  Motion Card 源码硬约束（motionCard.sourceCode 必须同时满足以下全部规则）：
+  - 必须定义 \`const MotionComponent = (props) => { ... }\`，并在函数体内 return 一段 JSX
+  - props 固定为 \`{ frame, fps, durationInFrames, width, height }\`
+    - frame：当前 Sequence 内相对帧号（0 ~ durationInFrames）
+    - durationInFrames：该卡片自身总帧数，所有 interpolate / spring 的进度都要基于它归一化
+    - width / height：容器像素尺寸（fullscreen 为 1920×1080，PiP 为 PiP 尺寸），布局必须用这两个值，禁止硬编码 1920/1080
+  - 禁止使用 import / export / async / await
+  - 禁止使用 useCurrentFrame / useVideoConfig（运行时已通过 props 注入 frame / fps / durationInFrames / width / height）
+  - 禁止从 window / globalThis 读取 React / Remotion，禁止 require()
+  - 可以直接使用沙箱注入的 API：interpolate、spring、Easing、Sequence、AbsoluteFill、Img、Video、Audio、Noise、Paths、Shapes 等
+  - 可以使用 React.useMemo / React.useState / React.useEffect 等 React API
+  - 面向 16:9 视频画面设计，默认铺满整个容器（使用 props.width / props.height）
+  - 必须用纯内联 CSS（style={{...}}）；不要引入外部字体 / 网络图片 / HTML <link>
+  - 不要输出 markdown 代码块；sourceCode 字段里只放 JSX 源码本身
+  - 内容必须忠于字幕事实，不要编造；不要在画面里放"数据来源""Source""免责声明"等标注
+  - 保留顶层 title / content 作为结构化兜底文本（用于时间轴显示）
 
   颜色建议：
   - summary: #79c4ff
@@ -142,17 +149,21 @@ user: |-
   - quote: #ff8f7a
 
   整体风格建议：
-  - 偏 macOS desktop dark / Swift UI 的半透明磨砂层次
+  - 偏 macOS desktop dark / SwiftUI 的半透明磨砂层次
   - 高光和阴影要克制，避免霓虹紫、强饱和电商橙、网页营销页式渐变
+  - 动画要有明确进入 / 停留 / 退出节奏，不要堆砌粒子或闪烁
 
   其他要求：
   - 必须围绕当前 segment 生成，不要偏离整期主线
-  - 可以参考"当前卡片线索"延续排版与视觉方向，但不要照抄旧内容
-  - 当前 segment 的逐字稿会作为用户消息传入，请直接基于它判断卡片信息结构
+  - 可以参考"当前卡片线索"延续视觉方向，但不要照抄旧内容
+  - 当前 segment 的逐字稿会作为用户消息传入，直接基于它判断卡片信息结构
   - 不需要复述整期全文，只需要利用下方"节目级上下文"理解定位即可
 
   节目级上下文（节目摘要 / 关键词 / 当前段在整期中的位置，用于把握定位，不要逐字复述）：
   {{programContext}}
+
+  当前可用 Motion 沙箱 API：
+  {{sandboxReference}}
 `;
 
 const SCRIPT_REVIEW = `name: script.review

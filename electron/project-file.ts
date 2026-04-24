@@ -9,7 +9,6 @@ import {
   type ProjectSection,
 } from '../src/lib/project-persistence';
 import { parsePersistedScriptState } from '../src/lib/script-persistence';
-import { materializeTimelineWebCards, materializePersistedAIState } from './web-card-storage';
 import type { TimelineData } from '../src/types';
 
 const PROJECT_FILE = 'project.json';
@@ -157,7 +156,8 @@ export async function loadProjectFile(projectDir: string): Promise<ProjectData> 
 
 /**
  * 保存项目某一段数据，通过写锁保证并发安全。
- * timeline / aiAnalysis 段会先 materialize web card 资源（将 srcDoc 写入本地文件并替换为 src 路径）。
+ * Web Card 路径已下线，所有卡片走 Motion Card（JSX → Babel 编译 → 运行时沙箱），
+ * 源码直接内嵌在 project.json，不再需要把 srcDoc 写到磁盘。
  */
 export async function saveProjectSection(
   projectDir: string,
@@ -166,42 +166,10 @@ export async function saveProjectSection(
 ): Promise<void> {
   return withWriteLock(projectDir, async () => {
     const current = (await readProjectJson(projectDir)) ?? createDefaultProjectData();
-    let sectionValue = value;
-
-    if (section === 'timeline' && sectionValue) {
-      const { data: materialized } = await materializeTimelineWebCards(
-        projectDir,
-        sectionValue as TimelineData,
-      );
-      sectionValue = materialized;
-    }
-
-    if (section === 'aiAnalysis' && sectionValue) {
-      const aiValue = sectionValue as {
-        analysisResult: ProjectData['aiAnalysis']['analysisResult'];
-        coverCandidates: ProjectData['aiAnalysis']['coverCandidates'];
-        motionCards?: ProjectData['aiAnalysis']['motionCards'];
-        storyboardPlan?: ProjectData['aiAnalysis']['storyboardPlan'];
-      };
-      const { data: materialized } = await materializePersistedAIState(projectDir, {
-        version: 3,
-        analysisResult: aiValue.analysisResult,
-        coverCandidates: aiValue.coverCandidates,
-        motionCards: aiValue.motionCards ?? [],
-        storyboardPlan: aiValue.storyboardPlan ?? null,
-      });
-      sectionValue = {
-        analysisResult: materialized.analysisResult,
-        coverCandidates: materialized.coverCandidates,
-        motionCards: materialized.motionCards ?? [],
-        storyboardPlan: materialized.storyboardPlan ?? null,
-      };
-    }
-
     const merged = mergeProjectSection(
       current,
       section,
-      sectionValue as ProjectData[typeof section],
+      value as ProjectData[typeof section],
     );
     await writeProjectJson(projectDir, merged);
   });

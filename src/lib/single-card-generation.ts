@@ -60,8 +60,8 @@ export async function generateAndInsertSingleCardFromSubtitles(
       projectBindings: aiState.projectBindings,
     });
 
-    if (card.renderMode !== 'web-card') {
-      throw new Error('生成结果不是 web-card，请重试');
+    if (card.renderMode !== 'motion-card' || !card.motionCard?.compiledCode) {
+      throw new Error('生成结果不是可编译的 motion-card，请重新生成');
     }
 
     taskStore.updateTask(taskId, { phase: '写入项目配置' });

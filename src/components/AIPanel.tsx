@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { v4 as uuid } from 'uuid';
 import {
   createPersistedAIState,
   parsePersistedAIState,
@@ -13,17 +12,11 @@ import { useAIStore, loadAISettings } from '../store/ai';
 import { useTaskProgressStore } from '../store/task-progress';
 import { getProjectDir, useTimelineStore } from '../store/timeline';
 import {
-  DEFAULT_CARD_DURATION_MS,
   buildAICardTimelineDraft,
-  getDefaultCardStyle,
-  getDefaultTemplate,
   type AICard,
   type AIAnalysisResult,
   type CoverCandidate,
 } from '../types/ai';
-import { getFileNameFromPath } from '../lib/utils';
-import { getDroppedFilePath, getHtmlImportFileError } from '../lib/import-files';
-import { createImportedHtmlWebCardPayload, extractHtmlTitle } from '../lib/web-card';
 import { AICardList, type AICardPlacement } from './AICardList';
 import { AppIcon } from './AppIcon';
 import { AICoverPanel } from './AICoverPanel';
@@ -65,36 +58,6 @@ const TAB_META: Record<AITabKey, { label: string; shortLabel: string }> = {
   motion: { label: '视觉编排', shortLabel: '视觉' },
 };
 const SUB_TABS: AITabKey[] = ['cards', 'cover', 'motion'];
-const IMPORTED_CARD_TITLE_FALLBACK = '导入卡片';
-type DroppedHtmlFile = File & { path?: string };
-
-function getImportedCardTitle(filePath: string, html: string): string {
-  const htmlTitle = extractHtmlTitle(html);
-  if (htmlTitle) {
-    return htmlTitle;
-  }
-
-  const fileName = getFileNameFromPath(filePath);
-  const fallbackTitle = fileName.replace(/\.[^.]+$/, '').trim();
-  return fallbackTitle || IMPORTED_CARD_TITLE_FALLBACK;
-}
-
-function findDroppedHtmlFile(
-  files: FileList | readonly DroppedHtmlFile[],
-  getPathForFile: (file: File) => string,
-): { file: DroppedHtmlFile; path: string } | null {
-  for (const file of Array.from(files as ArrayLike<DroppedHtmlFile>)) {
-    const resolvedPath = getDroppedFilePath(file, getPathForFile) || file.name || '';
-    if (!getHtmlImportFileError(resolvedPath)) {
-      return {
-        file,
-        path: resolvedPath,
-      };
-    }
-  }
-
-  return null;
-}
 
 export function AIPanel({
   compact,
@@ -148,7 +111,6 @@ export function AIPanel({
 
   const [isRegeneratingCoverPrompt, setIsRegeneratingCoverPrompt] = useState(false);
   const [globalPromptDraft, setGlobalPromptDraft] = useState('');
-  const [isImportDragActive, setIsImportDragActive] = useState(false);
   const [aiSettingsIssue, setAISettingsIssue] = useState<string | null>(() =>
     getAISettingsIssue(null),
   );
@@ -488,149 +450,6 @@ export function AIPanel({
     [handlePersistedCovers, setGeneratingCovers, setAnalysisError],
   );
 
-  const importHtmlCardFromFile = useCallback(async (selectedFile: { path: string; content: string }) => {
-    if (!selectedFile.content.trim()) {
-      setAnalysisError('导入的 HTML 文件内容为空，请重新选择');
-      return;
-    }
-
-    try {
-      const nextCardStartMs = (analysisResult?.cards ?? []).reduce(
-        (maxEnd, card) =>
-          Math.max(maxEnd, Number.isFinite(card.endMs) ? Math.max(0, Math.round(card.endMs)) : 0),
-        0,
-      );
-      const nextCardEndMs = nextCardStartMs + DEFAULT_CARD_DURATION_MS;
-      const title = getImportedCardTitle(selectedFile.path, selectedFile.content);
-      const segmentId = `imported-segment-${uuid()}`;
-      const cardId = `imported-card-${uuid()}`;
-      const importedCard: AICard = {
-        id: cardId,
-        segmentId,
-        type: 'data',
-        title,
-        content: title,
-        startMs: nextCardStartMs,
-        endMs: nextCardEndMs,
-        displayDurationMs: DEFAULT_CARD_DURATION_MS,
-        displayMode: 'pip',
-        template: getDefaultTemplate('data'),
-        enabled: true,
-        style: getDefaultCardStyle('data'),
-        renderMode: 'web-card',
-        webCard: createImportedHtmlWebCardPayload(selectedFile),
-      };
-      const importedSegment = {
-        id: segmentId,
-        title,
-        summary: title,
-        startMs: nextCardStartMs,
-        endMs: nextCardEndMs,
-        transcriptExcerpt: `HTML 导入：${getFileNameFromPath(selectedFile.path)}`,
-      };
-
-      const nextResult: AIAnalysisResult = analysisResult
-        ? {
-            ...analysisResult,
-            segments: [...analysisResult.segments, importedSegment],
-            cards: [...analysisResult.cards, importedCard],
-          }
-        : {
-            segments: [importedSegment],
-            cards: [importedCard],
-            coverPrompts: [],
-            summary: '',
-            keywords: [],
-            globalPrompt: globalPromptDraft.trim() || undefined,
-          };
-
-      setAnalysisError(null);
-      setAnalysisResult(nextResult);
-
-      const persistedState = await persistAIState(nextResult, coverCandidates);
-      const persistedResult = persistedState.analysisResult ?? nextResult;
-      setAnalysisResult(persistedResult);
-      setCoverCandidates(persistedState.coverCandidates);
-      onOpenCardInspector?.(cardId);
-    } catch (error) {
-      setAnalysisError(error instanceof Error ? error.message : '导入 HTML 卡片失败');
-    }
-  }, [
-    analysisResult,
-    coverCandidates,
-    globalPromptDraft,
-    onOpenCardInspector,
-    persistAIState,
-    setAnalysisError,
-    setAnalysisResult,
-    setCoverCandidates,
-  ]);
-
-  const handleImportHtmlCard = useCallback(async () => {
-    if (!window.electronAPI?.selectHtmlFile) {
-      setAnalysisError('当前环境不支持导入 HTML 卡片');
-      return;
-    }
-
-    const selectedFile = await window.electronAPI.selectHtmlFile();
-    if (!selectedFile) {
-      return;
-    }
-
-    await importHtmlCardFromFile(selectedFile);
-  }, [importHtmlCardFromFile, setAnalysisError]);
-
-  const handleImportHtmlDragOver = useCallback((event: React.DragEvent<HTMLButtonElement>) => {
-    if (isAnalyzing || !Array.from(event.dataTransfer.types).includes('Files')) {
-      return;
-    }
-
-    event.preventDefault();
-    const getPathForFile = window.electronAPI?.getPathForFile ?? (() => '');
-    const droppedFile = findDroppedHtmlFile(event.dataTransfer.files, getPathForFile);
-    const hasPendingExternalFiles = event.dataTransfer.files.length === 0;
-    event.dataTransfer.dropEffect = droppedFile || hasPendingExternalFiles ? 'copy' : 'none';
-    setIsImportDragActive(Boolean(droppedFile) || hasPendingExternalFiles);
-  }, [isAnalyzing]);
-
-  const handleImportHtmlDragLeave = useCallback((event: React.DragEvent<HTMLButtonElement>) => {
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
-      return;
-    }
-
-    setIsImportDragActive(false);
-  }, []);
-
-  const handleImportHtmlDrop = useCallback(async (event: React.DragEvent<HTMLButtonElement>) => {
-    if (!Array.from(event.dataTransfer.types).includes('Files')) {
-      return;
-    }
-
-    event.preventDefault();
-    setIsImportDragActive(false);
-
-    if (isAnalyzing) {
-      return;
-    }
-
-    const getPathForFile = window.electronAPI?.getPathForFile ?? (() => '');
-    const droppedFile = findDroppedHtmlFile(event.dataTransfer.files, getPathForFile);
-    if (!droppedFile) {
-      setAnalysisError('请拖入 HTML 文件（.html 或 .htm）。');
-      return;
-    }
-
-    try {
-      const content = await droppedFile.file.text();
-      await importHtmlCardFromFile({
-        path: droppedFile.path,
-        content,
-      });
-    } catch (error) {
-      setAnalysisError(error instanceof Error ? error.message : '导入 HTML 卡片失败');
-    }
-  }, [importHtmlCardFromFile, isAnalyzing, setAnalysisError]);
-
   const handleRegenerateCoverPrompt = useCallback(async () => {
     if (!analysisResult) {
       return;
@@ -917,17 +736,6 @@ export function AIPanel({
                       </>
                     )}
                   </Button>
-
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className={styles.secondaryButton}
-                    onClick={() => void handleImportHtmlCard()}
-                    disabled={isAnalyzing}
-                  >
-                    <AppIcon name="upload" size={14} />
-                    导入 HTML 卡片
-                  </Button>
                 </div>
 
                 {isAnalyzing ? (
@@ -942,37 +750,6 @@ export function AIPanel({
 
             {hasGeneratedCards ? (
               <section className={styles.cardsSection}>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className={[
-                    styles.importRowButton,
-                    isImportDragActive ? styles.importRowButtonActive : '',
-                  ].filter(Boolean).join(' ')}
-                  data-ai-import-row="true"
-                  data-drag-active={isImportDragActive ? 'true' : 'false'}
-                  onClick={() => void handleImportHtmlCard()}
-                  onDragOver={handleImportHtmlDragOver}
-                  onDragEnter={handleImportHtmlDragOver}
-                  onDragLeave={handleImportHtmlDragLeave}
-                  onDrop={(event) => void handleImportHtmlDrop(event)}
-                  disabled={isAnalyzing}
-                >
-                  <span className={styles.importRowContent}>
-                    <AppIcon name="upload" size={14} />
-                    <span className={styles.importRowTextGroup}>
-                      <span className={styles.importRowTitle}>
-                        {isImportDragActive ? '松开导入 HTML 卡片' : '导入 HTML 卡片'}
-                      </span>
-                      <span className={styles.importRowHint}>
-                        {isImportDragActive
-                          ? '将自动创建为数据卡片，默认使用画中画模式'
-                          : '支持点击选择，也支持把 .html / .htm 文件直接拖到这里'}
-                      </span>
-                    </span>
-                  </span>
-                </Button>
-
                 <ActionBar
                   className={styles.actionBar}
                   data-ai-action-bar="true"

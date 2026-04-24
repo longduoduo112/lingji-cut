@@ -9,8 +9,6 @@ import { InsightCard } from './cards/InsightCard';
 import { ChapterCard } from './cards/ChapterCard';
 import { QuoteCard } from './cards/QuoteCard';
 import { MotionCardOverlay } from './MotionCardOverlay';
-import { WebCardOverlay } from './WebCardOverlay';
-import { hasWebCardSource } from '../types/ai';
 
 interface AICardOverlayProps {
   overlay: OverlayItem;
@@ -50,10 +48,6 @@ function renderCard(
         height={context.motionHeight}
       />
     );
-  }
-
-  if (data.renderMode === 'web-card' && hasWebCardSource(data.webCard)) {
-    return <WebCardOverlay webCard={data.webCard!} />;
   }
 
   if (data.cardType === 'summary') {
@@ -96,9 +90,7 @@ export function AICardOverlay({ overlay, fps, chapterIndex = 1 }: AICardOverlayP
   const isMotionCard =
     overlay.aiCardData.renderMode === 'motion-card' &&
     !!overlay.aiCardData.motionCard?.compiledCode;
-  const isWebCard =
-    overlay.aiCardData.renderMode === 'web-card' && hasWebCardSource(overlay.aiCardData.webCard);
-  const isSpecialCard = isWebCard || isMotionCard;
+  const isSpecialCard = isMotionCard;
   const scale = Math.min(overlay.position.width / 1_920, overlay.position.height / 1_080);
   // Motion Card 需要知道 sequence 自己的宽高（非整个 composition），
   // PiP 模式下用 overlay 实际尺寸，fullscreen 模式回退到 1920x1080 设计基准。
@@ -121,9 +113,8 @@ export function AICardOverlay({ overlay, fps, chapterIndex = 1 }: AICardOverlayP
         overflow: 'hidden',
         boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
       };
-  // Web cards render as iframes — their parent must provide explicit dimensions
-  // so height:100% on the iframe can resolve. Non-web cards have their own
-  // 1920×1080 CSS and size themselves; fitWebCardIframe handles internal scaling.
+  // Motion Card 自身承载 props.width/height 的布局约束；传统卡片保留 1920×1080 设计
+  // 并用 scale 落到 overlay 的像素盒子里。
   const contentStyle: CSSProperties = isSpecialCard
     ? { width: '100%', height: '100%' }
     : isFullscreen

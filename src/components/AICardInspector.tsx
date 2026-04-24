@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { getAICardOverlayPosition } from '../lib/ai-card-layout';
-import { createImportedHtmlWebCardPayload } from '../lib/web-card';
 import type { AICard, AICardType } from '../types/ai';
 import { Alert, Button, Input, NumberField, PillGroup, type PillGroupItem, Textarea } from '../ui';
 import { AppIcon } from './AppIcon';
-import { WebCardPreview } from './WebCardPreview';
 import styles from './AICardInspector.module.css';
 
 interface AICardInspectorProps {
@@ -51,8 +49,6 @@ export function AICardInspector({
   const [type, setType] = useState<AICardType>('summary');
   const [displayMode, setDisplayMode] = useState<'fullscreen' | 'pip'>('fullscreen');
   const [displayDurationMs, setDisplayDurationMs] = useState(5_000);
-  const [previewWebCard, setPreviewWebCard] = useState<AICard['webCard']>();
-  const [importError, setImportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!card) {
@@ -67,8 +63,6 @@ export function AICardInspector({
     setType(card.type);
     setDisplayMode(card.displayMode);
     setDisplayDurationMs(card.displayDurationMs);
-    setPreviewWebCard(card.webCard);
-    setImportError(null);
   }, [card]);
 
   if (!card) {
@@ -86,7 +80,6 @@ export function AICardInspector({
         })()
       : content;
 
-  const effectiveWebCard = previewWebCard ?? card.webCard;
   const draftUpdates: Partial<AICard> = {
     title,
     content: parsedContent,
@@ -95,13 +88,10 @@ export function AICardInspector({
     displayDurationMs,
     cardPrompt: cardPrompt.trim() || undefined,
     template: `${type}-default`,
-    renderMode: effectiveWebCard ? 'web-card' : card.renderMode,
-    webCard: effectiveWebCard,
   };
 
-  const hasPreview = Boolean(effectiveWebCard?.src || effectiveWebCard?.srcDoc);
-  const importedSourceLabel =
-    effectiveWebCard?.sourceKind === 'imported-file' ? effectiveWebCard.sourceLabel : null;
+  const motion = card.motionCard;
+  const hasCompiledMotion = Boolean(motion?.compiledCode);
   const previewCardPosition = getAICardOverlayPosition(displayMode, previewWidth, previewHeight);
   const previewFrameStyle =
     displayMode === 'fullscreen'
@@ -113,51 +103,12 @@ export function AICardInspector({
         };
 
   const handleRegenerateClick = async () => {
-    setImportError(null);
-    if (previewWebCard) {
-      setPreviewWebCard({
-        ...previewWebCard,
-        runtimeStatus: 'loading',
-      });
-    }
-
-    const regeneratedCard = await onRegenerate(draftUpdates);
-    if (regeneratedCard?.webCard) {
-      setPreviewWebCard(regeneratedCard.webCard);
-      return;
-    }
-
-    setPreviewWebCard(card.webCard);
-  };
-
-  const handleImportHtmlClick = async () => {
-    if (!window.electronAPI?.selectHtmlFile) {
-      setImportError('当前环境不支持导入 HTML 文件');
-      return;
-    }
-
-    try {
-      const selectedFile = await window.electronAPI.selectHtmlFile();
-      if (!selectedFile) {
-        return;
-      }
-
-      if (!selectedFile.content.trim()) {
-        setImportError('导入的 HTML 文件内容为空，请重新选择');
-        return;
-      }
-
-      setImportError(null);
-      setPreviewWebCard(createImportedHtmlWebCardPayload(selectedFile));
-    } catch (error) {
-      setImportError(error instanceof Error ? error.message : '导入 HTML 失败');
-    }
+    await onRegenerate(draftUpdates);
   };
 
   return (
     <div className={styles.root}>
       {errorMessage ? <Alert variant="error" description={errorMessage} /> : null}
-      {importError ? <Alert variant="error" description={importError} /> : null}
 
       <div className={styles.section} data-ai-card-section="text-content">
         <span className={styles.sectionTitle}>文字内容</span>
@@ -235,51 +186,34 @@ export function AICardInspector({
       </div>
 
       <div className={styles.section} data-ai-card-section="preview">
-        <span className={styles.sectionTitle}>网页卡片预览</span>
-
-        {importedSourceLabel ? (
-          <div className={styles.importedSource} data-ai-card-imported-source="true">
-            <span className={styles.importedSourceBadge}>已导入 HTML</span>
-            <span className={styles.importedSourceName}>{importedSourceLabel}</span>
-          </div>
-        ) : null}
+        <span className={styles.sectionTitle}>Motion 卡片状态</span>
 
         <div className={styles.previewFrameShell} data-ai-card-preview-frame="true">
-          {hasPreview ? (
+          <div
+            className={styles.previewStage}
+            style={{ aspectRatio: `${Math.max(1, previewWidth)} / ${Math.max(1, previewHeight)}` }}
+          >
+            <div className={styles.previewCanvas} />
             <div
-              className={styles.previewStage}
-              style={{ aspectRatio: `${Math.max(1, previewWidth)} / ${Math.max(1, previewHeight)}` }}
+              className={[
+                styles.previewFrame,
+                displayMode === 'fullscreen'
+                  ? styles.previewFrameFullscreen
+                  : styles.previewFramePip,
+              ].join(' ')}
+              style={previewFrameStyle}
             >
-              <div className={styles.previewCanvas} />
-              <div
-                className={[
-                  styles.previewFrame,
-                  displayMode === 'fullscreen'
-                    ? styles.previewFrameFullscreen
-                    : styles.previewFramePip,
-                ].join(' ')}
-                style={previewFrameStyle}
-              >
-                <WebCardPreview
-                  webCard={effectiveWebCard}
-                  stageWidth={previewWidth}
-                  stageHeight={previewHeight}
-                  preserveAspectRatio={false}
-                  className={styles.previewCardSurface}
-                  isLoading={isRegenerating}
-                  loadingLabel="正在重生成网页卡片..."
-                />
+              <div className={styles.previewPlaceholder}>
+                <AppIcon name="eye" size={20} className={styles.previewIcon} />
+                <span className={styles.previewHint}>
+                  {hasCompiledMotion ? 'Motion 卡片已就绪' : '尚未生成 Motion 代码'}
+                </span>
+                <span className={styles.previewBadge}>
+                  {displayMode === 'fullscreen' ? '全屏模式' : '画中画模式'}
+                </span>
               </div>
             </div>
-          ) : (
-            <div className={styles.previewPlaceholder}>
-              <AppIcon name="eye" size={20} className={styles.previewIcon} />
-              <span className={styles.previewHint}>卡片预览区</span>
-              <span className={styles.previewBadge}>
-                {displayMode === 'fullscreen' ? '全屏模式' : '画中画模式'}
-              </span>
-            </div>
-          )}
+          </div>
         </div>
 
         <div className={styles.actions}>
@@ -288,18 +222,6 @@ export function AICardInspector({
               取消
             </Button>
           ) : null}
-
-          <Button
-            variant="secondary"
-            size="sm"
-            className={styles.actionBtn}
-            leftIcon={<AppIcon name="upload" size={12} />}
-            onClick={() => {
-              void handleImportHtmlClick();
-            }}
-          >
-            导入 HTML
-          </Button>
 
           <Button
             variant="secondary"

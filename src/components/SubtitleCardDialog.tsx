@@ -173,7 +173,7 @@ function SubtitleCardDialogBody({
       <DialogHeader>
         <DialogTitle>生成内容卡片</DialogTitle>
         <p className="mt-1 text-sm text-mac-text-muted">
-          基于选中字幕二次编辑后生成单张 web-card。
+          基于选中字幕二次编辑后生成单张 Motion 卡片（LLM 生成的 Remotion 组件会实时编译校验）。
         </p>
       </DialogHeader>
       <DialogBody className="space-y-4">

@@ -3,12 +3,19 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { AICardEditModal } from '../src/components/AICardEditModal';
 
 describe('AICardEditModal', () => {
-  it('renders editing fields for the selected ai card', () => {
+  const baseStyle = {
+    primaryColor: '#6366f1',
+    backgroundColor: '#0f172a',
+    fontSize: 48,
+  } as const;
+
+  it('renders editing fields and motion-card status for the selected ai card', () => {
     const html = renderToStaticMarkup(
       <AICardEditModal
         visible
         card={{
           id: 'card-1',
+          segmentId: 'segment-1',
           type: 'summary',
           title: '本期要点',
           content: '重点内容',
@@ -18,14 +25,15 @@ describe('AICardEditModal', () => {
           displayMode: 'fullscreen',
           template: 'summary-default',
           enabled: true,
-          style: {
-            primaryColor: '#6366f1',
-            backgroundColor: '#0f172a',
-            fontSize: 48,
+          renderMode: 'motion-card',
+          motionCard: {
+            sourceCode: 'const MotionComponent = (props) => null;',
+            compiledCode: 'var MotionComponent = function(props){ return null; };',
+            compiledAt: 1_715_000_000_000,
+            prompt: 'demo',
+            retryCount: 0,
           },
-          webCard: {
-            srcDoc: '<!doctype html><html><body><h1>预览</h1></body></html>',
-          },
+          style: baseStyle,
         }}
         isRegenerating={false}
         previewWidth={1080}
@@ -39,20 +47,21 @@ describe('AICardEditModal', () => {
     expect(html).toContain('编辑卡片');
     expect(html).toContain('文字内容');
     expect(html).toContain('展示设置');
-    expect(html).toContain('网页卡片预览');
+    expect(html).toContain('Motion 卡片状态');
+    expect(html).toContain('Motion 卡片已就绪');
     expect(html).toContain('危险操作');
     expect(html).toContain('重新生成');
     expect(html).toContain('data-ai-card-preview-frame="true"');
-    expect(html).toContain('data-web-card-normalized=&quot;true&quot;');
     expect(html).toContain('删除此卡片');
   });
 
-  it('shows a loading mask over the web-card preview while regenerating', () => {
+  it('shows the regenerating affordance while the card is being regenerated', () => {
     const html = renderToStaticMarkup(
       <AICardEditModal
         visible
         card={{
           id: 'card-1',
+          segmentId: 'segment-1',
           type: 'summary',
           title: '本期要点',
           content: '重点内容',
@@ -62,14 +71,7 @@ describe('AICardEditModal', () => {
           displayMode: 'pip',
           template: 'summary-default',
           enabled: true,
-          style: {
-            primaryColor: '#6366f1',
-            backgroundColor: '#0f172a',
-            fontSize: 48,
-          },
-          webCard: {
-            srcDoc: '<!doctype html><html><body><h1>预览</h1></body></html>',
-          },
+          style: baseStyle,
         }}
         isRegenerating
         previewWidth={1920}
@@ -80,7 +82,6 @@ describe('AICardEditModal', () => {
       />,
     );
 
-    expect(html).toContain('正在重生成网页卡片...');
-    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain('重生成中...');
   });
 });

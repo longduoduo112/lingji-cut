@@ -23,7 +23,6 @@ import { generateCoverCandidates } from '../src/lib/cover-generation';
 import { resolvePromptBinding } from '../src/lib/llm/binding-resolver';
 import { planStoryboardFromTranscript } from '../src/lib/storyboard-planner';
 import { prepareTimelineForRemotionRender, type RenderAssetDescriptor } from '../src/lib/remotion-assets';
-import type { PersistedAIState } from '../src/lib/ai-persistence';
 import {
   buildMinimaxTtsRequestBody,
   decodeMinimaxAudioData,
@@ -45,7 +44,6 @@ import {
 } from './app-config';
 import { toRendererConsoleLog } from './console-message';
 import { resolveDebugRuntimeState, shouldAutoOpenDevTools } from './debug-runtime';
-import { materializePersistedAIState, materializeTimelineWebCards } from './web-card-storage';
 import { registerAgentIpc } from './acp/ipc';
 import { registerConversationIpc } from './conversations/ipc';
 import { registerMcpIpc } from './mcp/ipc';
@@ -1258,24 +1256,15 @@ ipcMain.handle(
 
 ipcMain.handle('save-timeline', async (_event, projectDir: string, data: string) => {
   await fs.mkdir(projectDir, { recursive: true });
-  const parsedTimeline = JSON.parse(data) as TimelineData;
-  const { data: normalizedTimeline } = await materializeTimelineWebCards(projectDir, parsedTimeline);
-  const serializedTimeline = JSON.stringify(normalizedTimeline, null, 2);
-  await fs.writeFile(path.join(projectDir, 'timeline.json'), serializedTimeline, 'utf-8');
-  return serializedTimeline;
+  // Web Card 已下线：timeline 直接落盘，不再有 materialize 逻辑。
+  await fs.writeFile(path.join(projectDir, 'timeline.json'), data, 'utf-8');
+  return data;
 });
 
 ipcMain.handle('load-timeline', async (_event, projectDir: string) => {
   try {
     const filePath = path.join(projectDir, 'timeline.json');
-    const rawTimeline = await fs.readFile(filePath, 'utf-8');
-    const parsedTimeline = JSON.parse(rawTimeline) as TimelineData;
-    const { data: normalizedTimeline, changed } = await materializeTimelineWebCards(projectDir, parsedTimeline);
-    const serializedTimeline = JSON.stringify(normalizedTimeline, null, 2);
-    if (changed) {
-      await fs.writeFile(filePath, serializedTimeline, 'utf-8');
-    }
-    return serializedTimeline;
+    return await fs.readFile(filePath, 'utf-8');
   } catch {
     return null;
   }
@@ -1283,24 +1272,14 @@ ipcMain.handle('load-timeline', async (_event, projectDir: string) => {
 
 ipcMain.handle('save-ai-analysis', async (_event, projectDir: string, data: string) => {
   await fs.mkdir(projectDir, { recursive: true });
-  const parsedState = JSON.parse(data) as PersistedAIState;
-  const { data: normalizedState } = await materializePersistedAIState(projectDir, parsedState);
-  const serializedState = JSON.stringify(normalizedState, null, 2);
-  await fs.writeFile(path.join(projectDir, 'ai-analysis.json'), serializedState, 'utf-8');
-  return serializedState;
+  await fs.writeFile(path.join(projectDir, 'ai-analysis.json'), data, 'utf-8');
+  return data;
 });
 
 ipcMain.handle('load-ai-analysis', async (_event, projectDir: string) => {
   try {
     const filePath = path.join(projectDir, 'ai-analysis.json');
-    const rawState = await fs.readFile(filePath, 'utf-8');
-    const parsedState = JSON.parse(rawState) as PersistedAIState;
-    const { data: normalizedState, changed } = await materializePersistedAIState(projectDir, parsedState);
-    const serializedState = JSON.stringify(normalizedState, null, 2);
-    if (changed) {
-      await fs.writeFile(filePath, serializedState, 'utf-8');
-    }
-    return serializedState;
+    return await fs.readFile(filePath, 'utf-8');
   } catch {
     return null;
   }
@@ -1634,21 +1613,6 @@ ipcMain.handle('select-text-file', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: '选择报告文件',
     filters: [{ name: '文本文件', extensions: ['txt', 'md'] }],
-    properties: ['openFile'],
-  });
-
-  if (result.canceled || result.filePaths.length === 0) return null;
-
-  const filePath = result.filePaths[0];
-  const content = await fs.readFile(filePath, 'utf-8');
-  return { path: filePath, content };
-});
-
-ipcMain.handle('select-html-file', async () => {
-  if (!mainWindow) return null;
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: '选择 HTML 卡片文件',
-    filters: [{ name: 'HTML 文件', extensions: ['html', 'htm'] }],
     properties: ['openFile'],
   });
 
