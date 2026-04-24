@@ -91,31 +91,13 @@ function isAISegmentAnalysis(value: unknown): value is AISegmentAnalysis {
   );
 }
 
-function isWebCardPayload(value: unknown): value is NonNullable<AICard['webCard']> {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    (typeof value.src === 'string' || typeof value.srcDoc === 'string') &&
-    (value.runtimeStatus === undefined ||
-      value.runtimeStatus === 'idle' ||
-      value.runtimeStatus === 'loading' ||
-      value.runtimeStatus === 'ready' ||
-      value.runtimeStatus === 'error') &&
-    (value.lastGeneratedAt === undefined || Number.isFinite(value.lastGeneratedAt)) &&
-    (value.sourceKind === undefined ||
-      value.sourceKind === 'generated' ||
-      value.sourceKind === 'imported-file') &&
-    (value.sourceLabel === undefined || typeof value.sourceLabel === 'string')
-  );
-}
-
 function isAICard(value: unknown): value is AICard {
   if (!isRecord(value)) {
     return false;
   }
 
+  // 历史工程中可能遗留 renderMode === 'web-card' 的卡片：直接视为合法读入，
+  // 随后由调用方在规范化层按 legacy 处理——用户已明确不保留 Web Card 兼容性。
   return (
     typeof value.id === 'string' &&
     typeof value.segmentId === 'string' &&
@@ -130,11 +112,8 @@ function isAICard(value: unknown): value is AICard {
     typeof value.enabled === 'boolean' &&
     isCardStyle(value.style) &&
     (value.renderMode === undefined ||
-      value.renderMode === 'legacy' ||
-      value.renderMode === 'web-card' ||
-      value.renderMode === 'motion-card') &&
-    (value.cardPrompt === undefined || typeof value.cardPrompt === 'string') &&
-    (value.webCard === undefined || isWebCardPayload(value.webCard))
+      typeof value.renderMode === 'string') &&
+    (value.cardPrompt === undefined || typeof value.cardPrompt === 'string')
   );
 }
 

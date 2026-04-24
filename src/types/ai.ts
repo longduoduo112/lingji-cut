@@ -5,7 +5,7 @@ export type { MotionCardPayload } from './motion';
 
 export type AICardType = 'summary' | 'data' | 'insight' | 'chapter' | 'quote' | 'motion';
 export type AICardDisplayMode = 'fullscreen' | 'pip';
-export type AICardRenderMode = 'legacy' | 'web-card' | 'motion-card';
+export type AICardRenderMode = 'legacy' | 'motion-card';
 
 export interface DataContent {
   chartType: 'bar' | 'comparison' | 'ranking' | 'stat';
@@ -20,15 +20,6 @@ export interface CardStyle {
   primaryColor: string;
   backgroundColor: string;
   fontSize: number;
-}
-
-export interface WebCardPayload {
-  src?: string;
-  srcDoc?: string;
-  runtimeStatus?: 'idle' | 'loading' | 'ready' | 'error';
-  lastGeneratedAt?: number;
-  sourceKind?: 'generated' | 'imported-file';
-  sourceLabel?: string;
 }
 
 export interface AISegment {
@@ -113,7 +104,6 @@ export interface AICard {
   style: CardStyle;
   renderMode?: AICardRenderMode;
   cardPrompt?: string;
-  webCard?: WebCardPayload;
   motionCard?: MotionCardPayload;
 }
 
@@ -216,7 +206,6 @@ export interface AICardOverlayData {
   style: CardStyle;
   renderMode?: AICardRenderMode;
   cardPrompt?: string;
-  webCard?: WebCardPayload;
   motionCard?: MotionCardPayload;
   sourceStartMs?: number;
   sourceEndMs?: number;
@@ -262,10 +251,6 @@ export function isDataContent(value: unknown): value is DataContent {
   return Array.isArray(value.items);
 }
 
-export function hasWebCardSource(webCard?: WebCardPayload | null): boolean {
-  return Boolean(webCard?.src || webCard?.srcDoc);
-}
-
 export function buildAICardOverlayData(card: AICard): AICardOverlayData {
   return {
     sourceCardId: card.id,
@@ -277,7 +262,6 @@ export function buildAICardOverlayData(card: AICard): AICardOverlayData {
     style: card.style,
     renderMode: card.renderMode ?? 'legacy',
     cardPrompt: card.cardPrompt,
-    webCard: card.webCard,
     motionCard: card.motionCard,
     sourceStartMs: card.startMs,
     sourceEndMs: card.endMs,

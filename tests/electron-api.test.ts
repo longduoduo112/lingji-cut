@@ -42,12 +42,13 @@ describe('electron menu actions', () => {
     expect(source).toContain('getVideoImportStatus');
   });
 
-  it('declares html import api for the ai card bridge', () => {
+  it('no longer exposes the deprecated html-card import bridge', () => {
     const source = readFileSync(
       new URL('../src/lib/electron-api.ts', import.meta.url),
       'utf8',
     );
 
-    expect(source).toContain('selectHtmlFile');
+    // Web Card 路径下线后 selectHtmlFile 已从 Preload 桥移除
+    expect(source).not.toContain('selectHtmlFile');
   });
 });

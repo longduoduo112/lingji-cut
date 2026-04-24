@@ -184,8 +184,9 @@ describe('AIPanel', () => {
     expect(html).toContain('视觉编排');
     expect(html).toContain('AI 分析');
     expect(html).toContain('已选 1/1');
-    expect(html).toContain('data-ai-import-row="true"');
-    expect(html).toContain('支持点击选择，也支持把 .html / .htm 文件直接拖到这里');
+    // HTML 卡片导入入口已随 Web Card 一并下线，不再出现 import-row 按钮
+    expect(html).not.toContain('data-ai-import-row="true"');
+    expect(html).not.toContain('支持点击选择，也支持把 .html / .htm 文件直接拖到这里');
     expect(html).toContain('data-ai-selection-summary="true"');
     expect(html).toContain('整体创作提示词');
     expect(html).toContain('data-ai-action-bar="true"');

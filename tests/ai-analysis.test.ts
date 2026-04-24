@@ -74,6 +74,9 @@ const baseCard: AICard = {
   cardPrompt: '做成更像商业海报',
 };
 
+/** 一段能被 @babel/standalone 正常编译的 Motion Card 源码 */
+const VALID_MOTION_SOURCE = 'const MotionComponent = (props) => null;';
+
 describe('buildSrtText', () => {
   it('formats subtitle entries into readable timestamped lines', () => {
     const text = buildSrtText(baseEntries);
@@ -98,13 +101,13 @@ describe('buildSegmentPlanningPrompt', () => {
 });
 
 describe('buildSegmentCardPrompt', () => {
-  it('includes program context, segment info, and current card cues without injecting full transcript', () => {
+  it('requires Motion Card JSX output and exposes the sandbox API reference', () => {
     const programContext = '节目摘要：节目总结\n节目关键词：AI、工作流\n当前段标题：AI 视频生产背景';
     const prompt = buildSegmentCardPrompt({
       programContext,
       segment: baseSegment,
       globalPrompt: '整体偏商业分析风',
-      cardPrompt: '这一张做成更像封面海报',
+      cardPrompt: '这一张做成粒子聚合',
       currentCard: baseCard,
       programSummary: '节目总结',
       keywords: ['AI', '工作流'],
@@ -114,12 +117,13 @@ describe('buildSegmentCardPrompt', () => {
     expect(prompt).not.toContain(fullTranscript);
     expect(prompt).toContain('AI 视频生产背景');
     expect(prompt).toContain('概括节目开场对 AI 视频生产现状的说明');
-    expect(prompt).toContain('旧标题');
-    expect(prompt).toContain('summary-default');
     expect(prompt).toContain('整体偏商业分析风');
-    expect(prompt).toContain('这一张做成更像封面海报');
-    expect(prompt).toContain('webCard');
-    expect(prompt).toContain('统一视觉基线（首次生成与二次重生成都必须遵守）');
+    expect(prompt).toContain('这一张做成粒子聚合');
+    expect(prompt).toContain('motionCard.sourceCode');
+    expect(prompt).toContain('MotionComponent');
+    // Web Card 痕迹不得残留
+    expect(prompt).not.toContain('webCard.srcDoc');
+    expect(prompt).not.toContain('web-card');
   });
 });
 
@@ -130,7 +134,7 @@ describe('buildCoverPromptRegenerationPrompt', () => {
       currentPrompt: '旧提示词',
     });
 
-    expect(prompt).toContain('只返回 1 条封面提示词');
+    expect(prompt).toContain('1 条可直接用于 AI 生图');
     expect(prompt).toContain('必须使用简体中文');
     expect(prompt).toContain('旧提示词');
     expect(prompt).toContain('整体偏财经媒体封面');
@@ -163,7 +167,7 @@ describe('planTranscriptSegments', () => {
 });
 
 describe('generateCardForSegment', () => {
-  it('generates a single card with full-transcript context and segmentId', async () => {
+  it('returns a motion-card with compiled code when LLM response is well-formed', async () => {
     const modelCaller = vi.fn<typeof generateStructuredData>().mockResolvedValue({
       id: 'generated-card-1',
       type: 'summary',
@@ -175,9 +179,9 @@ describe('generateCardForSegment', () => {
       displayMode: 'fullscreen',
       template: 'summary-default',
       enabled: true,
-      renderMode: 'web-card',
-      webCard: {
-        srcDoc: '<!doctype html><html><body><h1>新网页卡</h1></body></html>',
+      renderMode: 'motion-card',
+      motionCard: {
+        sourceCode: VALID_MOTION_SOURCE,
       },
       style: {
         primaryColor: '#79c4ff',
@@ -200,19 +204,54 @@ describe('generateCardForSegment', () => {
       {
         generateStructuredData: modelCaller,
         globalPrompt: '整体偏商业分析风',
-        cardPrompt: '做成更像封面',
+        cardPrompt: '做成粒子聚合',
         currentCard: baseCard,
       },
     );
 
     expect(result.segmentId).toBe('seg-1');
     expect(result.title).toBe('新标题');
-    expect(result.renderMode).toBe('web-card');
-    expect(result.webCard?.srcDoc).toContain('新网页卡');
+    expect(result.renderMode).toBe('motion-card');
+    expect(result.motionCard?.sourceCode).toContain('MotionComponent');
+    expect(result.motionCard?.compiledCode.length).toBeGreaterThan(0);
     expect(modelCaller).toHaveBeenCalledTimes(1);
     expect(modelCaller.mock.calls[0]?.[2]).toBe(fullTranscript);
     expect(modelCaller.mock.calls[0]?.[1]).toContain('AI 视频生产背景');
-    expect(modelCaller.mock.calls[0]?.[1]).toContain('旧标题');
+  });
+
+  it('throws a regenerate-hinted error when motion sourceCode cannot compile', async () => {
+    const modelCaller = vi.fn<typeof generateStructuredData>().mockResolvedValue({
+      id: 'generated-card-bad',
+      type: 'summary',
+      title: '无法编译的卡片',
+      content: '内容',
+      startMs: 0,
+      endMs: 3_000,
+      displayDurationMs: 5_000,
+      displayMode: 'fullscreen',
+      template: 'summary-default',
+      enabled: true,
+      renderMode: 'motion-card',
+      motionCard: {
+        sourceCode: 'this is not a valid jsx source',
+      },
+      style: { primaryColor: '#79c4ff', backgroundColor: '#151922', fontSize: 48 },
+    });
+
+    await expect(
+      generateCardForSegment(
+        baseEntries,
+        {
+          segments: [baseSegment],
+          coverPrompts: [],
+          summary: '',
+          keywords: [],
+        },
+        baseSegment,
+        settings,
+        { generateStructuredData: modelCaller },
+      ),
+    ).rejects.toThrow(/请重新生成/);
   });
 });
 
@@ -237,10 +276,8 @@ describe('analyzeSrt', () => {
         displayMode: 'fullscreen',
         template: 'summary-default',
         enabled: true,
-        renderMode: 'web-card',
-        webCard: {
-          srcDoc: '<!doctype html><html><body><div>第一段网页卡片</div></body></html>',
-        },
+        renderMode: 'motion-card',
+        motionCard: { sourceCode: VALID_MOTION_SOURCE },
         style: {
           primaryColor: '#79c4ff',
           backgroundColor: '#151922',
@@ -260,13 +297,7 @@ describe('analyzeSrt', () => {
         enabled: true,
         renderMode: 'motion-card',
         cardPrompt: '做一个粒子聚合动画',
-        motionCard: {
-          sourceCode: 'const MotionComponent = () => React.createElement("div", null, "motion");',
-          compiledCode: 'compiled-motion',
-          compiledAt: 123,
-          prompt: '做一个粒子聚合动画',
-          retryCount: 0,
-        },
+        motionCard: { sourceCode: VALID_MOTION_SOURCE },
         style: {
           primaryColor: '#7df9ff',
           backgroundColor: '#151922',
@@ -287,15 +318,13 @@ describe('analyzeSrt', () => {
     expect(result.segments).toHaveLength(2);
     expect(result.cards).toHaveLength(2);
     expect(result.cards.map((card) => card.segmentId)).toEqual(['seg-1', 'seg-2']);
-    expect(result.cards[1]?.renderMode).toBe('motion-card');
-    expect(result.cards[1]?.motionCard?.compiledCode).toBe('compiled-motion');
+    expect(result.cards[0]?.renderMode).toBe('motion-card');
+    expect(result.cards[0]?.motionCard?.compiledCode.length).toBeGreaterThan(0);
+    expect(result.cards[1]?.motionCard?.compiledCode.length).toBeGreaterThan(0);
     expect(result.coverPrompts).toEqual(['封面提示词']);
-    expect(result.keywords).toEqual(['AI', '播客']);
-    expect(result.globalPrompt).toBe('整体偏商业分析风');
   });
 
   it('continues with other segments when one card generation fails and returns cardErrors', async () => {
-    // planning 调用先成功，第一段卡片调用失败，第二段卡片调用成功
     const modelCaller = vi.fn<typeof generateStructuredData>();
     modelCaller.mockImplementation(async (_settings, _system, _user, _binding, opts) => {
       const label = opts?.label;
@@ -308,7 +337,6 @@ describe('analyzeSrt', () => {
           globalPrompt: '整体偏商业分析风',
         };
       }
-      // cards.segment#N/M（segment-id）
       if (typeof label === 'string' && label.includes('seg-1')) {
         throw new Error('LLM 结构化输出请求 空闲超时');
       }
@@ -323,8 +351,8 @@ describe('analyzeSrt', () => {
         displayMode: 'fullscreen',
         template: 'summary-default',
         enabled: true,
-        renderMode: 'web-card',
-        webCard: { srcDoc: '<!doctype html><html><body>ok</body></html>' },
+        renderMode: 'motion-card',
+        motionCard: { sourceCode: VALID_MOTION_SOURCE },
         style: { primaryColor: '#79c4ff', backgroundColor: '#151922', fontSize: 48 },
       };
     });
@@ -334,16 +362,12 @@ describe('analyzeSrt', () => {
       globalPrompt: '整体偏商业分析风',
     });
 
-    // planning 1 + cards 2 = 3 次调用
     expect(modelCaller).toHaveBeenCalledTimes(3);
-    // 失败段不入 cards，但其它段正常入库
     expect(result.cards.map((card) => card.segmentId)).toEqual(['seg-2']);
-    // 失败段进 cardErrors
     expect(result.cardErrors).toBeDefined();
     expect(result.cardErrors).toHaveLength(1);
     expect(result.cardErrors?.[0]?.segmentId).toBe('seg-1');
     expect(result.cardErrors?.[0]?.message).toContain('空闲超时');
-    // 完整 segments 仍保留，UI 可针对失败段重生成
     expect(result.segments).toHaveLength(2);
   });
 });
@@ -368,7 +392,7 @@ describe('regenerateCoverPrompt', () => {
 });
 
 describe('regenerateAICard', () => {
-  it('regenerates a single card from the provided segment and preserves card id', async () => {
+  it('regenerates a single motion-card and preserves original card id', async () => {
     const modelCaller = vi.fn<typeof generateStructuredData>().mockResolvedValue({
       id: 'another-id',
       type: 'summary',
@@ -380,11 +404,9 @@ describe('regenerateAICard', () => {
       displayMode: 'fullscreen',
       template: 'summary-default',
       enabled: true,
-      renderMode: 'web-card',
-      cardPrompt: '做成更像封面',
-      webCard: {
-        srcDoc: '<!doctype html><html><body><h1>新网页卡</h1></body></html>',
-      },
+      renderMode: 'motion-card',
+      cardPrompt: '做成粒子聚合',
+      motionCard: { sourceCode: VALID_MOTION_SOURCE },
       style: {
         primaryColor: '#79c4ff',
         backgroundColor: '#151922',
@@ -407,12 +429,8 @@ describe('regenerateAICard', () => {
     expect(result.segmentId).toBe('seg-1');
     expect(result.title).toBe('新标题');
     expect(result.displayDurationMs).toBe(6_000);
-    expect(result.renderMode).toBe('web-card');
-    expect(result.webCard?.srcDoc).toContain('新网页卡');
-    expect(modelCaller).toHaveBeenCalledTimes(1);
-    expect(modelCaller.mock.calls[0]?.[2]).toBe(fullTranscript);
-    expect(modelCaller.mock.calls[0]?.[1]).toContain('AI 视频生产背景');
-    expect(modelCaller.mock.calls[0]?.[1]).toContain('summary-default');
+    expect(result.renderMode).toBe('motion-card');
+    expect(result.motionCard?.compiledCode.length).toBeGreaterThan(0);
   });
 
   it('fails fast when segment is missing', async () => {

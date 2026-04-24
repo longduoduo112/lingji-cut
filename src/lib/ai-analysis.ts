@@ -17,7 +17,6 @@ import {
   type AISettings,
   type CardStyle,
   type PromptBindingMap,
-  type WebCardPayload,
 } from '../types/ai';
 import type { MotionCardPayload } from '../types/motion';
 import { generateStructuredData } from './llm';
@@ -28,6 +27,8 @@ import {
   renderUserPromptWithLock,
   type PromptTemplate,
 } from './prompts';
+import { compileMotionSource } from './motion-compiler';
+import { MOTION_SANDBOX_REFERENCE } from './motion-runtime';
 
 export interface AnalyzeSrtProgress {
   phase: 'planning' | 'cards' | 'done';
@@ -114,60 +115,42 @@ function normalizeStyle(type: AICard['type'], style: unknown): CardStyle {
   };
 }
 
-function isWebCardPayload(value: unknown): value is WebCardPayload {
-  return Boolean(
-    value &&
-      typeof value === 'object' &&
-      (('src' in value && typeof (value as { src?: unknown }).src === 'string') ||
-        ('srcDoc' in value && typeof (value as { srcDoc?: unknown }).srcDoc === 'string')),
-  );
+function stripSourceCodeFences(raw: string): string {
+  const trimmed = raw.trim();
+  const fenceMatch = /^```(?:[a-zA-Z]*)\n([\s\S]*?)\n```$/m.exec(trimmed);
+  return fenceMatch ? fenceMatch[1].trim() : trimmed;
 }
 
-function normalizeWebCardPayload(value: unknown): WebCardPayload | undefined {
-  if (!isWebCardPayload(value)) {
-    return undefined;
+/**
+ * 把 LLM 返回的 motionCard 字段编译成可执行 Motion Card payload。
+ * 编译失败直接抛错，由外层链路把"请重新生成"提示给用户。
+ */
+function buildMotionCardPayloadStrict(
+  value: unknown,
+  promptFallback: string,
+): MotionCardPayload {
+  if (!value || typeof value !== 'object') {
+    throw new Error('LLM 未返回 motionCard；请重新生成');
+  }
+
+  const candidate = value as { sourceCode?: unknown };
+  const sourceCodeRaw = typeof candidate.sourceCode === 'string' ? candidate.sourceCode : '';
+  const sourceCode = stripSourceCodeFences(sourceCodeRaw);
+  if (!sourceCode) {
+    throw new Error('LLM 未返回 motionCard.sourceCode；请重新生成');
+  }
+
+  const compiled = compileMotionSource(sourceCode);
+  if (!compiled.success) {
+    throw new Error(`Motion Card 源码编译失败：${compiled.error}；请重新生成`);
   }
 
   return {
-    src: typeof value.src === 'string' ? value.src : undefined,
-    srcDoc: typeof value.srcDoc === 'string' ? value.srcDoc : undefined,
-    runtimeStatus:
-      value.runtimeStatus === 'loading' ||
-      value.runtimeStatus === 'ready' ||
-      value.runtimeStatus === 'error'
-        ? value.runtimeStatus
-        : 'idle',
-    lastGeneratedAt: Number.isFinite(value.lastGeneratedAt) ? Number(value.lastGeneratedAt) : Date.now(),
-    sourceKind:
-      value.sourceKind === 'imported-file' || value.sourceKind === 'generated'
-        ? value.sourceKind
-        : undefined,
-    sourceLabel: typeof value.sourceLabel === 'string' ? value.sourceLabel : undefined,
-  };
-}
-
-function isMotionCardPayload(value: unknown): value is MotionCardPayload {
-  return Boolean(
-    value &&
-      typeof value === 'object' &&
-      typeof (value as MotionCardPayload).sourceCode === 'string' &&
-      typeof (value as MotionCardPayload).compiledCode === 'string',
-  );
-}
-
-function normalizeMotionCardPayload(value: unknown, promptFallback: string): MotionCardPayload | undefined {
-  if (!isMotionCardPayload(value)) {
-    return undefined;
-  }
-
-  return {
-    sourceCode: value.sourceCode,
-    compiledCode: value.compiledCode,
-    compiledAt: Number.isFinite(value.compiledAt) ? Number(value.compiledAt) : Date.now(),
-    compileError: typeof value.compileError === 'string' ? value.compileError : undefined,
-    prompt: typeof value.prompt === 'string' && value.prompt.trim() ? value.prompt.trim() : promptFallback,
-    retryCount:
-      Number.isFinite(value.retryCount) && Number(value.retryCount) >= 0 ? Number(value.retryCount) : 0,
+    sourceCode,
+    compiledCode: compiled.compiledCode,
+    compiledAt: Date.now(),
+    prompt: promptFallback,
+    retryCount: 0,
   };
 }
 
@@ -260,18 +243,11 @@ function normalizeCard(
     typeof candidate.content === 'string' || isDataContent(candidate.content)
       ? candidate.content
       : '';
-  const webCard = normalizeWebCardPayload(candidate.webCard);
   const cardPrompt =
     typeof candidate.cardPrompt === 'string' && candidate.cardPrompt.trim()
       ? candidate.cardPrompt.trim()
       : promptFallback?.trim() || undefined;
-  const motionCard = normalizeMotionCardPayload(candidate.motionCard, cardPrompt ?? '');
-  const renderMode =
-    candidate.renderMode === 'motion-card' || motionCard
-      ? 'motion-card'
-      : candidate.renderMode === 'web-card' || webCard
-        ? 'web-card'
-        : 'legacy';
+  const motionCard = buildMotionCardPayloadStrict(candidate.motionCard, cardPrompt ?? '');
 
   return {
     id:
@@ -298,9 +274,8 @@ function normalizeCard(
         : getDefaultTemplate(candidate.type),
     enabled: candidate.enabled !== false,
     style: normalizeStyle(candidate.type, candidate.style),
-    renderMode,
+    renderMode: 'motion-card',
     cardPrompt,
-    webCard,
     motionCard,
   };
 }
@@ -498,6 +473,7 @@ export function buildSegmentCardPrompt(
     // 旧版自定义模板可能仍在使用 {{fullTranscript}}；这里给它注入与 programContext
     // 同值的浓缩上下文，避免破坏存量模板，同时不再发送整篇全文。
     fullTranscript: programContext,
+    sandboxReference: MOTION_SANDBOX_REFERENCE,
   });
 }
 
@@ -792,11 +768,11 @@ export interface SubtitleCardDraftInput {
 }
 
 /**
- * 面向"用户手选字幕 → 单张 web-card"的生成入口。
+ * 面向"用户手选字幕 → 单张 Motion Card"的生成入口。
  *
  * 策略：复用 `cards.segment` 管线，把用户草稿组装成合成段落后喂入；
- * 通过 cardPrompt 注入"只产出 1 张 web-card + 类型建议 + 用户补充"三条硬约束；
- * 返回前强制要求 renderMode === 'web-card'，否则抛错让用户手动重试。
+ * normalizeCard 会对返回的 motionCard.sourceCode 做 Babel 编译校验，
+ * 编译失败直接抛错让用户重新生成。
  */
 export async function generateSingleCardFromSubtitles(
   entries: SrtEntry[],
@@ -836,8 +812,8 @@ export async function generateSingleCardFromSubtitles(
 
   const hint = draft.promptHint?.trim();
   const cardPromptLines = [
-    `只产出 1 张卡片，renderMode 必须为 "web-card"（使用 webCard.srcDoc 返回完整 HTML）。`,
-    `卡片类型建议为 "${draft.type}"，可根据内容微调但请保留 web-card 形态。`,
+    `只产出 1 张卡片，renderMode 必须为 "motion-card"，并在 motionCard.sourceCode 里给出可编译的 Remotion JSX 组件。`,
+    `卡片类型建议为 "${draft.type}"，可根据内容微调。`,
   ];
   if (hint) {
     cardPromptLines.push(`用户补充：${hint}`);
@@ -870,10 +846,6 @@ export async function generateSingleCardFromSubtitles(
       projectBindings,
     },
   );
-
-  if (card.renderMode !== 'web-card') {
-    throw new Error('LLM 未按要求产出 web-card，请重试');
-  }
 
   return {
     ...card,

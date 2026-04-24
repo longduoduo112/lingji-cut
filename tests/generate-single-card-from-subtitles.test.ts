@@ -17,7 +17,9 @@ const entries: SrtEntry[] = [
   { index: 2, startMs: 1_500, endMs: 3_000, text: '第二条字幕，比较重要。' },
 ];
 
-const webCardResponse = {
+const VALID_MOTION_SOURCE = 'const MotionComponent = (props) => null;';
+
+const motionCardResponse = {
   id: 'generated-card',
   type: 'summary',
   title: '摘要卡',
@@ -28,10 +30,8 @@ const webCardResponse = {
   displayMode: 'fullscreen',
   template: 'summary-default',
   enabled: true,
-  renderMode: 'web-card',
-  webCard: {
-    srcDoc: '<!doctype html><html><body><h1>测试</h1></body></html>',
-  },
+  renderMode: 'motion-card',
+  motionCard: { sourceCode: VALID_MOTION_SOURCE },
   style: {
     primaryColor: '#79c4ff',
     backgroundColor: '#151922',
@@ -40,10 +40,10 @@ const webCardResponse = {
 };
 
 describe('generateSingleCardFromSubtitles', () => {
-  it('returns a single web-card and forces timing from draft', async () => {
+  it('returns a single compiled motion-card and forces timing from draft', async () => {
     const modelCaller = vi
       .fn<typeof generateStructuredData>()
-      .mockResolvedValue(webCardResponse);
+      .mockResolvedValue(motionCardResponse);
 
     const card = await generateSingleCardFromSubtitles(
       entries,
@@ -59,15 +59,16 @@ describe('generateSingleCardFromSubtitles', () => {
       { generateStructuredData: modelCaller },
     );
 
-    expect(card.renderMode).toBe('web-card');
+    expect(card.renderMode).toBe('motion-card');
     expect(card.startMs).toBe(500);
     expect(card.endMs).toBe(3_000);
     expect(card.displayDurationMs).toBe(2_500);
-    expect(card.webCard?.srcDoc).toContain('测试');
+    expect(card.motionCard?.sourceCode).toContain('MotionComponent');
+    expect(card.motionCard?.compiledCode.length).toBeGreaterThan(0);
     expect(modelCaller).toHaveBeenCalledTimes(1);
     const systemPrompt = modelCaller.mock.calls[0]?.[1] ?? '';
     expect(systemPrompt).toContain('突出核心数字');
-    expect(systemPrompt).toContain('web-card');
+    expect(systemPrompt).toContain('motion-card');
   });
 
   it('rejects empty text draft', async () => {
@@ -104,11 +105,10 @@ describe('generateSingleCardFromSubtitles', () => {
     ).rejects.toThrow('时间范围无效');
   });
 
-  it('throws when LLM returns non-web-card', async () => {
+  it('throws a "请重新生成" error when motion sourceCode does not compile', async () => {
     const modelCaller = vi.fn<typeof generateStructuredData>().mockResolvedValue({
-      ...webCardResponse,
-      renderMode: 'legacy',
-      webCard: undefined,
+      ...motionCardResponse,
+      motionCard: { sourceCode: 'garbage that cannot compile' },
     });
 
     await expect(
@@ -124,7 +124,7 @@ describe('generateSingleCardFromSubtitles', () => {
         settings,
         { generateStructuredData: modelCaller },
       ),
-    ).rejects.toThrow('web-card');
+    ).rejects.toThrow(/请重新生成/);
   });
 
   it('rejects invalid card type', async () => {

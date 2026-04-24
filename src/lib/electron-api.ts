@@ -243,7 +243,6 @@ export interface ElectronAPI {
   saveScriptState: (projectDir: string, state: string) => Promise<void>;
   loadScriptState: (projectDir: string) => Promise<string | null>;
   selectTextFile: () => Promise<{ path: string; content: string } | null>;
-  selectHtmlFile: () => Promise<{ path: string; content: string } | null>;
   /** 轻量级抖音链接解析：仅返回标题和视频 ID，不下载视频 */
   resolveDouyinUrl: (url: string) => Promise<{ title: string; videoId: string }>;
   importVideoSource: (request: VideoImportRequest) => Promise<VideoImportProgress>;

@@ -162,11 +162,17 @@ const LOCKED_CARDS_SEGMENT = `【系统契约 · 不可修改】
 
 字段必须包含：
 id, segmentId, type, title, content, startMs, endMs, displayDurationMs,
-displayMode, template, enabled, style, renderMode, cardPrompt, webCard
+displayMode, template, enabled, style, renderMode, cardPrompt, motionCard
 
 约束：
-- renderMode 默认输出 "web-card"
-- webCard.srcDoc 必须是完整 HTML 文档（允许 HTML/CSS/JS 和外部资源）
+- renderMode 必须输出 "motion-card"
+- motionCard.sourceCode 必须是一段可直接被 Babel 解析的 React/Remotion JSX 源码，严格满足：
+  1) 定义 const MotionComponent = (props) => { ... }
+  2) props 形状 { frame, fps, durationInFrames, width, height }
+  3) 禁止 import / export / async / await
+  4) 禁止 useCurrentFrame / useVideoConfig / window / globalThis / require
+  5) 布局基于 props.width / props.height，不要硬编码 1920/1080
+  6) sourceCode 字段值只放 JSX 源码字符串本身，不要包 markdown 代码块
 - startMs / endMs / displayDurationMs 必须输出毫秒数字`;
 
 const LOCKED_SCRIPT_REVIEW = `【系统契约 · 不可修改】
@@ -220,7 +226,7 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
   'cards.segment': {
     kind: 'cards.segment',
     label: '段落信息卡片生成',
-    description: '围绕单个 segment 生成一张结构化网页信息卡（基于全文上下文）',
+    description: '围绕单个 segment 生成一张 Motion Card（Remotion 动画组件源码，需编译通过）',
     group: 'ai-analysis',
     variables: [
       { name: 'globalPrompt', description: '整期创作提示词' },
@@ -236,11 +242,12 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
       { name: 'currentCardSection', description: '当前卡片线索多行块（由调用方构造）' },
       { name: 'programContext', description: '节目级浓缩上下文（节目摘要、关键词、当前段在整期中的位置）' },
       { name: 'fullTranscript', description: '兼容旧模板：与 programContext 同值，不再注入完整全文，避免 token 爆炸' },
+      { name: 'sandboxReference', description: 'Motion 沙箱可用 API 清单（同 motion.system）' },
     ],
     lockedContract: {
       position: 'user-tail',
       content: LOCKED_CARDS_SEGMENT,
-      reason: '业务侧按此结构创建 AICard（含 webCard.srcDoc、时间轴字段）；修改会破坏卡片渲染与时间轴。',
+      reason: '业务侧按此结构创建 AICard 并对 motionCard.sourceCode 做编译校验；修改会导致卡片无法渲染。',
     },
   },
   'script.review': {
