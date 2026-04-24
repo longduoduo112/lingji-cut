@@ -2,15 +2,41 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AISettings, LLMProvider } from '../src/types/ai';
 import type { ResolvedBinding } from '../src/lib/llm/binding-resolver';
 
+// 流式调用：让 bind().stream() 返回单 chunk 的 async iterable
+function asAsyncIterable(...chunks: Array<{ content: unknown }>) {
+  return {
+    [Symbol.asyncIterator]() {
+      let i = 0;
+      return {
+        async next() {
+          if (i >= chunks.length) return { value: undefined, done: true } as const;
+          return { value: chunks[i++], done: false } as const;
+        },
+        async return() {
+          return { value: undefined, done: true } as const;
+        },
+      };
+    },
+  };
+}
+
 vi.mock('../src/lib/llm/model', () => {
   return {
     createChatModel: vi.fn(() => ({
-      bind: () => ({ invoke: async () => ({ content: '{"k":1}' }) }),
+      bind: () => ({
+        invoke: async () => ({ content: '{"k":1}' }),
+        stream: async () => asAsyncIterable({ content: '{"k":1}' }),
+      }),
       invoke: async () => ({ content: 'hello' }),
+      stream: async () => asAsyncIterable({ content: 'hello' }),
     })),
     createChatModelFromProvider: vi.fn(() => ({
-      bind: () => ({ invoke: async () => ({ content: '{"k":2}' }) }),
+      bind: () => ({
+        invoke: async () => ({ content: '{"k":2}' }),
+        stream: async () => asAsyncIterable({ content: '{"k":2}' }),
+      }),
       invoke: async () => ({ content: 'hello-binding' }),
+      stream: async () => asAsyncIterable({ content: 'hello-binding' }),
     })),
   };
 });

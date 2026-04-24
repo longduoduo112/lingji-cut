@@ -234,7 +234,8 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
       { name: 'segmentTranscriptExcerpt', description: 'segment 原始摘录' },
       { name: 'cardPrompt', description: '单卡追加提示词' },
       { name: 'currentCardSection', description: '当前卡片线索多行块（由调用方构造）' },
-      { name: 'fullTranscript', description: '完整字幕全文（带时间戳）' },
+      { name: 'programContext', description: '节目级浓缩上下文（节目摘要、关键词、当前段在整期中的位置）' },
+      { name: 'fullTranscript', description: '兼容旧模板：与 programContext 同值，不再注入完整全文，避免 token 爆炸' },
     ],
     lockedContract: {
       position: 'user-tail',

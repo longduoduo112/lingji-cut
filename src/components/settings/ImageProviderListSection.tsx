@@ -81,6 +81,13 @@ const CAPABILITIES_SUMMARY: Record<ImageProviderType, CapabilitiesSummary> = {
     defaultModels: ['wanx2.1-t2i-turbo', 'wanx-v1'],
     defaultBaseUrl: 'https://dashscope.aliyuncs.com',
   },
+  apimart: {
+    ratios: '1:1 / 16:9 / 9:16 / 4:3 / 3:4',
+    maxN: 1,
+    isAsync: true,
+    defaultModels: ['gpt-image-2'],
+    defaultBaseUrl: 'https://api.apimart.ai',
+  },
   custom: {
     ratios: '取决于端点',
     maxN: 1,
@@ -99,6 +106,7 @@ const IMAGE_PROVIDER_TYPE_OPTIONS: SelectOption[] = [
   { value: 'doubao', label: '字节豆包' },
   { value: 'imagen', label: 'Google Imagen' },
   { value: 'wanx', label: '阿里通义万相' },
+  { value: 'apimart', label: 'Apimart · GPT-Image-2' },
   { value: 'custom', label: '自定义（OpenAI 兼容）' },
 ];
 
@@ -109,6 +117,7 @@ const TYPE_LABELS: Record<ImageProviderType, string> = {
   doubao: '字节豆包',
   imagen: 'Google Imagen',
   wanx: '阿里通义万相',
+  apimart: 'Apimart · GPT-Image-2',
   custom: '自定义（OpenAI 兼容）',
 };
 

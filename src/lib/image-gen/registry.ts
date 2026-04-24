@@ -1,5 +1,6 @@
 import type { ImageProviderType } from '../../types/ai';
 import { ImageGenerationError } from './errors';
+import { apimartImageProvider } from './providers/apimart';
 import { doubaoImageProvider } from './providers/doubao';
 import { imagenImageProvider } from './providers/imagen';
 import { jimengProvider } from './providers/jimeng';
@@ -14,13 +15,14 @@ export function registerImageProvider(provider: ImageGenerationProvider): void {
   providers.set(provider.type, provider);
 }
 
-/** 内置 6 个 provider：jimeng + openai + minimax + doubao + imagen + wanx */
+/** 内置 7 个 provider：jimeng + openai + minimax + doubao + imagen + wanx + apimart */
 registerImageProvider(jimengProvider);
 registerImageProvider(openaiImageProvider);
 registerImageProvider(minimaxImageProvider);
 registerImageProvider(doubaoImageProvider);
 registerImageProvider(imagenImageProvider);
 registerImageProvider(wanxImageProvider);
+registerImageProvider(apimartImageProvider);
 
 export function getImageProvider(type: ImageProviderType): ImageGenerationProvider {
   // custom 视为 OpenAI 兼容端点：复用 openai_image adapter

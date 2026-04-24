@@ -8,6 +8,7 @@ const DEFAULT_MODELS: Record<ImageProviderType, string[]> = {
   doubao: ['doubao-seedream-3.0-t2i-250415'],
   imagen: ['imagen-3.0-generate-002'],
   wanx: ['wanx2.1-t2i-turbo'],
+  apimart: ['gpt-image-2'],
   custom: [],
 };
 

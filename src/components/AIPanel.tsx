@@ -404,6 +404,21 @@ export function AIPanel({
       setAnalysisResult(persistedState.analysisResult ?? result);
       setCoverCandidates(persistedState.coverCandidates);
       setStoryboardPlan(persistedState.storyboardPlan ?? null);
+      // 部分失败时仍视为完成（成功段已入库），把失败列表用 inline 提示告知用户
+      const failedCount = result.cardErrors?.length ?? 0;
+      if (failedCount > 0) {
+        const sample = result.cardErrors!
+          .slice(0, 3)
+          .map(
+            (e) =>
+              `第 ${(e.segmentIndex ?? 0) + 1} 段「${e.segmentTitle ?? e.segmentId}」`,
+          )
+          .join('、');
+        const more = failedCount > 3 ? ` 等共 ${failedCount} 段` : '';
+        setAnalysisError(
+          `${sample}${more} 卡片生成失败，可在 Editor Inspector 中对该段单独"重新生成卡片"。`,
+        );
+      }
       useTaskProgressStore.getState().completeTask(analyzeTaskId);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '分析失败';

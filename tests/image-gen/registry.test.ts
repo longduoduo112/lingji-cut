@@ -23,10 +23,18 @@ describe('image-gen registry', () => {
     }
   });
 
-  it('listRegisteredImageProviderTypes 包含全部 6 种内置 provider', () => {
+  it('listRegisteredImageProviderTypes 包含全部 7 种内置 provider', () => {
     const types = listRegisteredImageProviderTypes();
     expect(types).toEqual(
-      expect.arrayContaining(['jimeng', 'openai_image', 'minimax', 'doubao', 'imagen', 'wanx']),
+      expect.arrayContaining([
+        'jimeng',
+        'openai_image',
+        'minimax',
+        'doubao',
+        'imagen',
+        'wanx',
+        'apimart',
+      ]),
     );
   });
 

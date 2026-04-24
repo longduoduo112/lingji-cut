@@ -98,9 +98,10 @@ describe('buildSegmentPlanningPrompt', () => {
 });
 
 describe('buildSegmentCardPrompt', () => {
-  it('includes full transcript, segment info, and current card cues', () => {
+  it('includes program context, segment info, and current card cues without injecting full transcript', () => {
+    const programContext = '节目摘要：节目总结\n节目关键词：AI、工作流\n当前段标题：AI 视频生产背景';
     const prompt = buildSegmentCardPrompt({
-      fullTranscript,
+      programContext,
       segment: baseSegment,
       globalPrompt: '整体偏商业分析风',
       cardPrompt: '这一张做成更像封面海报',
@@ -109,7 +110,8 @@ describe('buildSegmentCardPrompt', () => {
       keywords: ['AI', '工作流'],
     });
 
-    expect(prompt).toContain(fullTranscript);
+    expect(prompt).toContain(programContext);
+    expect(prompt).not.toContain(fullTranscript);
     expect(prompt).toContain('AI 视频生产背景');
     expect(prompt).toContain('概括节目开场对 AI 视频生产现状的说明');
     expect(prompt).toContain('旧标题');
@@ -290,6 +292,59 @@ describe('analyzeSrt', () => {
     expect(result.coverPrompts).toEqual(['封面提示词']);
     expect(result.keywords).toEqual(['AI', '播客']);
     expect(result.globalPrompt).toBe('整体偏商业分析风');
+  });
+
+  it('continues with other segments when one card generation fails and returns cardErrors', async () => {
+    // planning 调用先成功，第一段卡片调用失败，第二段卡片调用成功
+    const modelCaller = vi.fn<typeof generateStructuredData>();
+    modelCaller.mockImplementation(async (_settings, _system, _user, _binding, opts) => {
+      const label = opts?.label;
+      if (label === 'planning.segment') {
+        return {
+          segments: [baseSegment, secondSegment],
+          coverPrompts: ['封面提示词'],
+          summary: '节目总结',
+          keywords: ['AI', '播客'],
+          globalPrompt: '整体偏商业分析风',
+        };
+      }
+      // cards.segment#N/M（segment-id）
+      if (typeof label === 'string' && label.includes('seg-1')) {
+        throw new Error('LLM 结构化输出请求 空闲超时');
+      }
+      return {
+        id: 'card-seg-2',
+        type: 'summary',
+        title: '第二段卡片',
+        content: '第二段内容',
+        startMs: 3_000,
+        endMs: 7_000,
+        displayDurationMs: 5_000,
+        displayMode: 'fullscreen',
+        template: 'summary-default',
+        enabled: true,
+        renderMode: 'web-card',
+        webCard: { srcDoc: '<!doctype html><html><body>ok</body></html>' },
+        style: { primaryColor: '#79c4ff', backgroundColor: '#151922', fontSize: 48 },
+      };
+    });
+
+    const result = await analyzeSrt(baseEntries, settings, {
+      generateStructuredData: modelCaller,
+      globalPrompt: '整体偏商业分析风',
+    });
+
+    // planning 1 + cards 2 = 3 次调用
+    expect(modelCaller).toHaveBeenCalledTimes(3);
+    // 失败段不入 cards，但其它段正常入库
+    expect(result.cards.map((card) => card.segmentId)).toEqual(['seg-2']);
+    // 失败段进 cardErrors
+    expect(result.cardErrors).toBeDefined();
+    expect(result.cardErrors).toHaveLength(1);
+    expect(result.cardErrors?.[0]?.segmentId).toBe('seg-1');
+    expect(result.cardErrors?.[0]?.message).toContain('空闲超时');
+    // 完整 segments 仍保留，UI 可针对失败段重生成
+    expect(result.segments).toHaveLength(2);
   });
 });
 

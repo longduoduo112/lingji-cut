@@ -1,5 +1,13 @@
+import { jsonrepair } from 'jsonrepair';
+
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+// 在原文中"找到第一个 { 之后的所有内容"，配合 jsonrepair 处理被截断 / 含尾随说明文字 / 缺闭合的情况
+function sliceFromFirstBrace(content: string): string | null {
+  const idx = content.indexOf('{');
+  return idx >= 0 ? content.slice(idx) : null;
 }
 
 function parseJsonRecord(raw: string): Record<string, unknown> | null {
@@ -155,7 +163,26 @@ export function parseLLMJsonResponse(content: string): Record<string, unknown> |
 
   const extractedObject = extractFirstJsonObject(normalized);
   if (extractedObject) {
-    return parseJsonRecord(extractedObject);
+    const fromExtracted = parseJsonRecord(extractedObject);
+    if (fromExtracted) {
+      return fromExtracted;
+    }
+  }
+
+  // 兜底：jsonrepair 修复（处理被 max_tokens 截断、单引号、尾逗号、未转义换行等）
+  const repairCandidates = [extractedObject, sliceFromFirstBrace(normalized), normalized].filter(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  );
+  for (const candidate of repairCandidates) {
+    try {
+      const repaired = jsonrepair(candidate);
+      const parsed = parseJsonRecord(repaired);
+      if (parsed) {
+        return parsed;
+      }
+    } catch {
+      // try next candidate
+    }
   }
 
   return null;

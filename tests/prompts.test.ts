@@ -128,7 +128,7 @@ describe('renderUserPromptWithLock', () => {
         segmentTranscriptExcerpt: '原文',
         cardPrompt: '无',
         currentCardSection: '当前卡片线索：无',
-        fullTranscript: '字幕',
+        programContext: '节目级浓缩上下文',
       },
     );
     expect(cards).toContain('webCard');
