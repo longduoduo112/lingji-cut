@@ -16,8 +16,9 @@ export class BinaryManager {
   private userNpmPrefix: string;
 
   constructor(cacheBase?: string) {
-    this.cachePath = cacheBase ?? path.join(os.homedir(), '.lingji', 'acp-binaries', 'claude-acp');
-    this.userNpmPrefix = path.join(os.homedir(), '.lingji', 'npm-global');
+    const homeDir = getHomeDir();
+    this.cachePath = cacheBase ?? path.join(homeDir, '.lingji', 'acp-binaries', 'claude-acp');
+    this.userNpmPrefix = path.join(homeDir, '.lingji', 'npm-global');
   }
 
   /**
@@ -42,8 +43,9 @@ export class BinaryManager {
     }
 
     // 确保用户本地 npm prefix bin 目录在 PATH 中
-    const userBinDir = path.join(this.userNpmPrefix, 'bin');
-    this.prependToPathIfMissing(userBinDir);
+    for (const userBinDir of this.getUserPrefixBinDirs()) {
+      this.prependToPathIfMissing(userBinDir);
+    }
   }
 
   /**
@@ -178,8 +180,11 @@ export class BinaryManager {
       return { command: scanned, args: [] };
     }
 
-    const userPrefixCandidate = path.join(this.userNpmPrefix, 'bin', AGENT_BIN_NAME);
-    if (existsSync(userPrefixCandidate)) {
+    const userPrefixCandidate = this.findExistingExecutable(
+      this.getUserPrefixBinDirs(),
+      AGENT_BIN_NAME,
+    );
+    if (userPrefixCandidate) {
       return { command: userPrefixCandidate, args: [] };
     }
 
@@ -242,25 +247,25 @@ export class BinaryManager {
   }
 
   private async findBinaryPath(name: string): Promise<string | null> {
-    try {
-      const { stdout } = await execFileAsync('which', [name], { env: this.getCleanEnv() });
-      return stdout.trim() || null;
-    } catch {
-      return null;
-    }
+    return this.whichSync(name);
   }
 
   private whichSync(name: string): string | null {
-    try {
-      const { execFileSync } = require('node:child_process');
-      const result = execFileSync('which', [name], {
-        encoding: 'utf-8',
-        env: this.getCleanEnv(),
-      });
-      return result.trim() || null;
-    } catch {
-      return null;
+    const pathValue = this.getCleanEnv().PATH ?? this.getCleanEnv().Path ?? '';
+    const dirs = pathValue.split(path.delimiter).filter(Boolean);
+    return this.findExistingExecutable(dirs, name);
+  }
+
+  private findExistingExecutable(dirs: string[], name: string): string | null {
+    for (const dir of dirs) {
+      for (const executableName of getExecutableNames(name)) {
+        const candidate = path.join(dir, executableName);
+        if (existsSync(candidate)) {
+          return candidate;
+        }
+      }
     }
+    return null;
   }
 
   /** 首选的 node bin 目录：nvm default → nvm 最新 → fnm 最新 → volta */
@@ -277,7 +282,7 @@ export class BinaryManager {
    */
   private collectNodeVersionBinDirs(): string[] {
     const dirs: string[] = [];
-    const home = os.homedir();
+    const home = getHomeDir();
 
     // nvm
     const nvmDir = process.env.NVM_DIR ?? path.join(home, '.nvm');
@@ -309,12 +314,26 @@ export class BinaryManager {
       }
     }
 
+    // nvm-windows
+    const nvmWindowsSymlink = process.env.NVM_SYMLINK;
+    if (nvmWindowsSymlink && existsSync(nvmWindowsSymlink)) {
+      dirs.push(nvmWindowsSymlink);
+    }
+
+    const nvmWindowsDir = process.env.NVM_HOME;
+    if (nvmWindowsDir && existsSync(nvmWindowsDir)) {
+      for (const entry of safeReaddir(nvmWindowsDir).sort().reverse()) {
+        dirs.push(path.join(nvmWindowsDir, entry));
+      }
+    }
+
     // fnm
     const fnmDir = process.env.FNM_DIR ?? path.join(home, '.local', 'share', 'fnm');
     const fnmVersions = path.join(fnmDir, 'node-versions');
     if (existsSync(fnmVersions)) {
       for (const entry of safeReaddir(fnmVersions).sort().reverse()) {
         dirs.push(path.join(fnmVersions, entry, 'installation', 'bin'));
+        dirs.push(path.join(fnmVersions, entry, 'installation'));
       }
     }
 
@@ -330,8 +349,16 @@ export class BinaryManager {
 
   private prependToPathIfMissing(dir: string): void {
     const current = process.env.PATH ?? '';
-    if (current.split(':').includes(dir)) return;
-    process.env.PATH = `${dir}:${current}`;
+    if (current.split(path.delimiter).includes(dir)) return;
+    process.env.PATH = current ? `${dir}${path.delimiter}${current}` : dir;
+  }
+
+  private getUserPrefixBinDirs(): string[] {
+    if (process.platform === 'win32') {
+      return [this.userNpmPrefix, path.join(this.userNpmPrefix, 'bin')];
+    }
+
+    return [path.join(this.userNpmPrefix, 'bin')];
   }
 }
 
@@ -341,4 +368,16 @@ function safeReaddir(dir: string): string[] {
   } catch {
     return [];
   }
+}
+
+function getHomeDir(): string {
+  return process.env.HOME || process.env.USERPROFILE || os.homedir();
+}
+
+function getExecutableNames(name: string): string[] {
+  if (process.platform !== 'win32' || path.extname(name)) {
+    return [name];
+  }
+
+  return [name, `${name}.cmd`, `${name}.exe`, `${name}.bat`];
 }

@@ -43,6 +43,10 @@ import {
 } from './app-config';
 import { toRendererConsoleLog } from './console-message';
 import { resolveDebugRuntimeState, shouldAutoOpenDevTools } from './debug-runtime';
+import {
+  readAudioDurationMs,
+  readVideoDurationMs,
+} from './media-duration';
 import { registerAgentIpc } from './acp/ipc';
 import { registerConversationIpc } from './conversations/ipc';
 import { registerMcpIpc } from './mcp/ipc';
@@ -116,6 +120,7 @@ import {
   ensureRemotionDownloadsCwd,
   resolveRemotionBinariesDirectory,
 } from './remotion-paths';
+import { getWindowChromeOptions } from './window-chrome';
 
 const execFileAsync = promisify(execFile);
 
@@ -315,13 +320,13 @@ function refreshApplicationMenu() {
 }
 
 function createWindow() {
-  const isMac = process.platform === 'darwin';
   const currentConfig = getCurrentAppConfig();
   const runtimeState = resolveDebugRuntimeState({
     isPackaged: app.isPackaged,
     debugMode: currentConfig.debugMode,
   });
   const appIconPath = resolveAppIconPath();
+  const windowChromeOptions = getWindowChromeOptions(process.platform);
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -331,16 +336,7 @@ function createWindow() {
     backgroundColor: '#070b14',
     title: '灵机剪影',
     ...(appIconPath ? { icon: appIconPath } : {}),
-    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
-    ...(isMac
-      ? {}
-      : {
-          titleBarOverlay: {
-            color: '#09111f',
-            symbolColor: '#d8e2ef',
-            height: 58,
-          },
-        }),
+    ...windowChromeOptions,
     webPreferences: {
       devTools: runtimeState.allowDevTools,
       preload: path.join(__dirname, 'preload.js'),
@@ -590,10 +586,9 @@ ipcMain.handle('parse-srt-file', async (_event, filePath: string) => {
 });
 
 ipcMain.handle('get-audio-duration', async (_event, filePath: string) => {
-  const metadata = await getVideoMetadata(filePath, {
+  return readAudioDurationMs(filePath, {
     binariesDirectory: remotionBinariesDirectory,
   });
-  return Math.max(1_000, Math.round((metadata.durationInSeconds ?? 0) * 1000));
 });
 
 ipcMain.handle('get-file-mtime', async (_event, filePath: string) => {
@@ -1395,7 +1390,17 @@ ipcMain.handle('add-asset', async () => {
   const isAudio = AUDIO_EXTENSIONS_FILTER.includes(extension);
   let durationMs = isAudio || isVideo ? 10000 : 5000;
 
-  if (isVideo || isAudio) {
+  if (isAudio) {
+    try {
+      durationMs = await readAudioDurationMs(assetPath, {
+        binariesDirectory: remotionBinariesDirectory,
+      });
+    } catch {
+      durationMs = 10000;
+    }
+  }
+
+  if (isVideo) {
     try {
       const metadata = await getVideoMetadata(assetPath, {
         binariesDirectory: remotionBinariesDirectory,
@@ -1476,7 +1481,17 @@ ipcMain.handle('scan-project-assets', async (_event, projectDir: string) => {
 
       let durationMs = assetType === 'image' ? 5000 : 10000;
 
-      if (assetType === 'video' || assetType === 'audio') {
+      if (assetType === 'audio') {
+        try {
+          durationMs = await readAudioDurationMs(fullPath, {
+            binariesDirectory: remotionBinariesDirectory,
+          });
+        } catch {
+          durationMs = 10000;
+        }
+      }
+
+      if (assetType === 'video') {
         try {
           const metadata = await getVideoMetadata(fullPath, {
             binariesDirectory: remotionBinariesDirectory,
@@ -1864,10 +1879,9 @@ ipcMain.handle(
       let durationMs = getMinimaxDurationMs(result, subtitleSentences);
       if (durationMs <= 0) {
         try {
-          const metadata = await getVideoMetadata(audioPath, {
+          durationMs = await readAudioDurationMs(audioPath, {
             binariesDirectory: remotionBinariesDirectory,
           });
-          durationMs = Math.max(1_000, Math.round((metadata.durationInSeconds ?? 0) * 1000));
         } catch (error) {
           writeAppLog(
             'warn',

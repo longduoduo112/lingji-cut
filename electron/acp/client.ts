@@ -93,6 +93,23 @@ export class AcpClient extends EventEmitter {
     this.rejectAllPending(new Error('Client disconnected'));
   }
 
+  async disconnectAndWait(timeoutMs = 2_000): Promise<void> {
+    const child = this.process;
+    this.disconnect();
+
+    if (!child || child.exitCode !== null || child.signalCode !== null) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, timeoutMs);
+      child.once('exit', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  }
+
   async sendRequest(method: string, params: unknown, timeout?: number): Promise<unknown> {
     return new Promise((resolve, reject) => {
       if (!this.process?.stdin?.writable) {

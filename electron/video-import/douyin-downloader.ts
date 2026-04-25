@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import type { DouyinSourceResolution, VideoImportDownloader } from './types';
 
 const DOUYIN_HEADERS = {
@@ -28,7 +29,11 @@ function extractVideoIdFromUrl(url: string): string | null {
 }
 
 function extractVideoIdFromHtml(html: string): string | null {
-  const match = html.match(/"aweme_id":"(\d+)"/) ?? html.match(/"awemeId":"(\d+)"/);
+  const match =
+    html.match(/"aweme_id":"(\d+)"/) ??
+    html.match(/"awemeId":"(\d+)"/) ??
+    html.match(/\/share\/video\/(\d+)/) ??
+    html.match(/\/video\/(\d+)/);
   return match?.[1] ?? null;
 }
 
@@ -111,6 +116,44 @@ function extractRenderData(html: string): unknown | null {
   }
 }
 
+function extractDouyinWafCookie(html: string): string | null {
+  if (!html.includes('_wafchallengeid') && !html.includes('wafchallengeid')) {
+    return null;
+  }
+
+  const challengeMatch = html.match(/\bcs\s*=\s*["']([^"']+)["']/);
+  if (!challengeMatch?.[1]) {
+    return null;
+  }
+
+  try {
+    const challenge = JSON.parse(Buffer.from(challengeMatch[1], 'base64').toString('utf8')) as {
+      v?: { a?: string; c?: string };
+      d?: string;
+    };
+    const prefix = Buffer.from(challenge.v?.a ?? '', 'base64');
+    const expected = Buffer.from(challenge.v?.c ?? '', 'base64').toString('hex');
+    if (prefix.length === 0 || !expected) {
+      return null;
+    }
+
+    for (let index = 0; index <= 1_000_000; index += 1) {
+      const actual = createHash('sha256')
+        .update(prefix)
+        .update(String(index))
+        .digest('hex');
+      if (actual === expected) {
+        challenge.d = Buffer.from(String(index)).toString('base64');
+        return `_wafchallengeid=${Buffer.from(JSON.stringify(challenge)).toString('base64')}`;
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 function extractFromHtml(html: string, finalUrl: string): DouyinSourceResolution {
   const renderData = extractRenderData(html);
   const aweme = renderData ? findAwemeNode(renderData) : null;
@@ -134,6 +177,8 @@ function extractFromHtml(html: string, finalUrl: string): DouyinSourceResolution
     pickFirstUrl(aweme?.video && (aweme.video as Record<string, unknown>).downloadAddr) ??
     pickFirstUrl(aweme?.video && (aweme.video as Record<string, unknown>).play_addr) ??
     pickFirstUrl(aweme?.video && (aweme.video as Record<string, unknown>).playAddr) ??
+    html.match(/"download_addr":\{[\s\S]*?"url_list":\["([^"]+)"/)?.[1] ??
+    html.match(/"play_addr":\{[\s\S]*?"url_list":\["([^"]+)"/)?.[1] ??
     html.match(/"downloadAddr":"([^"]+)"/)?.[1] ??
     html.match(/"playAddr":"([^"]+)"/)?.[1];
 
@@ -148,6 +193,9 @@ function extractFromHtml(html: string, finalUrl: string): DouyinSourceResolution
     downloadUrl: normalizePlaybackUrl(downloadUrl),
     coverUrl:
       pickFirstUrl(aweme?.video && (aweme.video as Record<string, unknown>).cover) ??
+      (html.match(/"cover":\{[\s\S]*?"url_list":\["([^"]+)"/)?.[1]
+        ? decodeHtmlEntities(html.match(/"cover":\{[\s\S]*?"url_list":\["([^"]+)"/)![1])
+        : undefined) ??
       undefined,
   };
 }
@@ -222,10 +270,37 @@ export async function resolveDouyinVideoSource(url: string): Promise<DouyinSourc
   }
 
   const html = await response.text();
+  const finalUrl = response.url || sourceUrl;
   try {
-    return extractFromHtml(html, response.url || sourceUrl);
+    return extractFromHtml(html, finalUrl);
   } catch (error) {
-    const videoId = extractVideoIdFromUrl(response.url || sourceUrl);
+    const wafCookie = extractDouyinWafCookie(html);
+    if (wafCookie) {
+      const retryResponse = await fetch(finalUrl, {
+        headers: {
+          ...DOUYIN_MOBILE_HEADERS,
+          Cookie: wafCookie,
+        },
+        redirect: 'follow',
+      });
+      if (retryResponse.ok) {
+        const retryHtml = await retryResponse.text();
+        const retryUrl = retryResponse.url || finalUrl;
+        try {
+          return extractFromHtml(retryHtml, retryUrl);
+        } catch {
+          const retryVideoId = extractVideoIdFromUrl(retryUrl) ?? extractVideoIdFromHtml(retryHtml);
+          if (retryVideoId) {
+            const retryMobileResult = extractFromMobileShareHtml(retryHtml, retryVideoId);
+            if (retryMobileResult) {
+              return retryMobileResult;
+            }
+          }
+        }
+      }
+    }
+
+    const videoId = extractVideoIdFromUrl(finalUrl);
     if (videoId) {
       const mobileResult = await fetchMobileSharePage(videoId);
       if (mobileResult) {

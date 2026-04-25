@@ -20,7 +20,7 @@ describe('BinaryManager nvm 多版本解析', () => {
     process.env.HOME = tmpHome;
     delete process.env.NVM_DIR;
     // 模拟 macOS .app 的最小 PATH
-    process.env.PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
+    process.env.PATH = path.join(tmpHome, 'empty-bin');
   });
 
   afterEach(() => {
@@ -70,7 +70,7 @@ describe('BinaryManager nvm 多版本解析', () => {
       path.join(tmpHome, '.nvm', 'versions', 'node', 'v22.13.0', 'bin', 'claude-agent-acp'),
     );
     // 同步把该版本 bin 目录并入 PATH，避免子进程内部再次 spawn 同目录工具失败
-    expect(process.env.PATH?.split(':')).toContain(
+    expect(process.env.PATH?.split(path.delimiter)).toContain(
       path.join(tmpHome, '.nvm', 'versions', 'node', 'v22.13.0', 'bin'),
     );
   });
@@ -105,5 +105,16 @@ describe('BinaryManager nvm 多版本解析', () => {
     bm.ensureNodeInPath();
     const { command } = bm.getSpawnCommand('0.25.0');
     expect(command).toBe(path.join(userBin, 'claude-agent-acp'));
+  });
+
+  it.skipIf(process.platform !== 'win32')('Windows user prefix can resolve npm .cmd shims', () => {
+    const userPrefix = path.join(tmpHome, '.lingji', 'npm-global');
+    fs.mkdirSync(userPrefix, { recursive: true });
+    fs.writeFileSync(path.join(userPrefix, 'claude-agent-acp.cmd'), '@echo off\r\nexit /b 0\r\n');
+
+    const bm = new BinaryManager(path.join(tmpHome, '.lingji', 'acp'));
+    const { command } = bm.getSpawnCommand('0.25.0');
+
+    expect(command).toBe(path.join(userPrefix, 'claude-agent-acp.cmd'));
   });
 });

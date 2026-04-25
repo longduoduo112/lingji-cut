@@ -180,6 +180,48 @@ describe('douyin downloader', () => {
     expect(result.title).toBe('真实短链测试');
     expect(result.downloadUrl).toContain('/play/');
   });
+
+  it('solves the Douyin WAF challenge before parsing the mobile share page', async () => {
+    const challengePayload = Buffer.from(JSON.stringify({
+      v: {
+        a: Buffer.from('prefix').toString('base64'),
+        b: 1777098214,
+        c: Buffer.from(
+          '2d6d3392580ddb560e9da949b258c273b3f53f8eccb33e07a75ddc6e137852a2',
+          'hex',
+        ).toString('base64'),
+      },
+      s: Buffer.from('salt').toString('base64'),
+    })).toString('base64');
+    const challengeHtml = `<html><script>var wci="_wafchallengeid",cs="${challengePayload}",c=JSON.parse(atob(cs));</script>Please wait...</html>`;
+    const shareHtml = `<html>
+      <link rel="canonical" href="https://www.douyin.com/video/7630804615994379535"/>
+      <script>window._ROUTER_DATA={"loaderData":{"video":{"aweme_id":"7630804615994379535","desc":"WAF short link test","video":{"play_addr":{"url_list":["https:\\/\\/aweme.snssdk.com\\/aweme\\/v1\\/playwm\\/?video_id=test456"]}}}}}</script>
+    </html>`;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(challengeHtml, {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      }))
+      .mockResolvedValueOnce(new Response(shareHtml, {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      }));
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await resolveDouyinVideoSource('https://v.douyin.com/eWaJkNygvrk/');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      headers: expect.objectContaining({
+        Cookie: expect.stringContaining('_wafchallengeid='),
+      }),
+    });
+    expect(result.videoId).toBe('7630804615994379535');
+    expect(result.title).toBe('WAF short link test');
+    expect(result.downloadUrl).toContain('/play/');
+  });
 });
 
 describe('media extractor', () => {

@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -14,9 +15,13 @@ describe('remotion runtime binary path resolution', () => {
   });
 
   it('prefers app.asar.unpacked binaries in packaged apps', () => {
-    const hitPaths = new Set([
-      '/app/Contents/Resources/app.asar.unpacked/node_modules/@remotion/compositor-darwin-arm64/remotion',
-    ]);
+    const hitPath = path.posix.join(
+      '/app/Contents/Resources/app.asar.unpacked',
+      'node_modules',
+      '@remotion/compositor-darwin-arm64',
+      'remotion',
+    );
+    const hitPaths = new Set([hitPath]);
 
     const resolved = resolveRemotionBinariesDirectory({
       appPath: '/app/Contents/Resources/app.asar',
@@ -27,15 +32,17 @@ describe('remotion runtime binary path resolution', () => {
       existsSync: (candidate) => hitPaths.has(candidate),
     });
 
-    expect(resolved).toBe(
-      '/app/Contents/Resources/app.asar.unpacked/node_modules/@remotion/compositor-darwin-arm64',
-    );
+    expect(resolved).toBe(path.posix.dirname(hitPath));
   });
 
   it('falls back to cwd node_modules in development', () => {
-    const hitPaths = new Set([
-      '/workspace/node_modules/@remotion/compositor-darwin-arm64/remotion',
-    ]);
+    const hitPath = path.posix.join(
+      '/workspace',
+      'node_modules',
+      '@remotion/compositor-darwin-arm64',
+      'remotion',
+    );
+    const hitPaths = new Set([hitPath]);
 
     const resolved = resolveRemotionBinariesDirectory({
       appPath: '/workspace',
@@ -46,9 +53,7 @@ describe('remotion runtime binary path resolution', () => {
       existsSync: (candidate) => hitPaths.has(candidate),
     });
 
-    expect(resolved).toBe(
-      '/workspace/node_modules/@remotion/compositor-darwin-arm64',
-    );
+    expect(resolved).toBe(path.posix.dirname(hitPath));
   });
 });
 
@@ -71,16 +76,18 @@ describe('ensureRemotionDownloadsCwd', () => {
       chdir,
     });
 
-    const expectedRoot =
-      '/Users/tester/Library/Application Support/lingji/remotion-downloads';
+    const expectedRoot = path.join(
+      '/Users/tester/Library/Application Support/lingji',
+      'remotion-downloads',
+    );
     expect(result).toBe(expectedRoot);
     expect(mkdirSync).toHaveBeenCalledWith(expectedRoot, { recursive: true });
     expect(mkdirSync).toHaveBeenCalledWith(
-      `${expectedRoot}/node_modules`,
+      path.join(expectedRoot, 'node_modules'),
       { recursive: true },
     );
     expect(writeFileSync).toHaveBeenCalledWith(
-      `${expectedRoot}/package.json`,
+      path.join(expectedRoot, 'package.json'),
       expect.stringContaining('"lingji-remotion-cache"'),
     );
     expect(chdir).toHaveBeenCalledWith(expectedRoot);
@@ -88,9 +95,9 @@ describe('ensureRemotionDownloadsCwd', () => {
 
   it('skips recreating files when cache already exists', () => {
     const existing = new Set<string>([
-      '/data/remotion-downloads',
-      '/data/remotion-downloads/package.json',
-      '/data/remotion-downloads/node_modules',
+      path.join('/data', 'remotion-downloads'),
+      path.join('/data', 'remotion-downloads', 'package.json'),
+      path.join('/data', 'remotion-downloads', 'node_modules'),
     ]);
     const mkdirSync = vi.fn();
     const writeFileSync = vi.fn();
@@ -106,6 +113,6 @@ describe('ensureRemotionDownloadsCwd', () => {
 
     expect(mkdirSync).not.toHaveBeenCalled();
     expect(writeFileSync).not.toHaveBeenCalled();
-    expect(chdir).toHaveBeenCalledWith('/data/remotion-downloads');
+    expect(chdir).toHaveBeenCalledWith(path.join('/data', 'remotion-downloads'));
   });
 });

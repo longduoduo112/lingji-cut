@@ -109,12 +109,13 @@ export function resolveRemotionBinariesDirectory({
     return null;
   }
 
+  const pathApi = platform === 'win32' ? path.win32 : path.posix;
   const executableName = getRemotionExecutableName(platform);
   const asarUnpackedPath = appPath.endsWith('.asar') ? `${appPath}.unpacked` : null;
   const rootCandidates = [
     asarUnpackedPath,
     appPath,
-    path.resolve(moduleDir, '..'),
+    pathApi.resolve(moduleDir, '..'),
     cwd,
   ].filter((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
 
@@ -122,8 +123,8 @@ export function resolveRemotionBinariesDirectory({
 
   for (const rootCandidate of uniqueRootCandidates) {
     for (const packageName of packageNames) {
-      const packageDir = path.resolve(rootCandidate, 'node_modules', packageName);
-      const executablePath = path.join(packageDir, executableName);
+      const packageDir = pathApi.resolve(rootCandidate, 'node_modules', packageName);
+      const executablePath = pathApi.join(packageDir, executableName);
       if (existsSync(executablePath)) {
         return packageDir;
       }
