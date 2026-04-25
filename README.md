@@ -35,6 +35,16 @@
 
 ### 1. 安装依赖
 
+仓库已包含项目级 `.npmrc`，默认使用 npmmirror 的 npm / Electron / Node 原生模块镜像，适合国内网络和 Windows 新机器初始化。npm 11 可能提示 `Unknown project config "electron_mirror"` 等 warning，这是 npm 对 Electron 安装脚本配置键的提示，不代表安装失败。
+
+如果本机 npm 忽略项目级配置，可以在安装前设置环境变量兜底：
+
+```powershell
+$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+$env:npm_config_disturl="https://npmmirror.com/mirrors/node/"
+npm install
+```
+
 ```bash
 npm install
 ```
@@ -51,7 +61,21 @@ npm run dev
 npm run build
 ```
 
-### 4. 打包 macOS 应用
+### 4. 打包桌面应用
+
+Windows：
+
+```bash
+npm run package:win
+```
+
+或者一步完成构建与打包：
+
+```bash
+npm run dist:win
+```
+
+macOS：
 
 ```bash
 npm run package:mac
@@ -87,6 +111,8 @@ npx vitest run tests/editor.test.tsx
 ```bash
 npm run dev          # 启动 Electron + Vite 开发环境
 npm run build        # 构建主进程、preload 与 renderer，并执行混淆脚本
+npm run package:win  # 打包 Windows 应用目录
+npm run dist:win     # 构建 + 打包 Windows 应用目录
 npm run package:mac  # 打包 macOS .app
 npm run dist:mac     # 构建 + 打包 macOS .app
 npm test             # 运行 Vitest

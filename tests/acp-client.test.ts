@@ -6,9 +6,11 @@ import { AcpClient } from '../electron/acp/client';
 
 let mockScriptPath: string;
 let tmpDir: string;
+let clients: AcpClient[] = [];
 
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'acp-client-test-'));
+  clients = [];
   mockScriptPath = path.join(tmpDir, 'mock-agent.cjs');
   await fs.writeFile(
     mockScriptPath,
@@ -65,12 +67,19 @@ rl.on('line', (line) => {
 });
 
 afterEach(async () => {
+  await Promise.all(clients.map((client) => client.disconnectAndWait()));
   await fs.rm(tmpDir, { recursive: true, force: true });
 });
 
+function createClient(options?: ConstructorParameters<typeof AcpClient>[0]): AcpClient {
+  const client = new AcpClient(options);
+  clients.push(client);
+  return client;
+}
+
 describe('AcpClient', () => {
   it('sends a request and receives a response', async () => {
-    const client = new AcpClient();
+    const client = createClient();
     await client.spawn('node', [mockScriptPath], tmpDir);
 
     const result = await client.sendRequest('initialize', {
@@ -80,11 +89,11 @@ describe('AcpClient', () => {
 
     expect(result).toHaveProperty('protocolVersion', 'latest');
     expect(result).toHaveProperty('serverCapabilities');
-    client.disconnect();
+    await client.disconnectAndWait();
   });
 
   it('receives notifications as events', async () => {
-    const client = new AcpClient();
+    const client = createClient();
     await client.spawn('node', [mockScriptPath], tmpDir);
 
     await client.sendRequest('initialize', {
@@ -106,11 +115,11 @@ describe('AcpClient', () => {
 
     expect(events.length).toBeGreaterThanOrEqual(2);
     expect(events[0]).toHaveProperty('method', 'session/event');
-    client.disconnect();
+    await client.disconnectAndWait();
   });
 
   it('handles request handlers (Agent→Client)', async () => {
-    const client = new AcpClient();
+    const client = createClient();
     await client.spawn('node', [mockScriptPath], tmpDir);
 
     client.onRequest('read_text_file', async (params: unknown) => {
@@ -121,21 +130,21 @@ describe('AcpClient', () => {
     await client.sendRequest('echo_request', {});
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    client.disconnect();
+    await client.disconnectAndWait();
   });
 
   it('rejects on timeout', async () => {
-    const client = new AcpClient({ requestTimeout: 100 });
+    const client = createClient({ requestTimeout: 100 });
     const silentScript = path.join(tmpDir, 'silent.cjs');
     await fs.writeFile(silentScript, 'process.stdin.resume();', 'utf-8');
     await client.spawn('node', [silentScript], tmpDir);
 
     await expect(client.sendRequest('initialize', {})).rejects.toThrow(/timeout/i);
-    client.disconnect();
+    await client.disconnectAndWait();
   });
 
   it('emits disconnected on process exit', async () => {
-    const client = new AcpClient();
+    const client = createClient();
     const exitScript = path.join(tmpDir, 'exit.cjs');
     await fs.writeFile(exitScript, 'process.exit(1);', 'utf-8');
 
