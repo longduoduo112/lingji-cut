@@ -5,6 +5,13 @@ import type { OverlayItem } from '../src/types';
 
 vi.mock('remotion', () => ({
   Sequence: ({ children }: { children: unknown }) => children,
+  Img: ({ src, style }: { src: string; style?: unknown }) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (<img src={src} style={style as any} />) as unknown as JSX.Element,
+  OffthreadVideo: ({ src, muted, style }: { src: string; muted?: boolean; style?: unknown }) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (<video src={src} muted={muted} style={style as any} />) as unknown as JSX.Element,
+  staticFile: (p: string) => `/static/${p}`,
   getRemotionEnvironment: () => ({
     isRendering: false,
     isPlayer: false,
@@ -87,5 +94,112 @@ describe('AICardOverlay', () => {
     // motionCard 没有 compiledCode → 分发层直接落回 QuoteCard（legacy 渲染）
     expect(html).not.toContain('<iframe');
     expect(html).toContain('重点内容');
+  });
+
+  it('image 卡片渲染 <img>（assetPath 已 ready）', () => {
+    const overlay: OverlayItem = {
+      id: 'ai-overlay-img',
+      type: 'image',
+      assetPath: '',
+      trackId: 'visual-1',
+      startMs: 0,
+      durationMs: 5_000,
+      position: { x: 0, y: 0, width: 1_920, height: 1_080 },
+      overlayType: 'ai-card',
+      aiCardData: {
+        sourceCardId: 'c1',
+        cardType: 'image',
+        title: 'demo',
+        content: {
+          mediaType: 'image',
+          assetPath: '/abs/ai-cards/c1/image.png',
+          aspectRatio: '16:9',
+          prompt: '',
+          providerId: 'p',
+          model: 'm',
+          generationStatus: 'ready',
+        },
+        template: 'image-default',
+        displayMode: 'fullscreen',
+        style: { primaryColor: '#fff', backgroundColor: '#000', fontSize: 48 },
+        sourceStartMs: 0,
+        sourceEndMs: 5_000,
+      },
+    };
+
+    const html = renderToStaticMarkup(<AICardOverlay overlay={overlay} fps={30} />);
+    expect(html).toContain('<img');
+    expect(html).toContain('/abs/ai-cards/c1/image.png');
+  });
+
+  it('video 卡片渲染 <video> 且 muted', () => {
+    const overlay: OverlayItem = {
+      id: 'ai-overlay-vid',
+      type: 'video',
+      assetPath: '',
+      trackId: 'visual-1',
+      startMs: 0,
+      durationMs: 5_000,
+      position: { x: 0, y: 0, width: 1_920, height: 1_080 },
+      overlayType: 'ai-card',
+      aiCardData: {
+        sourceCardId: 'c1',
+        cardType: 'video',
+        title: 'demo',
+        content: {
+          mediaType: 'video',
+          assetPath: '/abs/ai-cards/c1/video.mp4',
+          aspectRatio: '16:9',
+          prompt: '',
+          providerId: 'p',
+          model: 'm',
+          generationStatus: 'ready',
+        },
+        template: 'video-default',
+        displayMode: 'fullscreen',
+        style: { primaryColor: '#fff', backgroundColor: '#000', fontSize: 48 },
+        sourceStartMs: 0,
+        sourceEndMs: 5_000,
+      },
+    };
+
+    const html = renderToStaticMarkup(<AICardOverlay overlay={overlay} fps={30} />);
+    expect(html).toContain('<video');
+    expect(html).toMatch(/<video[^>]*muted/);
+  });
+
+  it('assetPath 缺失时渲染 placeholder', () => {
+    const overlay: OverlayItem = {
+      id: 'ai-overlay-ph',
+      type: 'image',
+      assetPath: '',
+      trackId: 'visual-1',
+      startMs: 0,
+      durationMs: 5_000,
+      position: { x: 0, y: 0, width: 1_920, height: 1_080 },
+      overlayType: 'ai-card',
+      aiCardData: {
+        sourceCardId: 'c1',
+        cardType: 'image',
+        title: 'demo',
+        content: {
+          mediaType: 'image',
+          assetPath: null,
+          aspectRatio: '16:9',
+          prompt: '',
+          providerId: 'p',
+          model: 'm',
+          generationStatus: 'generating',
+        },
+        template: 'image-default',
+        displayMode: 'fullscreen',
+        style: { primaryColor: '#fff', backgroundColor: '#000', fontSize: 48 },
+        sourceStartMs: 0,
+        sourceEndMs: 5_000,
+      },
+    };
+
+    const html = renderToStaticMarkup(<AICardOverlay overlay={overlay} fps={30} />);
+    expect(html).toContain('data-testid="media-card-placeholder"');
   });
 });

@@ -52,6 +52,90 @@ describe('prepareTimelineForRemotionRender', () => {
   });
 });
 
+describe('prepareTimelineForRemotionRender — ai-card media', () => {
+  it('翻译 image 卡的 assetPath 到 render-assets 并注册资产', () => {
+    const timeline = createDefaultTimeline();
+    timeline.overlays = [
+      {
+        id: 'ov1',
+        type: 'image',
+        overlayType: 'ai-card',
+        assetPath: '',
+        trackId: DEFAULT_VISUAL_TRACK_ID,
+        startMs: 0,
+        durationMs: 5_000,
+        position: { x: 0, y: 0, width: 1920, height: 1080 },
+        aiCardData: {
+          sourceCardId: 'c1',
+          cardType: 'image',
+          title: 't',
+          content: {
+            mediaType: 'image',
+            assetPath: '/abs/projectDir/ai-cards/c1/image.png',
+            aspectRatio: '16:9',
+            prompt: '',
+            providerId: 'p',
+            model: 'm',
+            generationStatus: 'ready',
+          },
+          template: 'image-default',
+          displayMode: 'fullscreen',
+          style: { primaryColor: '#fff', backgroundColor: '#000', fontSize: 48 },
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+    ];
+
+    const { timeline: out, assets } = prepareTimelineForRemotionRender(timeline);
+    expect(assets.some((a) => a.sourcePath === '/abs/projectDir/ai-cards/c1/image.png')).toBe(true);
+    const newOverlay = out.overlays[0]!;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const newPath = (newOverlay.aiCardData!.content as any).assetPath as string;
+    expect(newPath.startsWith('render-assets/')).toBe(true);
+  });
+
+  it('翻译 video 卡的 assetPath + posterPath', () => {
+    const timeline = createDefaultTimeline();
+    timeline.overlays = [
+      {
+        id: 'ov2',
+        type: 'video',
+        overlayType: 'ai-card',
+        assetPath: '',
+        trackId: DEFAULT_VISUAL_TRACK_ID,
+        startMs: 0,
+        durationMs: 6_000,
+        position: { x: 0, y: 0, width: 1920, height: 1080 },
+        aiCardData: {
+          sourceCardId: 'c2',
+          cardType: 'video',
+          title: 't',
+          content: {
+            mediaType: 'video',
+            assetPath: '/abs/projectDir/ai-cards/c2/video.mp4',
+            posterPath: '/abs/projectDir/ai-cards/c2/poster.jpg',
+            mediaDurationMs: 6000,
+            aspectRatio: '16:9',
+            prompt: '',
+            providerId: 'v',
+            model: 'vidu-2',
+            generationStatus: 'ready',
+          },
+          template: 'video-default',
+          displayMode: 'fullscreen',
+          style: { primaryColor: '#fff', backgroundColor: '#000', fontSize: 48 },
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+    ];
+
+    const { assets } = prepareTimelineForRemotionRender(timeline);
+    const sourcePaths = assets.map((a) => a.sourcePath);
+    expect(sourcePaths).toContain('/abs/projectDir/ai-cards/c2/video.mp4');
+    expect(sourcePaths).toContain('/abs/projectDir/ai-cards/c2/poster.jpg');
+  });
+});
+
 describe('resolveRemotionAssetSrc', () => {
   it('uses staticFile for bundled asset keys and direct URLs for local/remote media', () => {
     expect(resolveRemotionAssetSrc('render-assets/audio-0.mp3')).toBe(
