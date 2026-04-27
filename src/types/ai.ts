@@ -3,7 +3,17 @@ import type { PromptKind } from '../lib/prompts/types';
 import type { CoverEditState } from '../lib/cover-editor/contracts';
 export type { MotionCardPayload } from './motion';
 
-export type AICardType = 'summary' | 'data' | 'insight' | 'chapter' | 'quote' | 'motion';
+export type AICardType =
+  | 'summary'
+  | 'data'
+  | 'insight'
+  | 'chapter'
+  | 'quote'
+  | 'motion'
+  | 'image'
+  | 'video';
+
+export type AICardMediaType = 'image' | 'video';
 export type AICardDisplayMode = 'fullscreen' | 'pip';
 export type AICardRenderMode = 'legacy' | 'motion-card';
 
@@ -14,6 +24,32 @@ export interface DataContent {
     value: string | number;
     highlight?: boolean;
   }>;
+}
+
+export interface MediaCardContent {
+  mediaType: AICardMediaType;
+  /** 相对 projectDir，例：'ai-cards/<cardId>/image.png' */
+  assetPath: string | null;
+  /** 仅 video：首帧海报，相对 projectDir */
+  posterPath?: string | null;
+  /** 仅 video：生成产物的真实时长（ms） */
+  mediaDurationMs?: number;
+  /** 字段类型为 ImageAspectRatio；video 卡运行时仅接受 '16:9' | '9:16' | '1:1' 子集，由 form 与 IPC handler 双向校验 */
+  aspectRatio: ImageAspectRatio;
+  prompt: string;
+  negativePrompt?: string;
+  providerId: string | null;
+  model: string | null;
+  generationStatus:
+    | 'idle'
+    | 'pending'
+    | 'generating'
+    | 'ready'
+    | 'failed'
+    | 'cancelled';
+  errorMessage?: string;
+  generatedAt?: number;
+  extraParams?: Record<string, unknown>;
 }
 
 export interface CardStyle {
@@ -55,7 +91,7 @@ export interface AICard {
   segmentId: string;
   type: AICardType;
   title: string;
-  content: string | DataContent;
+  content: string | DataContent | MediaCardContent;
   startMs: number;
   endMs: number;
   displayDurationMs: number;
@@ -151,6 +187,10 @@ export interface AISettings {
   imageProviders: ImageProvider[];
   defaultImageProviderId: string | null;
   defaultImageModel: string | null;
+  // —— 新增：视频 Provider ——
+  videoProviders: VideoProvider[];
+  defaultVideoProviderId: string | null;
+  defaultVideoModel: string | null;
   // —— 新增：提示词 → AI 绑定（全局层）——
   promptBindings: PromptBindingMap;
 }
@@ -161,7 +201,7 @@ export interface AICardOverlayData {
   sourceCardId?: string;
   cardType: AICardType;
   title: string;
-  content: string | DataContent;
+  content: string | DataContent | MediaCardContent;
   template: string;
   displayMode: AICardDisplayMode;
   style: CardStyle;
@@ -188,6 +228,8 @@ export const DEFAULT_CARD_STYLE: Record<AICardType, CardStyle> = {
   chapter: { primaryColor: '#9eb7ff', backgroundColor: DEFAULT_CARD_BACKGROUND, fontSize: 48 },
   quote: { primaryColor: '#ff8f7a', backgroundColor: DEFAULT_CARD_BACKGROUND, fontSize: 48 },
   motion: { primaryColor: '#7df9ff', backgroundColor: DEFAULT_CARD_BACKGROUND, fontSize: 48 },
+  image: { primaryColor: '#79c4ff', backgroundColor: DEFAULT_CARD_BACKGROUND, fontSize: 48 },
+  video: { primaryColor: '#ff8f7a', backgroundColor: DEFAULT_CARD_BACKGROUND, fontSize: 48 },
 };
 
 export const DEFAULT_CARD_DURATION_MS = 5_000;
@@ -201,7 +243,16 @@ export function getDefaultCardStyle(type: AICardType): CardStyle {
 }
 
 export function isAICardType(value: unknown): value is AICardType {
-  return ['summary', 'data', 'insight', 'chapter', 'quote', 'motion'].includes(String(value));
+  return [
+    'summary',
+    'data',
+    'insight',
+    'chapter',
+    'quote',
+    'motion',
+    'image',
+    'video',
+  ].includes(String(value));
 }
 
 export function isDataContent(value: unknown): value is DataContent {
@@ -210,6 +261,21 @@ export function isDataContent(value: unknown): value is DataContent {
   }
 
   return Array.isArray(value.items);
+}
+
+export function isMediaContent(value: unknown): value is MediaCardContent {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return (
+    'mediaType' in v &&
+    'aspectRatio' in v &&
+    'generationStatus' in v &&
+    (v.mediaType === 'image' || v.mediaType === 'video')
+  );
+}
+
+export function isMediaCardType(t: AICardType): t is 'image' | 'video' {
+  return t === 'image' || t === 'video';
 }
 
 export function buildAICardOverlayData(card: AICard): AICardOverlayData {
@@ -264,6 +330,29 @@ export interface ImageProvider {
   extras?: Record<string, unknown>;
 }
 
+/** 受支持的视频生成 Provider 类型 */
+export type VideoProviderType =
+  | 'vidu'
+  | 'kling'
+  | 'runway'
+  | 'minimax_video'
+  | 'custom';
+
+/** 视频宽高比公共集（video 卡运行时仅接受该子集） */
+export type VideoAspectRatio = '16:9' | '9:16' | '1:1';
+
+/** 单个 Video Provider 配置（文生/图生视频） */
+export interface VideoProvider {
+  id: string;
+  name: string;
+  type: VideoProviderType;
+  baseUrl: string;
+  apiKey: string;
+  models: string[];
+  /** provider-specific 额外配置 */
+  extras?: Record<string, unknown>;
+}
+
 /** 单个提示词的 AI 绑定（null 表示继承） */
 export interface PromptBinding {
   providerId: string | null;
@@ -271,6 +360,9 @@ export interface PromptBinding {
   // 仅 cover.regeneration 写入
   imageProviderId?: string | null;
   imageModel?: string | null;
+  // 视频生成相关提示词写入
+  videoProviderId?: string | null;
+  videoModel?: string | null;
 }
 
 /**
