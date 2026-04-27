@@ -1,14 +1,16 @@
 import type { CSSProperties } from 'react';
-import { Sequence } from 'remotion';
+import { Img, OffthreadVideo, Sequence } from 'remotion';
 import type { OverlayItem } from '../types';
-import { isDataContent } from '../types/ai';
+import { isDataContent, isMediaContent } from '../types/ai';
 import { msToFrame } from '../lib/utils';
+import { resolveRemotionAssetSrc } from '../lib/remotion-assets';
 import { SummaryCard } from './cards/SummaryCard';
 import { DataCard } from './cards/DataCard';
 import { InsightCard } from './cards/InsightCard';
 import { ChapterCard } from './cards/ChapterCard';
 import { QuoteCard } from './cards/QuoteCard';
 import { MotionCardOverlay } from './MotionCardOverlay';
+import { MediaCardPlaceholder } from './MediaCardPlaceholder';
 
 interface AICardOverlayProps {
   overlay: OverlayItem;
@@ -46,6 +48,31 @@ function renderCard(
         durationInFrames={context.motionDurationInFrames}
         width={context.motionWidth}
         height={context.motionHeight}
+      />
+    );
+  }
+
+  if (data.cardType === 'image' && isMediaContent(data.content)) {
+    if (!data.content.assetPath) {
+      return <MediaCardPlaceholder type="image" status={data.content.generationStatus} />;
+    }
+    return (
+      <Img
+        src={resolveRemotionAssetSrc(data.content.assetPath)}
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+      />
+    );
+  }
+
+  if (data.cardType === 'video' && isMediaContent(data.content)) {
+    if (!data.content.assetPath) {
+      return <MediaCardPlaceholder type="video" status={data.content.generationStatus} />;
+    }
+    return (
+      <OffthreadVideo
+        src={resolveRemotionAssetSrc(data.content.assetPath)}
+        muted
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
       />
     );
   }

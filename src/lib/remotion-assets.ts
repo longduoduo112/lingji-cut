@@ -1,5 +1,6 @@
 import { staticFile } from 'remotion';
 import type { TimelineData } from '../types';
+import type { MediaCardContent } from '../types/ai';
 import { toFileSrc } from './utils';
 
 export interface RenderAssetDescriptor {
@@ -85,10 +86,33 @@ export function prepareTimelineForRemotionRender(timeline: TimelineData): {
           ? registerAsset(timeline.podcast.audioPath, 'audio-0')
           : timeline.podcast.audioPath,
       },
-      overlays: timeline.overlays.map((overlay) => ({
-        ...overlay,
-        assetPath: registerAsset(overlay.assetPath, overlay.id),
-      })),
+      overlays: timeline.overlays.map((overlay) => {
+        const baseAssetPath = registerAsset(overlay.assetPath, overlay.id);
+        const aiCardData = overlay.aiCardData;
+        if (
+          aiCardData &&
+          aiCardData.content &&
+          typeof aiCardData.content === 'object' &&
+          'mediaType' in aiCardData.content
+        ) {
+          const media = aiCardData.content as MediaCardContent;
+          const newMedia: MediaCardContent = {
+            ...media,
+            assetPath: media.assetPath
+              ? registerAsset(media.assetPath, `${overlay.id}-media`)
+              : media.assetPath,
+            posterPath: media.posterPath
+              ? registerAsset(media.posterPath, `${overlay.id}-poster`)
+              : media.posterPath,
+          };
+          return {
+            ...overlay,
+            assetPath: baseAssetPath,
+            aiCardData: { ...aiCardData, content: newMedia },
+          };
+        }
+        return { ...overlay, assetPath: baseAssetPath };
+      }),
     },
     assets,
   };
