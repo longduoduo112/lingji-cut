@@ -21,6 +21,7 @@ import {
 import { buildExportRenderConfig, type ExportConfig } from '../src/lib/export-settings';
 import { generateCoverCandidates } from '../src/lib/cover-generation';
 import { resolvePromptBinding } from '../src/lib/llm/binding-resolver';
+import { handleGenerateCardImage, type GenerateCardImageArgs } from './card-media-handlers';
 import { prepareTimelineForRemotionRender, type RenderAssetDescriptor } from '../src/lib/remotion-assets';
 import {
   buildMinimaxTtsRequestBody,
@@ -842,6 +843,45 @@ ipcMain.handle(
       coversDir,
       coverProgressCtx,
     );
+  },
+);
+
+// AI 卡片媒体生成共享的 AbortController 注册表（image / video / cancel 复用）
+const cardMediaAbortMap = new Map<string, AbortController>();
+
+ipcMain.handle(
+  'generate-card-image',
+  async (
+    _event,
+    args: GenerateCardImageArgs & {
+      settings: AISettings;
+      projectBindings?: PromptBindingMap | null;
+    },
+  ) => {
+    const prev = cardMediaAbortMap.get(args.cardId);
+    prev?.abort();
+    const ac = new AbortController();
+    cardMediaAbortMap.set(args.cardId, ac);
+    try {
+      return await handleGenerateCardImage(args, {
+        settings: args.settings,
+        projectBindings: args.projectBindings ?? null,
+        signal: ac.signal,
+        onProgress: (u) => {
+          mainWindow?.webContents.send('card-media-progress', {
+            cardId: args.cardId,
+            percent: u.percent,
+            phase: u.phase,
+            message: u.message,
+            taskId: `card-media-${args.cardId}`,
+          });
+        },
+      });
+    } finally {
+      if (cardMediaAbortMap.get(args.cardId) === ac) {
+        cardMediaAbortMap.delete(args.cardId);
+      }
+    }
   },
 );
 
