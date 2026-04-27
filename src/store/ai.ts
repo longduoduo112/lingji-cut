@@ -89,6 +89,9 @@ function buildDefaultAISettings(): AISettings {
     imageProviders: [],
     defaultImageProviderId: null,
     defaultImageModel: null,
+    videoProviders: [],
+    defaultVideoProviderId: null,
+    defaultVideoModel: null,
     promptBindings: {},
   };
 }
