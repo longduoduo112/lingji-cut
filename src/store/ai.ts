@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { v4 as uuid } from 'uuid';
 import {
   createPersistedAIState,
   selectCoverCandidate,
@@ -9,15 +10,22 @@ import { migrateToProviders } from '../lib/llm/provider-utils';
 import { migrateImageProviders } from '../lib/llm/migrate-image-providers';
 import { loadGlobalSettingsFile, updateGlobalSettingsFile } from '../lib/global-settings-client';
 import {
+  DEFAULT_CARD_STYLE,
   DEFAULT_JIMENG_MODEL,
+  getDefaultTemplate,
   type AIAnalysisResult,
   type AICard,
+  type AICardDisplayMode,
   type AISettings,
   type CoverCandidate,
   type CoverEditState,
+  type ImageAspectRatio,
+  type MediaCardContent,
   type PromptBinding,
   type PromptBindingMap,
+  type VideoAspectRatio,
 } from '../types/ai';
+import { useTaskProgressStore } from './task-progress';
 import type {
   PromptCategory,
   PromptKind,
@@ -65,6 +73,87 @@ export const DEFAULT_WORKFLOW: WorkflowState = {
 };
 
 const AI_SETTINGS_LEGACY_KEY = 'podcast-editor-ai-settings';
+
+const MEDIA_DEFAULT_DURATION_MS: Record<'image' | 'video', number> = {
+  image: 5_000,
+  video: 6_000,
+};
+
+interface MediaCardSkeletonOptions {
+  prompt?: string;
+  aspectRatio: ImageAspectRatio | VideoAspectRatio;
+  displayMode: AICardDisplayMode;
+  durationSeconds?: number;
+}
+
+function buildMediaCardSkeleton(
+  type: 'image' | 'video',
+  segmentId: string,
+  analysis: AIAnalysisResult | null,
+  opts: MediaCardSkeletonOptions,
+): AICard {
+  const segment = analysis?.segments.find((s) => s.id === segmentId);
+  const fallbackTitle = type === 'image' ? '图片卡' : '视频卡';
+  const title = segment?.title?.trim() || fallbackTitle;
+  const promptFallback = opts.prompt ?? segment?.summary ?? '';
+  const startMs = segment?.startMs ?? 0;
+  const endMs = segment?.endMs ?? startMs;
+  const displayDurationMs =
+    type === 'video' && typeof opts.durationSeconds === 'number'
+      ? Math.max(1000, Math.round(opts.durationSeconds * 1000))
+      : MEDIA_DEFAULT_DURATION_MS[type];
+
+  const content: MediaCardContent = {
+    mediaType: type,
+    assetPath: null,
+    aspectRatio: opts.aspectRatio as ImageAspectRatio,
+    prompt: promptFallback,
+    providerId: null,
+    model: null,
+    generationStatus: 'idle',
+  };
+
+  return {
+    id: uuid(),
+    segmentId,
+    type,
+    title,
+    content,
+    startMs,
+    endMs,
+    displayDurationMs,
+    displayMode: opts.displayMode,
+    template: getDefaultTemplate(type),
+    enabled: true,
+    style: { ...DEFAULT_CARD_STYLE[type] },
+  };
+}
+
+function appendCardToStore(
+  set: (
+    partial:
+      | Partial<AIStore>
+      | ((state: AIStore) => Partial<AIStore>),
+  ) => void,
+  get: () => AIStore,
+  card: AICard,
+): void {
+  const current = get().analysisResult;
+  if (!current) {
+    const empty: AIAnalysisResult = {
+      segments: [],
+      cards: [card],
+      coverPrompts: [],
+      summary: '',
+      keywords: [],
+    };
+    set({ analysisResult: empty });
+    return;
+  }
+  set({
+    analysisResult: { ...current, cards: [...current.cards, card] },
+  });
+}
 
 
 function buildDefaultAISettings(): AISettings {
@@ -153,6 +242,31 @@ export interface AIStore {
   setAnalysisError: (error: string | null) => void;
   toggleCardEnabled: (cardId: string) => void;
   updateCard: (cardId: string, updates: Partial<AICard>) => void;
+  // —— 媒体卡（image/video）actions ——
+  cardMediaTasks: Record<string, { taskId: string; phase: string; percent: number }>;
+  createImageCard: (
+    segmentId: string,
+    opts?: {
+      prompt?: string;
+      aspectRatio?: ImageAspectRatio;
+      displayMode?: AICardDisplayMode;
+    },
+  ) => Promise<AICard>;
+  createVideoCard: (
+    segmentId: string,
+    opts?: {
+      prompt?: string;
+      aspectRatio?: VideoAspectRatio;
+      durationSeconds?: number;
+      displayMode?: AICardDisplayMode;
+    },
+  ) => Promise<AICard>;
+  regenerateCardMedia: (
+    cardId: string,
+    overrides?: Partial<MediaCardContent>,
+  ) => Promise<void>;
+  cancelCardMediaGeneration: (cardId: string) => Promise<void>;
+  deleteCard: (cardId: string) => Promise<void>;
   setCoverCandidates: (candidates: CoverCandidate[]) => void;
   appendCoverCandidate: (candidate: CoverCandidate) => void;
   replaceCoverCandidate: (candidateId: string, patch: Partial<CoverCandidate>) => void;
@@ -312,6 +426,244 @@ export const useAIStore = create<AIStore>((set, get) => ({
     set((state) => ({
       analysisResult: updateCardInResult(state.analysisResult, cardId, updates),
     })),
+  cardMediaTasks: {},
+  createImageCard: async (segmentId, opts) => {
+    const card = buildMediaCardSkeleton('image', segmentId, get().analysisResult, {
+      prompt: opts?.prompt,
+      aspectRatio: opts?.aspectRatio ?? '16:9',
+      displayMode: opts?.displayMode ?? 'fullscreen',
+    });
+    appendCardToStore(set, get, card);
+    return card;
+  },
+  createVideoCard: async (segmentId, opts) => {
+    const durationSeconds = opts?.durationSeconds ?? 6;
+    const card = buildMediaCardSkeleton('video', segmentId, get().analysisResult, {
+      prompt: opts?.prompt,
+      aspectRatio: opts?.aspectRatio ?? '16:9',
+      displayMode: opts?.displayMode ?? 'fullscreen',
+      durationSeconds,
+    });
+    appendCardToStore(set, get, card);
+    return card;
+  },
+  regenerateCardMedia: async (cardId, overrides) => {
+    const state = get();
+    const result = state.analysisResult;
+    const card = result?.cards.find((c) => c.id === cardId);
+    if (!card || (card.type !== 'image' && card.type !== 'video')) {
+      throw new Error(`regenerateCardMedia: 卡片不存在或类型非 image/video: ${cardId}`);
+    }
+    const baseContent = card.content as MediaCardContent;
+    const mergedContent: MediaCardContent = {
+      ...baseContent,
+      ...(overrides ?? {}),
+      generationStatus: 'generating',
+      errorMessage: undefined,
+    };
+
+    // 先把 generating 状态写回 store
+    set((s) => ({
+      analysisResult: updateCardInResult(s.analysisResult, cardId, {
+        content: mergedContent,
+      }),
+    }));
+
+    const taskId = `card-media-${cardId}`;
+    const cardTypeLabel = card.type === 'image' ? '图片卡' : '视频卡';
+    const taskProgress = useTaskProgressStore.getState();
+    taskProgress.startTask({
+      id: taskId,
+      category: card.type === 'image' ? 'cover' : 'export',
+      label: `生成${cardTypeLabel}：${card.title}`,
+      mode: 'determinate',
+      progress: 0,
+      phase: '准备生成',
+      level: 1,
+      canCancel: true,
+      onCancel: () => {
+        void get().cancelCardMediaGeneration(cardId);
+      },
+    });
+
+    set((s) => ({
+      cardMediaTasks: {
+        ...s.cardMediaTasks,
+        [cardId]: { taskId, phase: '准备生成', percent: 0 },
+      },
+    }));
+
+    let unsubscribe: (() => void) | null = null;
+    if (typeof window !== 'undefined' && window.electronAPI?.onCardMediaProgress) {
+      unsubscribe = window.electronAPI.onCardMediaProgress((payload) => {
+        if (payload.cardId !== cardId) return;
+        const phase = payload.phase ?? payload.message ?? '生成中';
+        const percent = typeof payload.percent === 'number' ? payload.percent : 0;
+        useTaskProgressStore.getState().updateTask(taskId, {
+          progress: percent,
+          phase,
+        });
+        set((s) => ({
+          cardMediaTasks: {
+            ...s.cardMediaTasks,
+            [cardId]: { taskId, phase, percent },
+          },
+        }));
+      });
+    }
+
+    const cleanup = () => {
+      if (unsubscribe) {
+        try {
+          unsubscribe();
+        } catch {
+          // ignore
+        }
+        unsubscribe = null;
+      }
+      set((s) => {
+        const next = { ...s.cardMediaTasks };
+        delete next[cardId];
+        return { cardMediaTasks: next };
+      });
+    };
+
+    try {
+      if (typeof window === 'undefined' || !window.electronAPI) {
+        throw new Error('当前环境不支持媒体生成 IPC');
+      }
+      const projectDir = get().currentProjectDir ?? '';
+      const settings = (await loadAISettings()) ?? buildDefaultAISettings();
+      const projectBindings = get().projectBindings;
+      let nextContent: MediaCardContent;
+      if (card.type === 'image') {
+        nextContent = await window.electronAPI.generateCardImage({
+          projectDir,
+          cardId,
+          prompt: mergedContent.prompt,
+          negativePrompt: mergedContent.negativePrompt,
+          aspectRatio: mergedContent.aspectRatio,
+          providerId: mergedContent.providerId,
+          model: mergedContent.model,
+          extraParams: mergedContent.extraParams,
+          settings,
+          projectBindings,
+        });
+      } else {
+        // video 仅接受 16:9 / 9:16 / 1:1
+        const ar = mergedContent.aspectRatio as VideoAspectRatio;
+        const durationSeconds = Math.max(
+          1,
+          Math.round((card.displayDurationMs ?? 6000) / 1000),
+        );
+        nextContent = await window.electronAPI.generateCardVideo({
+          projectDir,
+          cardId,
+          prompt: mergedContent.prompt,
+          negativePrompt: mergedContent.negativePrompt,
+          aspectRatio: ar,
+          durationSeconds,
+          providerId: mergedContent.providerId,
+          model: mergedContent.model,
+          extraParams: mergedContent.extraParams,
+          settings,
+          projectBindings,
+        });
+      }
+
+      // 写回新 content；video 卡同步 displayDurationMs
+      set((s) => {
+        const updates: Partial<AICard> = { content: nextContent };
+        if (card.type === 'video' && nextContent.mediaDurationMs && nextContent.mediaDurationMs > 0) {
+          updates.displayDurationMs = nextContent.mediaDurationMs;
+        }
+        return {
+          analysisResult: updateCardInResult(s.analysisResult, cardId, updates),
+        };
+      });
+      useTaskProgressStore.getState().completeTask(taskId);
+      cleanup();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // 若非 cancelled，标记 failed
+      const currentCard = get().analysisResult?.cards.find((c) => c.id === cardId);
+      const currentStatus =
+        currentCard && (currentCard.content as MediaCardContent)?.generationStatus;
+      if (currentStatus !== 'cancelled') {
+        set((s) => ({
+          analysisResult: updateCardInResult(s.analysisResult, cardId, {
+            content: {
+              ...mergedContent,
+              generationStatus: 'failed',
+              errorMessage: message,
+            },
+          }),
+        }));
+        useTaskProgressStore.getState().failTask(taskId, message);
+      }
+      cleanup();
+    }
+  },
+  cancelCardMediaGeneration: async (cardId) => {
+    const state = get();
+    const taskEntry = state.cardMediaTasks[cardId];
+    const card = state.analysisResult?.cards.find((c) => c.id === cardId);
+    if (typeof window !== 'undefined' && window.electronAPI?.cancelCardMediaGeneration) {
+      try {
+        await window.electronAPI.cancelCardMediaGeneration(cardId);
+      } catch (error) {
+        console.error('取消媒体卡生成失败:', error);
+      }
+    }
+    if (card && (card.type === 'image' || card.type === 'video')) {
+      const baseContent = card.content as MediaCardContent;
+      set((s) => ({
+        analysisResult: updateCardInResult(s.analysisResult, cardId, {
+          content: {
+            ...baseContent,
+            generationStatus: 'cancelled',
+          },
+        }),
+      }));
+    }
+    if (taskEntry) {
+      useTaskProgressStore.getState().failTask(taskEntry.taskId, 'cancelled');
+      set((s) => {
+        const next = { ...s.cardMediaTasks };
+        delete next[cardId];
+        return { cardMediaTasks: next };
+      });
+    }
+  },
+  deleteCard: async (cardId) => {
+    const state = get();
+    const result = state.analysisResult;
+    const card = result?.cards.find((c) => c.id === cardId);
+    // 媒体卡：先清理资产
+    if (card && (card.type === 'image' || card.type === 'video')) {
+      const projectDir = state.currentProjectDir;
+      if (
+        projectDir &&
+        typeof window !== 'undefined' &&
+        window.electronAPI?.deleteCardMediaAssets
+      ) {
+        try {
+          await window.electronAPI.deleteCardMediaAssets(projectDir, cardId);
+        } catch (error) {
+          console.error('删除媒体卡资产失败:', error);
+        }
+      }
+    }
+    set((s) => {
+      if (!s.analysisResult) return {};
+      return {
+        analysisResult: {
+          ...s.analysisResult,
+          cards: s.analysisResult.cards.filter((c) => c.id !== cardId),
+        },
+      };
+    });
+  },
   setCoverCandidates: (candidates) => set({ coverCandidates: candidates }),
   appendCoverCandidate: (candidate) =>
     set((state) => ({ coverCandidates: [...state.coverCandidates, candidate] })),
