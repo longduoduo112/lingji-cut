@@ -2,6 +2,7 @@ import type { AssetItem } from '../types';
 import {
   isAICardType,
   isDataContent,
+  isMediaContent,
   type AIAnalysisResult,
   type AICard,
   type AISegment,
@@ -73,7 +74,9 @@ function isAICard(value: unknown): value is AICard {
     typeof value.segmentId === 'string' &&
     isAICardType(value.type) &&
     typeof value.title === 'string' &&
-    (typeof value.content === 'string' || isDataContent(value.content)) &&
+    (typeof value.content === 'string' ||
+      isDataContent(value.content) ||
+      isMediaContent(value.content)) &&
     Number.isFinite(value.startMs) &&
     Number.isFinite(value.endMs) &&
     Number.isFinite(value.displayDurationMs) &&

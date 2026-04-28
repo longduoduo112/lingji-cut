@@ -4,6 +4,10 @@ import type { SrtEntry } from '../types';
 import { clamp } from '../lib/utils';
 import { useTimelineStore } from '../store/timeline';
 import { hitTestSubtitlesByRect, summarizeSubtitleSelection } from '../lib/subtitle-marquee';
+import {
+  MANUAL_CARD_KIND_OPTIONS,
+  type ManualCardKind,
+} from '../lib/manual-card-types';
 import { ContextMenu } from '../ui';
 import { AppIcon } from './AppIcon';
 import styles from './TimelineSubtitleBlocks.module.css';
@@ -20,6 +24,7 @@ interface TimelineSubtitleBlocksProps {
     startMs: number;
     endMs: number;
     indices: number[];
+    kind?: ManualCardKind;
   }) => void;
 }
 
@@ -189,7 +194,7 @@ export function TimelineSubtitleBlocks({
     [],
   );
 
-  const handleGenerateCard = useCallback(() => {
+  const handleGenerateCard = useCallback((kind?: ManualCardKind) => {
     if (subtitleSelection.length === 0) return;
     const summary = summarizeSubtitleSelection(entries, subtitleSelection);
     if (!summary) return;
@@ -198,6 +203,7 @@ export function TimelineSubtitleBlocks({
       startMs: summary.startMs,
       endMs: summary.endMs,
       indices: summary.indices,
+      kind,
     });
   }, [entries, subtitleSelection, onRequestGenerateCard]);
 
@@ -261,6 +267,24 @@ export function TimelineSubtitleBlocks({
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Content glass>
+        <ContextMenu.Label>
+          创建卡片{hasSelection ? `（${subtitleSelection.length} 条字幕）` : ''}
+        </ContextMenu.Label>
+        {MANUAL_CARD_KIND_OPTIONS.map((item) => (
+          <ContextMenu.Item
+            key={item.kind}
+            disabled={!hasSelection}
+            onSelect={() => {
+              if (hasSelection) handleGenerateCard(item.kind);
+            }}
+          >
+            <div className={styles.contextMenuItem}>
+              <AppIcon name={item.icon} size={14} className={styles.contextMenuIcon} />
+              <span className={styles.contextMenuLabel}>创建{item.label}</span>
+            </div>
+          </ContextMenu.Item>
+        ))}
+        <ContextMenu.Separator />
         <ContextMenu.Item
           disabled={!hasSelection}
           onSelect={() => {
@@ -270,8 +294,7 @@ export function TimelineSubtitleBlocks({
           <div className={styles.contextMenuItem}>
             <AppIcon name="sparkles" size={14} className={styles.contextMenuIcon} />
             <span className={styles.contextMenuLabel}>
-              生成内容卡片
-              {hasSelection ? `（${subtitleSelection.length} 条）` : ''}
+              自定义生成...
             </span>
           </div>
         </ContextMenu.Item>

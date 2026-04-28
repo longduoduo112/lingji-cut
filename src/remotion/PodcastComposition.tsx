@@ -1,7 +1,7 @@
 import type { ExportRenderConfig } from '../lib/export-settings';
 import { AbsoluteFill, Audio, Sequence, useVideoConfig } from 'remotion';
-import { getRenderableOverlays } from '../lib/timeline-tracks';
-import type { SrtEntry, TimelineData } from '../types';
+import { getRenderableOverlays, getRenderableVisualTracks } from '../lib/timeline-tracks';
+import type { OverlayItem, SrtEntry, TimelineData } from '../types';
 import { resolveRemotionAssetSrc } from '../lib/remotion-assets';
 import { msToFrame } from '../lib/utils';
 import { AICardOverlay } from './AICardOverlay';
@@ -9,6 +9,11 @@ import { AudioOverlay } from './AudioOverlay';
 import { MediaOverlay } from './MediaOverlay';
 import { SubtitleTrack } from './SubtitleTrack';
 import { TextOverlay } from './TextOverlay';
+
+// 字幕轨在时间线 UI 中位于视觉轨之上，因此显示层必须始终高于任意视觉 overlay。
+const SUBTITLE_Z_INDEX = 1000;
+const BACKGROUND_Z_INDEX = 1;
+const VISUAL_BASE_Z_INDEX = 10;
 
 interface PodcastCompositionProps {
   timeline: TimelineData;
@@ -22,6 +27,16 @@ export function PodcastComposition({ timeline, srtEntries }: PodcastCompositionP
   const renderableOverlays = getRenderableOverlays(timeline);
   const audioOverlays = renderableOverlays.filter((overlay) => overlay.type === 'audio');
   const visualOverlays = renderableOverlays.filter((overlay) => overlay.type !== 'audio');
+  const trackOrderMap = new Map(
+    getRenderableVisualTracks(timeline.tracks).map((track) => [track.id, track.order]),
+  );
+  const computeOverlayZIndex = (overlay: OverlayItem): number => {
+    if (overlay.overlayRole === 'default-background') {
+      return BACKGROUND_Z_INDEX;
+    }
+    const order = trackOrderMap.get(overlay.trackId) ?? 0;
+    return VISUAL_BASE_Z_INDEX + order;
+  };
   // AI 卡片需要独立计数以显示章节序号
   let aiCardIndex = 0;
 
@@ -62,6 +77,7 @@ export function PodcastComposition({ timeline, srtEntries }: PodcastCompositionP
           }}
         >
           {visualOverlays.map((overlay) => {
+            const zIndex = computeOverlayZIndex(overlay);
             if (overlay.overlayType === 'ai-card') {
               aiCardIndex += 1;
               return (
@@ -70,19 +86,25 @@ export function PodcastComposition({ timeline, srtEntries }: PodcastCompositionP
                   overlay={overlay}
                   fps={timeline.fps}
                   chapterIndex={aiCardIndex}
+                  zIndex={zIndex}
                 />
               );
             }
             if (overlay.type === 'text') {
-              return <TextOverlay key={overlay.id} overlay={overlay} fps={timeline.fps} />;
+              return (
+                <TextOverlay key={overlay.id} overlay={overlay} fps={timeline.fps} zIndex={zIndex} />
+              );
             }
-            return <MediaOverlay key={overlay.id} overlay={overlay} fps={timeline.fps} />;
+            return (
+              <MediaOverlay key={overlay.id} overlay={overlay} fps={timeline.fps} zIndex={zIndex} />
+            );
           })}
 
           <SubtitleTrack
             entries={srtEntries}
             style={timeline.subtitle}
             highlights={timeline.subtitleHighlights}
+            zIndex={SUBTITLE_Z_INDEX}
           />
         </div>
       </div>

@@ -955,6 +955,15 @@ export default function App() {
     }
   }, [currentProjectDir]);
 
+  // 同步当前项目目录到 AIStore，并加载项目级提示词绑定。
+  // 否则 ModelSelector / setProjectBinding 等会因 AIStore.currentProjectDir 为 null
+  // 而静默忽略写入，导致写稿模型切换无效。
+  useEffect(() => {
+    const aiProjectDir = useAIStore.getState().currentProjectDir;
+    if (aiProjectDir === (currentProjectDir ?? null)) return;
+    void useAIStore.getState().loadProjectBindings(currentProjectDir ?? null);
+  }, [currentProjectDir]);
+
   const handleWorkspaceTabSwitch = useCallback(
     (tab: 'script-workbench' | 'editor') => {
       if (tab === page) return;

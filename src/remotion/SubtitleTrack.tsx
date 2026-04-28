@@ -7,9 +7,10 @@ interface SubtitleTrackProps {
   entries: SrtEntry[];
   style: SubtitleStyle;
   highlights?: SubtitleHighlight[];
+  zIndex?: number;
 }
 
-export function SubtitleTrack({ entries, style, highlights = [] }: SubtitleTrackProps) {
+export function SubtitleTrack({ entries, style, highlights = [], zIndex }: SubtitleTrackProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const currentMs = (frame / fps) * 1000;
@@ -27,7 +28,7 @@ export function SubtitleTrack({ entries, style, highlights = [] }: SubtitleTrack
         : { bottom: 64 };
 
   return (
-    <AbsoluteFill style={{ pointerEvents: 'none' }}>
+    <AbsoluteFill style={{ pointerEvents: 'none', zIndex }}>
       <div
         style={{
           position: 'absolute',

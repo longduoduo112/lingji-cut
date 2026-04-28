@@ -59,12 +59,6 @@ interface WorkflowSessionState {
   originalText: string;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 const workflowSession: WorkflowSessionState = {
   requestId: '',
   retryStep: 'tts_generating',
@@ -716,40 +710,76 @@ export function useAIVideoWorkflow() {
           setCoverCandidates([]);
           await persistAIState(projectDir, analysisResult, []);
 
-          // 阶段切换：结束 analyze，进入 highlights 起点
-          // highlights 在这里内联处理，失败不阻断，完成后进入 cover
+          // 阶段切换：结束 analyze，并行处理字幕高亮与封面生成。
+          // 两者都只依赖 analysisResult / srtEntries / settings，互不阻塞。
           const highlightsPhase = PHASES.highlights;
+          const coverPhase = PHASES.cover;
+          const timelineState = useTimelineStore.getState();
+          const highlightEntries = timelineState.srtEntries;
+          const coverPrompts = analysisResult.coverPrompts ?? [];
+          const hasHighlightWork = highlightEntries.length > 0;
+          const hasCoverWork = coverPrompts.length > 0;
+          const activePhase = hasCoverWork ? coverPhase : highlightsPhase;
+          const activeStep: WorkflowStep = hasCoverWork ? 'cover_generating' : 'ai_analyzing';
+          const postStart = highlightsPhase.baseStart;
+          const postEnd = PHASES.arrange.baseStart;
+          let highlightPercent = hasHighlightWork ? 0 : 100;
+          let coverPercent = hasCoverWork ? 0 : 100;
+          let postGlobalProgress = postStart;
+
+          const updatePostAnalysisProgress = (subMessage: string): void => {
+            const activeUnits = Number(hasHighlightWork) + Number(hasCoverWork);
+            const combinedPercent = activeUnits > 0
+              ? (Number(hasHighlightWork) * highlightPercent +
+                Number(hasCoverWork) * coverPercent) / activeUnits
+              : 100;
+            const nextGlobal = Math.round(
+              postStart + (Math.max(0, Math.min(100, combinedPercent)) / 100) * (postEnd - postStart),
+            );
+            const global = Math.max(postGlobalProgress, nextGlobal);
+            postGlobalProgress = global;
+            setWorkflow({
+              step: activeStep,
+              progress: global,
+              stepLabel: buildStepLabel(activePhase, subMessage),
+              error: null,
+              canCancel: true,
+            });
+            useTaskProgressStore.getState().updateTask(workflowTaskId, {
+              category: activePhase.category,
+              label: buildStepLabel(activePhase),
+              progress: global,
+              phase: subMessage,
+              canCancel: true,
+              onCancel: buildPhaseOnCancel(hasCoverWork ? 'cover' : 'highlights'),
+            });
+          };
+
           setWorkflow({
-            step: 'ai_analyzing',
+            step: activeStep,
             progress: mapSubProgressToGlobal(highlightsPhase, 0),
-            stepLabel: buildStepLabel(highlightsPhase, '准备中'),
+            stepLabel: buildStepLabel(activePhase, '准备并行任务'),
             error: null,
             canCancel: true,
           });
-          ensureWorkflowTask(workflowTaskId, highlightsPhase, {
+          ensureWorkflowTask(workflowTaskId, activePhase, {
             subPercent: 0,
-            subMessage: '准备中',
+            subMessage: '准备并行任务',
             canCancel: true,
-            onCancel: buildPhaseOnCancel('highlights'),
+            onCancel: buildPhaseOnCancel(hasCoverWork ? 'cover' : 'highlights'),
           });
 
-          const timelineState = useTimelineStore.getState();
-          const highlightEntries = timelineState.srtEntries;
-          if (highlightEntries.length > 0) {
+          const runHighlights = async (): Promise<void> => {
+            if (!hasHighlightWork) {
+              updatePostAnalysisProgress('无字幕条目，跳过高亮');
+              return;
+            }
             try {
               const highlights = await generateSubtitleHighlights(highlightEntries, settings, {
                 onProgress: (p) => {
                   if (isStaleRun()) return;
-                  const global = mapSubProgressToGlobal(highlightsPhase, p.percent);
-                  const subMessage = `生成高亮 ${p.processedEntries}/${p.totalEntries}`;
-                  setWorkflow({
-                    progress: global,
-                    stepLabel: buildStepLabel(highlightsPhase, subMessage),
-                  });
-                  useTaskProgressStore.getState().updateTask(workflowTaskId, {
-                    progress: global,
-                    phase: subMessage,
-                  });
+                  highlightPercent = p.percent;
+                  updatePostAnalysisProgress(`高亮 ${p.processedEntries}/${p.totalEntries}`);
                 },
                 shouldCancel: isStaleRun,
               });
@@ -768,34 +798,88 @@ export function useAIVideoWorkflow() {
               useTaskProgressStore.getState().updateTask(workflowTaskId, {
                 phase: '字幕高亮跳过（失败）',
               });
+            } finally {
+              highlightPercent = 100;
+              if (!isStaleRun()) {
+                updatePostAnalysisProgress('字幕高亮完成');
+              }
             }
-          } else {
-            useTaskProgressStore.getState().updateTask(workflowTaskId, {
-              phase: '无字幕条目，跳过高亮',
+          };
+
+          const runCoverGeneration = async (): Promise<void> => {
+            if (!hasCoverWork) {
+              setCoverCandidates([]);
+              await persistAIState(projectDir, analysisResult, []);
+              updatePostAnalysisProgress('无封面提示词，跳过封面');
+              return;
+            }
+
+            const cleanupCoverProgress = window.electronAPI.onCoverProgress((progress) => {
+              if (isStaleRun()) return;
+              coverPercent = progress.percent;
+              updatePostAnalysisProgress(progress.message || '生成封面');
             });
-          }
+
+            try {
+              let nextCandidates = await window.electronAPI.generateCoverImages({
+                prompts: coverPrompts,
+                settings,
+                projectDir,
+                projectBindings: useAIStore.getState().projectBindings,
+              });
+
+              if (isStaleRun()) {
+                return;
+              }
+
+              const validCandidates = nextCandidates.filter(
+                (candidate) => candidate.imageUrl && !candidate.error,
+              );
+
+              if (validCandidates.length > 0) {
+                const randomPick =
+                  validCandidates[Math.floor(Math.random() * validCandidates.length)];
+                nextCandidates = selectCoverCandidate(nextCandidates, randomPick.id);
+                selectCover(randomPick.id);
+                timelineStore.setGlobalBackground(randomPick.imageUrl);
+              }
+
+              setCoverCandidates(nextCandidates);
+              await persistAIState(projectDir, analysisResult, nextCandidates);
+            } catch (error) {
+              console.warn('封面生成失败，继续后续时间轴排布:', error);
+            } finally {
+              cleanupCoverProgress();
+              coverPercent = 100;
+              if (!isStaleRun()) {
+                updatePostAnalysisProgress('封面生成完成');
+              }
+            }
+          };
+
+          await Promise.all([runHighlights(), runCoverGeneration()]);
 
           if (isStaleRun()) {
             return;
           }
 
-          // 阶段切换：进入 cover 起点
-          const coverPhase = PHASES.cover;
+          // 阶段切换：进入 arrange 起点
+          const arrangePhase = PHASES.arrange;
           setWorkflow({
-            step: 'cover_generating',
-            progress: mapSubProgressToGlobal(coverPhase, 0),
-            stepLabel: buildStepLabel(coverPhase, '准备中'),
+            step: 'arranging',
+            progress: mapSubProgressToGlobal(arrangePhase, 0),
+            stepLabel: buildStepLabel(arrangePhase, '准备中'),
             error: null,
             canCancel: true,
           });
-          ensureWorkflowTask(workflowTaskId, coverPhase, {
+          ensureWorkflowTask(workflowTaskId, arrangePhase, {
             subPercent: 0,
             subMessage: '准备中',
             canCancel: true,
-            onCancel: buildPhaseOnCancel('cover'),
+            onCancel: buildPhaseOnCancel('arrange'),
           });
-          workflowSession.retryStep = 'cover_generating';
-          fromStep = 'cover_generating';
+          workflowSession.retryStep = 'arranging';
+          fromStep = 'arranging';
         } catch (error) {
           cleanupAnalyzeProgress();
           if (isStaleRun()) {
@@ -929,27 +1013,19 @@ export function useAIVideoWorkflow() {
           timelineStore.removeAICardOverlaysBySourceIds(allCards.map((card) => card.id));
 
           if (drafts.length > 0) {
-            for (const [index, draft] of drafts.entries()) {
-              if (isStaleRun()) {
-                return;
-              }
-
-              timelineStore.addAICardsToTimeline([draft]);
-              const subPercent = Math.round(((index + 1) / drafts.length) * 100);
-              const global = mapSubProgressToGlobal(phase, subPercent);
-              const subMessage = `排布卡片 ${index + 1}/${drafts.length}`;
-              setWorkflow({
-                progress: global,
-                stepLabel: buildStepLabel(phase, subMessage),
-              });
-              useTaskProgressStore.getState().updateTask(workflowTaskId, {
-                progress: global,
-                phase: subMessage,
-                canCancel: true,
-                onCancel: buildPhaseOnCancel('arrange'),
-              });
-              await sleep(90);
-            }
+            timelineStore.addAICardsToTimeline(drafts);
+            const global = mapSubProgressToGlobal(phase, 100);
+            const subMessage = `排布卡片 ${drafts.length}/${drafts.length}`;
+            setWorkflow({
+              progress: global,
+              stepLabel: buildStepLabel(phase, subMessage),
+            });
+            useTaskProgressStore.getState().updateTask(workflowTaskId, {
+              progress: global,
+              phase: subMessage,
+              canCancel: true,
+              onCancel: buildPhaseOnCancel('arrange'),
+            });
           }
 
           setWorkflow({

@@ -4,11 +4,14 @@ import type {
   VideoImportResult,
   VideoImportStatus,
 } from '../../src/lib/video-import-types';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { transcribeWithBcut } from './bcut-asr';
 import { douyinDownloader } from './douyin-downloader';
-import { extractAudioToMp3 } from './media-extractor';
+import { convertAudioToMp3, extractAudioToMp3 } from './media-extractor';
 import {
   buildDouyinImportPaths,
+  buildVideoImportPaths,
   writePreviewMetadata,
   syncTranscriptToOriginal,
   writeImportResult,
@@ -16,6 +19,7 @@ import {
   writeTranscriptMarkdown,
 } from './transcript-writer';
 import type {
+  DouyinImportPaths,
   TranscriptResult,
   VideoImportAsrRunner,
   VideoImportService,
@@ -26,6 +30,36 @@ import type {
 const defaultAsrRunner: VideoImportAsrRunner = {
   transcribe: transcribeWithBcut,
 };
+
+function slugifyLocalMediaId(filePath: string): string {
+  const parsed = filePath.replace(/\\/g, '/').split('/').pop() ?? 'media';
+  const stem = parsed.replace(/\.[^.]+$/, '') || 'media';
+  return stem
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'media';
+}
+
+function getLocalMediaTitle(filePath: string): string {
+  return filePath.replace(/\\/g, '/').split('/').pop() ?? '本地媒体';
+}
+
+function getInitialStepLabel(sourceType: VideoImportRequest['sourceType']): string {
+  if (sourceType === 'douyin') return '准备导入抖音视频';
+  if (sourceType === 'local_video') return '准备导入本地视频';
+  return '准备导入本地音频';
+}
+
+interface PreparedImportSource {
+  paths: DouyinImportPaths;
+  title: string;
+  videoId: string;
+  sourceUrl?: string;
+  resolvedPageUrl?: string;
+  sourcePath?: string;
+  coverUrl?: string;
+}
 
 class DefaultVideoImportService implements VideoImportService {
   private readonly tasks = new Map<string, VideoImportTaskSnapshot>();
@@ -42,7 +76,7 @@ class DefaultVideoImportService implements VideoImportService {
 
   constructor(options: VideoImportServiceOptions = {}) {
     this.downloader = options.downloader ?? douyinDownloader;
-    this.mediaExtractor = options.mediaExtractor ?? { extractAudioToMp3 };
+    this.mediaExtractor = options.mediaExtractor ?? { extractAudioToMp3, convertAudioToMp3 };
     this.asrRunner = options.asrRunner ?? defaultAsrRunner;
     this.now = options.now ?? (() => new Date());
   }
@@ -91,7 +125,7 @@ class DefaultVideoImportService implements VideoImportService {
       sourceType: request.sourceType,
       status: 'downloading',
       progress: 0,
-      stepLabel: '准备导入抖音视频',
+      stepLabel: getInitialStepLabel(request.sourceType),
       request,
       startedAt,
     };
@@ -130,22 +164,8 @@ class DefaultVideoImportService implements VideoImportService {
     const startedAt = this.tasks.get(importId)?.startedAt ?? this.now().toISOString();
 
     try {
-      this.updateTask(importId, 'downloading', 5, '正在解析抖音链接');
-      const source = await this.downloader.resolveSource(request.url);
-      const paths = buildDouyinImportPaths(request.projectDir, source.videoId);
-
-      await writeSourceMetadata(paths, {
-        sourceType: 'douyin',
-        sourceUrl: request.url,
-        importedAt: startedAt,
-        ...source,
-      });
-
-      this.updateTask(importId, 'downloading', 20, '正在下载抖音视频');
-      await this.downloader.downloadToPath(source.downloadUrl, paths.videoPath);
-
-      this.updateTask(importId, 'extracting_audio', 45, '正在提取音频');
-      await this.mediaExtractor.extractAudioToMp3(paths.videoPath, paths.audioPath);
+      const resolved = await this.prepareSource(importId, request, startedAt);
+      const { paths, title, videoId, sourceUrl, resolvedPageUrl, sourcePath, coverUrl } = resolved;
 
       this.updateTask(importId, 'transcribing', 70, '正在进行 bcut 转录');
       const transcript = await this.asrRunner.transcribe(paths.audioPath);
@@ -159,9 +179,9 @@ class DefaultVideoImportService implements VideoImportService {
 
       const result: VideoImportResult = {
         importId,
-        sourceType: 'douyin',
-        videoId: source.videoId,
-        title: source.title,
+        sourceType: request.sourceType,
+        videoId,
+        title,
         projectDir: request.projectDir,
         importDir: paths.importDir,
         videoPath: paths.videoPath,
@@ -172,9 +192,10 @@ class DefaultVideoImportService implements VideoImportService {
         sourceMetadataPath: paths.sourceMetadataPath,
         resultMetadataPath: paths.resultMetadataPath,
         previewMetadataPath: paths.previewMetadataPath,
-        sourceUrl: request.url,
-        resolvedPageUrl: source.resolvedPageUrl,
-        coverUrl: source.coverUrl,
+        sourceUrl,
+        resolvedPageUrl,
+        sourcePath,
+        coverUrl,
         engine: transcript.engine,
         syncedToOriginal: shouldSync,
         createdAt: startedAt,
@@ -184,9 +205,9 @@ class DefaultVideoImportService implements VideoImportService {
       await writePreviewMetadata(paths, {
         schema: 'video-import-preview',
         version: 1,
-        sourceType: 'douyin',
-        title: source.title,
-        videoId: source.videoId,
+        sourceType: request.sourceType,
+        title,
+        videoId,
         createdAt: startedAt,
         syncedToOriginal: shouldSync,
         engine: transcript.engine,
@@ -195,7 +216,7 @@ class DefaultVideoImportService implements VideoImportService {
         media: {
           videoPath: paths.videoPath,
           audioPath: paths.audioPath,
-          coverUrl: source.coverUrl,
+          coverUrl,
         },
         transcript: {
           markdownPath: paths.transcriptPath,
@@ -205,8 +226,9 @@ class DefaultVideoImportService implements VideoImportService {
           segments: transcript.segments,
         },
         metadata: {
-          sourceUrl: request.url,
-          resolvedPageUrl: source.resolvedPageUrl,
+          sourceUrl,
+          resolvedPageUrl,
+          sourcePath,
           originalPath: paths.originalPath,
           sourceMetadataPath: paths.sourceMetadataPath,
           resultMetadataPath: paths.resultMetadataPath,
@@ -225,6 +247,83 @@ class DefaultVideoImportService implements VideoImportService {
       });
       throw error;
     }
+  }
+
+  private async prepareSource(
+    importId: string,
+    request: VideoImportRequest,
+    startedAt: string,
+  ): Promise<PreparedImportSource> {
+    if (request.sourceType === 'douyin') {
+      if (!request.url.trim()) {
+        throw new Error('请提供抖音分享链接');
+      }
+      this.updateTask(importId, 'downloading', 5, '正在解析抖音链接');
+      const source = await this.downloader.resolveSource(request.url);
+      const paths = buildDouyinImportPaths(request.projectDir, source.videoId);
+
+      await writeSourceMetadata(paths, {
+        sourceType: 'douyin',
+        sourceUrl: request.url,
+        importedAt: startedAt,
+        ...source,
+      });
+
+      this.updateTask(importId, 'downloading', 20, '正在下载抖音视频');
+      await this.downloader.downloadToPath(source.downloadUrl, paths.videoPath);
+
+      this.updateTask(importId, 'extracting_audio', 45, '正在提取音频');
+      await this.mediaExtractor.extractAudioToMp3(paths.videoPath, paths.audioPath);
+
+      return {
+        paths,
+        title: source.title,
+        videoId: source.videoId,
+        sourceUrl: request.url,
+        resolvedPageUrl: source.resolvedPageUrl,
+        coverUrl: source.coverUrl,
+      };
+    }
+
+    if (!request.filePath.trim()) {
+      throw new Error('请提供本地媒体文件路径');
+    }
+
+    const videoId = `${slugifyLocalMediaId(request.filePath)}-${Date.now()}`;
+    const title = getLocalMediaTitle(request.filePath);
+    const paths = buildVideoImportPaths(request.projectDir, request.sourceType, videoId);
+
+    await writeSourceMetadata(paths, {
+      sourceType: request.sourceType,
+      sourcePath: request.filePath,
+      title,
+      videoId,
+      importedAt: startedAt,
+    });
+
+    if (request.sourceType === 'local_video') {
+      this.updateTask(importId, 'downloading', 20, '正在复制本地视频');
+      await this.copyLocalMedia(request.filePath, paths.videoPath);
+
+      this.updateTask(importId, 'extracting_audio', 45, '正在提取音频');
+      await this.mediaExtractor.extractAudioToMp3(paths.videoPath, paths.audioPath);
+    } else {
+      this.updateTask(importId, 'extracting_audio', 45, '正在转换音频');
+      const convert = this.mediaExtractor.convertAudioToMp3 ?? convertAudioToMp3;
+      await convert(request.filePath, paths.audioPath);
+    }
+
+    return {
+      paths,
+      title,
+      videoId,
+      sourcePath: request.filePath,
+    };
+  }
+
+  private async copyLocalMedia(sourcePath: string, targetPath: string): Promise<void> {
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.copyFile(sourcePath, targetPath);
   }
 }
 

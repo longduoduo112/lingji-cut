@@ -8,8 +8,8 @@ import {
 } from '../src/lib/video-import-types';
 
 describe('video import types', () => {
-  it('only supports douyin as the source type in phase one', () => {
-    expect(VIDEO_IMPORT_SOURCE_TYPES).toEqual(['douyin']);
+  it('supports remote and local media source types', () => {
+    expect(VIDEO_IMPORT_SOURCE_TYPES).toEqual(['douyin', 'local_video', 'local_audio']);
   });
 
   it('defines the expected video import lifecycle states', () => {
@@ -49,6 +49,33 @@ describe('video import types', () => {
     expect(result.videoPath.endsWith('video.mp4')).toBe(true);
     expect(result.transcriptPath.endsWith('transcript.md')).toBe(true);
     expect(result.originalPath.endsWith('original.md')).toBe(true);
+  });
+
+  it('allows local audio import results to carry a source path', () => {
+    const result: VideoImportResult = {
+      importId: 'local_audio_123',
+      sourceType: 'local_audio',
+      videoId: 'voice-123',
+      title: 'voice.mp3',
+      projectDir: '/tmp/demo',
+      importDir: '/tmp/demo/imports/local_audio/voice-123',
+      videoPath: '/tmp/demo/imports/local_audio/voice-123/video.mp4',
+      audioPath: '/tmp/demo/imports/local_audio/voice-123/audio.mp3',
+      transcriptPath: '/tmp/demo/imports/local_audio/voice-123/transcript.md',
+      transcriptSrtPath: '/tmp/demo/imports/local_audio/voice-123/transcript.srt',
+      originalPath: '/tmp/demo/original.md',
+      sourceMetadataPath: '/tmp/demo/imports/local_audio/voice-123/source.json',
+      resultMetadataPath: '/tmp/demo/imports/local_audio/voice-123/import-result.json',
+      previewMetadataPath: '/tmp/demo/imports/local_audio/voice-123/preview.json',
+      sourcePath: '/Users/demo/voice.mp3',
+      engine: 'bcut',
+      syncedToOriginal: true,
+      createdAt: '2026-04-10T00:00:00.000Z',
+    };
+
+    expect(result.sourceType).toBe('local_audio');
+    expect(result.sourcePath).toContain('voice.mp3');
+    expect(result.sourceUrl).toBeUndefined();
   });
 
   it('defines a standard preview document shape for custom rendering', () => {

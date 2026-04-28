@@ -53,3 +53,33 @@ export async function extractAudioToMp3(
 
   return audioPath;
 }
+
+export async function convertAudioToMp3(
+  sourceAudioPath: string,
+  audioPath: string,
+  options: MediaExtractorOptions = {},
+): Promise<string> {
+  await fs.mkdir(path.dirname(audioPath), { recursive: true });
+
+  try {
+    await (options.execFile ?? defaultExecFile)('ffmpeg', [
+      '-y',
+      '-i',
+      sourceAudioPath,
+      '-vn',
+      '-acodec',
+      'libmp3lame',
+      '-ar',
+      '44100',
+      audioPath,
+    ]);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'ENOENT') {
+      throw new Error('未找到 ffmpeg，请先在系统中安装 ffmpeg');
+    }
+    throw new Error(`ffmpeg 转换音频失败: ${err.message}`);
+  }
+
+  return audioPath;
+}

@@ -143,6 +143,18 @@ describe('useAIVideoWorkflow autoMode wiring (source contract)', () => {
       /voiceId:\s*workflowSession\.autoParams\?\.voiceId\s*\|\|\s*settings\.minimaxVoiceId/,
     );
   });
+
+  it('runs subtitle highlights and cover generation in parallel after analysis', () => {
+    expect(source).toContain('await Promise.all([runHighlights(), runCoverGeneration()])');
+    expect(source).toContain('const postEnd = PHASES.arrange.baseStart');
+    expect(source).toContain('updatePostAnalysisProgress');
+  });
+
+  it('arranges all AI cards in one timeline store update without artificial sleep', () => {
+    expect(source).toContain('timelineStore.addAICardsToTimeline(drafts)');
+    expect(source).not.toContain('await sleep(90)');
+    expect(source).not.toContain('function sleep(ms: number)');
+  });
 });
 
 describe('useAIVideoWorkflow autoMode (runtime smoke)', () => {

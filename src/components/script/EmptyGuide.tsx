@@ -187,7 +187,7 @@ export function EmptyGuide({
               leftIcon={<Import size={16} />}
               onClick={onImportDouyin}
             >
-              导入抖音视频
+              导入媒体
             </Button>
             <Button
               variant="outline"

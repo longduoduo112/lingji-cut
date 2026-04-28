@@ -16,6 +16,7 @@ interface AICardOverlayProps {
   overlay: OverlayItem;
   fps: number;
   chapterIndex?: number;
+  zIndex?: number;
 }
 
 function formatTime(ms: number): string {
@@ -106,7 +107,7 @@ function renderCard(
   return <QuoteCard content={String(data.content)} style={data.style} />;
 }
 
-export function AICardOverlay({ overlay, fps, chapterIndex = 1 }: AICardOverlayProps) {
+export function AICardOverlay({ overlay, fps, chapterIndex = 1, zIndex }: AICardOverlayProps) {
   if (overlay.overlayType !== 'ai-card' || !overlay.aiCardData) {
     return null;
   }
@@ -129,7 +130,7 @@ export function AICardOverlay({ overlay, fps, chapterIndex = 1 }: AICardOverlayP
     motionHeight,
   };
   const wrapperStyle: CSSProperties = isFullscreen
-    ? { position: 'absolute', inset: 0 }
+    ? { position: 'absolute', inset: 0, zIndex }
     : {
         position: 'absolute',
         left: overlay.position.x,
@@ -139,6 +140,7 @@ export function AICardOverlay({ overlay, fps, chapterIndex = 1 }: AICardOverlayP
         borderRadius: 18,
         overflow: 'hidden',
         boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
+        zIndex,
       };
   // Motion Card 自身承载 props.width/height 的布局约束；传统卡片保留 1920×1080 设计
   // 并用 scale 落到 overlay 的像素盒子里。

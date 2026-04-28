@@ -194,6 +194,12 @@
   gap: 6px;
 }
 
+.manualMediaActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .emptyStateText,
 .hintText,
 .analysisStatusText,
@@ -331,6 +337,37 @@
   gap: 6px;
   min-height: 28px;
   margin-bottom: 6px;
+}
+
+.actionBarEnd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.addCardButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-selection-blue) 14%, transparent);
+  color: color-mix(in srgb, var(--color-selection-blue) 78%, white);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.addCardButton:hover {
+  background: color-mix(in srgb, var(--color-selection-blue) 22%, transparent);
+}
+
+.addCardButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .selectionSummary {

@@ -8,6 +8,7 @@ import {
   toggleCardEnabledInResult,
 } from '../lib/ai-persistence';
 import { getAISettingsIssue } from '../lib/ai-settings';
+import type { ManualCardKind } from '../lib/manual-card-types';
 import { useAIStore, loadAISettings } from '../store/ai';
 import { useTaskProgressStore } from '../store/task-progress';
 import { getProjectDir, useTimelineStore } from '../store/timeline';
@@ -21,6 +22,7 @@ import { AICardList, type AICardPlacement } from './AICardList';
 import { AppIcon } from './AppIcon';
 import { AICoverPanel } from './AICoverPanel';
 import { CoverEditorModal } from './CoverEditorModal';
+import { SubtitleCardDialog } from './SubtitleCardDialog';
 import type {
   CoverEditState,
   CoverSaveMode,
@@ -38,6 +40,12 @@ import {
   TabsTrigger,
   Textarea,
 } from '../ui';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/components/dropdown-menu';
 import styles from './AIPanel.module.css';
 
 interface AIPanelProps {
@@ -89,6 +97,16 @@ export function AIPanel({
 } = useAIStore();
 
   const [activeTab, setActiveTabLocal] = useState<AITabKey>(storeActiveTab);
+  const [manualMediaDialogInitial, setManualMediaDialogInitial] = useState<{
+    text: string;
+    startMs: number;
+    endMs: number;
+    kind?: ManualCardKind;
+    title?: string;
+    insertToTimeline?: boolean;
+    allowedKinds?: ManualCardKind[];
+    requireText?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     setActiveTabLocal(storeActiveTab);
@@ -566,6 +584,23 @@ export function AIPanel({
     ],
   );
 
+  const handleOpenManualMediaDialog = useCallback(
+    (mediaType: 'image' | 'video') => {
+      const durationMs = mediaType === 'image' ? 5000 : 6000;
+      setManualMediaDialogInitial({
+        text: '',
+        startMs: 0,
+        endMs: durationMs,
+        kind: mediaType,
+        title: mediaType === 'image' ? '手动图片卡' : '手动视频卡',
+        insertToTimeline: false,
+        allowedKinds: ['image', 'video'],
+        requireText: false,
+      });
+    },
+    [],
+  );
+
   const hasSrtEntries = srtEntries.length > 0;
   const analyzeButtonDisabled = !hasSrtEntries || isAnalyzing;
   const hasGeneratedCards = (analysisResult?.cards.length ?? 0) > 0;
@@ -719,6 +754,26 @@ export function AIPanel({
                       </>
                     )}
                   </Button>
+                  <div className={styles.manualMediaActions}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleOpenManualMediaDialog('image')}
+                      disabled={isAnalyzing}
+                    >
+                      <AppIcon name="image" size={14} />
+                      图片卡
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleOpenManualMediaDialog('video')}
+                      disabled={isAnalyzing}
+                    >
+                      <AppIcon name="film" size={14} />
+                      视频卡
+                    </Button>
+                  </div>
                 </div>
 
                 {isAnalyzing ? (
@@ -751,14 +806,46 @@ export function AIPanel({
                     </div>
                   }
                   end={
-                    <Button
-                      variant="destructive"
-                      size="xs"
-                      onClick={() => handleDeleteCards(enabledCardIds)}
-                      disabled={selectedCount === 0 || isAnalyzing}
-                    >
-                      删除已选
-                    </Button>
+                    <div className={styles.actionBarEnd}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className={styles.addCardButton}
+                            disabled={isAnalyzing}
+                          >
+                            <AppIcon name="plus" size={12} />
+                            新增
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" sideOffset={4}>
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              handleOpenManualMediaDialog('image');
+                            }}
+                          >
+                            <AppIcon name="image" size={14} />
+                            <span>新增图片卡</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              handleOpenManualMediaDialog('video');
+                            }}
+                          >
+                            <AppIcon name="film" size={14} />
+                            <span>新增视频卡</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button
+                        variant="destructive"
+                        size="xs"
+                        onClick={() => handleDeleteCards(enabledCardIds)}
+                        disabled={selectedCount === 0 || isAnalyzing}
+                      >
+                        删除已选
+                      </Button>
+                    </div>
                   }
                 />
 
@@ -833,6 +920,25 @@ export function AIPanel({
           onSaveRequested={handleCoverEditSave}
         />
       ) : null}
+      <SubtitleCardDialog
+        open={Boolean(manualMediaDialogInitial)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setManualMediaDialogInitial(null);
+          }
+        }}
+        initial={manualMediaDialogInitial}
+        onGenerated={(cardId) => {
+          const latestResult = useAIStore.getState().analysisResult;
+          if (latestResult) {
+            setAnalysisResult(latestResult);
+          }
+          setManualMediaDialogInitial(null);
+          if (cardId) {
+            onOpenCardInspector?.(cardId);
+          }
+        }}
+      />
     </aside>
   );
 }

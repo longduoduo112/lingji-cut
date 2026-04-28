@@ -18,6 +18,8 @@ export interface DouyinImportPaths {
   originalPath: string;
 }
 
+export type VideoImportPaths = DouyinImportPaths;
+
 export interface DouyinSourceResolution {
   videoId: string;
   title: string;
@@ -29,6 +31,14 @@ export interface DouyinSourceResolution {
 export interface DouyinSourceMetadata extends DouyinSourceResolution {
   sourceType: 'douyin';
   sourceUrl: string;
+  importedAt: string;
+}
+
+export interface LocalMediaSourceMetadata {
+  sourceType: 'local_video' | 'local_audio';
+  sourcePath: string;
+  title: string;
+  videoId: string;
   importedAt: string;
 }
 
@@ -54,6 +64,7 @@ export interface VideoImportDownloader {
 
 export interface VideoImportMediaExtractor {
   extractAudioToMp3: (videoPath: string, audioPath: string) => Promise<string>;
+  convertAudioToMp3?: (sourceAudioPath: string, audioPath: string) => Promise<string>;
 }
 
 export interface VideoImportAsrRunner {

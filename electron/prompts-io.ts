@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   DEFAULT_PROMPT_YAML,
   PROMPT_KINDS,
+  createPromptYamlFromUserText,
   getBuiltinPromptTemplate,
   parsePromptYaml,
   type EffectivePromptTemplate,
@@ -59,6 +60,21 @@ export async function readRawPromptYaml(
   return null;
 }
 
+export async function readPromptUserText(
+  scope: PromptScope,
+  kind: PromptKind,
+  ctx: { userDataPath: string; projectDir?: string },
+): Promise<string | null> {
+  const raw = await readRawPromptYaml(scope, kind, ctx);
+  if (!raw || !raw.trim()) return null;
+  try {
+    const { template } = parsePromptYaml(raw, kind);
+    return template.user;
+  } catch {
+    return null;
+  }
+}
+
 export async function writePromptYaml(
   scope: 'global' | 'project',
   kind: PromptKind,
@@ -79,6 +95,25 @@ export async function writePromptYaml(
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, content, 'utf-8');
   return filePath;
+}
+
+export async function writePromptUserText(
+  scope: 'global' | 'project',
+  kind: PromptKind,
+  userText: string,
+  ctx: { userDataPath: string; projectDir?: string },
+): Promise<string> {
+  const currentRaw = await readRawPromptYaml(scope, kind, ctx);
+  let base = getBuiltinPromptTemplate(kind);
+  if (currentRaw && currentRaw.trim()) {
+    try {
+      base = parsePromptYaml(currentRaw, kind).template;
+    } catch {
+      // 覆盖文件可能是用户过去手写坏的 YAML；纯文本保存时用内置元数据重建。
+    }
+  }
+  const content = createPromptYamlFromUserText(base, userText);
+  return writePromptYaml(scope, kind, content, ctx);
 }
 
 export async function deletePromptYaml(

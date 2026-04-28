@@ -46,6 +46,12 @@ export function getFileNameFromPath(filePath: string): string {
   return normalizedPath.split('/').pop() || filePath;
 }
 
+function encodePosixPath(filePath: string): string {
+  const leadingSlash = filePath.startsWith('/') ? '/' : '';
+  const pathWithoutLeadingSlash = leadingSlash ? filePath.slice(1) : filePath;
+  return `${leadingSlash}${pathWithoutLeadingSlash.split('/').map(encodeURIComponent).join('/')}`;
+}
+
 export function toFileSrc(filePath: string): string {
   if (!filePath) {
     return '';
@@ -59,9 +65,21 @@ export function toFileSrc(filePath: string): string {
     return filePath;
   }
 
-  const normalizedPath = filePath.replace(/\\/g, '/');
-  // encodeURI 不编码 # 和 ?，但它们在 URL 中有特殊含义，会导致 file:// 路径解析错误
-  return `file://${encodeURI(normalizedPath).replace(/#/g, '%23').replace(/\?/g, '%3F')}`;
+  if (/^[a-zA-Z]:[\\/]/.test(filePath)) {
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const drive = normalizedPath.slice(0, 2);
+    const rest = normalizedPath.slice(2);
+    return `file:///${drive}${encodePosixPath(rest)}`;
+  }
+
+  if (filePath.startsWith('\\\\')) {
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const withoutPrefix = normalizedPath.slice(2);
+    return `file://${withoutPrefix.split('/').map(encodeURIComponent).join('/')}`;
+  }
+
+  // macOS/Linux 文件名允许反斜杠本身，不能把 "\n" 这类内容误当成路径分隔符。
+  return `file://${encodePosixPath(filePath)}`;
 }
 
 export function clamp(value: number, min: number, max: number): number {

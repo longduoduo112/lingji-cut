@@ -83,8 +83,8 @@ import {
   ConfigBackupValidationError,
 } from './config-backup';
 import {
-  readRawPromptYaml,
-  writePromptYaml,
+  readPromptUserText,
+  writePromptUserText,
   deletePromptYaml,
   listPromptOverview,
   loadEffectivePromptTemplate,
@@ -103,10 +103,10 @@ import {
   writeUserPromptEntry,
 } from './user-prompts-io';
 import {
-  DEFAULT_PROMPT_YAML,
   PROMPT_CATEGORY_META,
   PROMPT_KIND_META,
   PROMPT_KINDS,
+  getBuiltinPromptTemplate,
   isPromptKind,
   type PromptKind,
   type PromptScope,
@@ -1121,11 +1121,11 @@ ipcMain.handle(
     const kind = assertPromptKind(args.kind);
     const scope = assertPromptScope(args.scope);
     const userDataPath = app.getPath('userData');
-    const raw = await readRawPromptYaml(scope, kind, {
+    const content = await readPromptUserText(scope, kind, {
       userDataPath,
       projectDir: args.projectDir,
     });
-    return { kind, scope, content: raw };
+    return { kind, scope, content };
   },
 );
 
@@ -1151,7 +1151,7 @@ ipcMain.handle(
     const kind = assertPromptKind(args.kind);
     const scope = assertWritableScope(args.scope);
     const userDataPath = app.getPath('userData');
-    const filePath = await writePromptYaml(scope, kind, args.content, {
+    const filePath = await writePromptUserText(scope, kind, args.content, {
       userDataPath,
       projectDir: args.projectDir,
     });
@@ -1178,7 +1178,7 @@ ipcMain.handle(
 
 ipcMain.handle('prompts:default', async (_event, args: { kind: string }) => {
   const kind = assertPromptKind(args.kind);
-  return { kind, content: DEFAULT_PROMPT_YAML[kind] };
+  return { kind, content: getBuiltinPromptTemplate(kind).user };
 });
 
 ipcMain.handle(
@@ -1445,14 +1445,16 @@ ipcMain.handle('select-setup-file', async (_event, kind: 'audio' | 'srt') => {
   return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle('select-media-file', async (_event, kind: 'audio' | 'srt') => {
+ipcMain.handle('select-media-file', async (_event, kind: 'audio' | 'video' | 'srt') => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters:
       kind === 'audio'
         ? [{ name: '音频文件', extensions: AUDIO_EXTENSIONS_FILTER }]
-        : [{ name: 'SRT Subtitle', extensions: ['srt'] }],
+        : kind === 'video'
+          ? [{ name: '视频文件', extensions: VIDEO_EXTENSIONS_FILTER }]
+          : [{ name: 'SRT Subtitle', extensions: ['srt'] }],
   });
 
   return result.canceled ? null : result.filePaths[0];
@@ -1697,7 +1699,7 @@ ipcMain.handle('import-video-source', async (_event, request: VideoImportRequest
     'info',
     'video-import',
     '收到视频导入请求',
-    `${request.sourceType}: ${request.url}`,
+    `${request.sourceType}: ${request.sourceType === 'douyin' ? request.url : request.filePath}`,
   );
   return videoImportService.startImport(request);
 });
@@ -1992,6 +1994,22 @@ ipcMain.handle(
     } catch (error) {
       if ((error as { name?: string }).name === 'AbortError') {
         throw new Error('TTS 任务已取消');
+      }
+      const cause = (error as { cause?: unknown })?.cause;
+      const causeMsg =
+        cause instanceof Error
+          ? `${cause.name}: ${cause.message}${(cause as { code?: string }).code ? ` (${(cause as { code?: string }).code})` : ''}`
+          : cause
+            ? String(cause)
+            : '';
+      writeAppLog(
+        'error',
+        'tts',
+        'MiniMax TTS fetch 失败',
+        `${(error as Error)?.message ?? String(error)} | cause=${causeMsg || '<none>'}`,
+      );
+      if (causeMsg) {
+        throw new Error(`MiniMax TTS 网络失败: ${causeMsg}`);
       }
       throw error;
     } finally {
@@ -2350,6 +2368,7 @@ app.whenReady().then(async () => {
   // 时多次叠加监听器；广播只发给 mainWindow，与其他通道（analyze-progress /
   // cover-progress / menu-action / app-log）保持一致。
   videoImportService.onProgress((snapshot) => {
+    mainWindow?.webContents.send('video-import-progress', snapshot);
     mainWindow?.webContents.send('douyin-import-progress', snapshot);
   });
   // 启动 MCP Server

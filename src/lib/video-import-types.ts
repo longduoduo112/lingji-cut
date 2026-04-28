@@ -1,4 +1,4 @@
-export const VIDEO_IMPORT_SOURCE_TYPES = ['douyin'] as const;
+export const VIDEO_IMPORT_SOURCE_TYPES = ['douyin', 'local_video', 'local_audio'] as const;
 
 export type VideoImportSourceType = (typeof VIDEO_IMPORT_SOURCE_TYPES)[number];
 
@@ -13,12 +13,29 @@ export const VIDEO_IMPORT_STATUSES = [
 
 export type VideoImportStatus = (typeof VIDEO_IMPORT_STATUSES)[number];
 
-export interface VideoImportRequest {
-  sourceType: VideoImportSourceType;
-  url: string;
-  projectDir: string;
-  syncToOriginal?: boolean;
-}
+export type VideoImportRequest =
+  | {
+      sourceType: 'douyin';
+      url: string;
+      projectDir: string;
+      syncToOriginal?: boolean;
+    }
+  | {
+      sourceType: 'local_video' | 'local_audio';
+      filePath: string;
+      projectDir: string;
+      syncToOriginal?: boolean;
+    };
+
+export type VideoImportSourceInput =
+  | {
+      sourceType: 'douyin';
+      url: string;
+    }
+  | {
+      sourceType: 'local_video' | 'local_audio';
+      filePath: string;
+    };
 
 export interface TranscriptSegment {
   text: string;
@@ -41,8 +58,9 @@ export interface VideoImportResult {
   sourceMetadataPath: string;
   resultMetadataPath: string;
   previewMetadataPath: string;
-  sourceUrl: string;
-  resolvedPageUrl: string;
+  sourceUrl?: string;
+  resolvedPageUrl?: string;
+  sourcePath?: string;
   coverUrl?: string;
   engine: 'bcut';
   syncedToOriginal: boolean;
@@ -73,8 +91,9 @@ export interface VideoImportPreviewDocument {
     segments: TranscriptSegment[];
   };
   metadata: {
-    sourceUrl: string;
-    resolvedPageUrl: string;
+    sourceUrl?: string;
+    resolvedPageUrl?: string;
+    sourcePath?: string;
     originalPath: string;
     sourceMetadataPath: string;
     resultMetadataPath: string;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ExternalLink, FolderOpen, PlaySquare, Quote } from 'lucide-react';
 import type { VideoImportPreviewDocument, TranscriptSegment } from '../../lib/video-import-types';
 import { formatTime, getFileNameFromPath, toFileSrc } from '../../lib/utils';
+import { MediaPreviewPlayer, type MediaPreviewPlayerHandle } from './MediaPreviewPlayer';
 
 interface VideoImportPreviewPaneProps {
   document: VideoImportPreviewDocument;
@@ -27,6 +28,12 @@ function MetaRow({ label, value }: { label: string; value: string }) {
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
+function getPreviewBadgeLabel(sourceType: VideoImportPreviewDocument['sourceType']): string {
+  if (sourceType === 'douyin') return '抖音导入预览';
+  if (sourceType === 'local_video') return '本地视频预览';
+  return '本地音频预览';
+}
+
 function findActiveSegmentIndex(
   segments: TranscriptSegment[],
   currentMs: number,
@@ -47,20 +54,21 @@ export function VideoImportPreviewPane({
   const lastSegment = document.transcript.segments[segmentCount - 1];
   const durationLabel = lastSegment ? formatTime(lastSegment.endMs) : '00:00';
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const playerRef = useRef<MediaPreviewPlayerHandle>(null);
   const segmentListRef = useRef<HTMLDivElement>(null);
   const activeSegmentRef = useRef<HTMLDivElement>(null);
   const [activeSegmentIndex, setActiveSegmentIndex] = useState(-1);
-  const [videoError, setVideoError] = useState(false);
+  const [mediaError, setMediaError] = useState(false);
+  const isAudioOnly = document.sourceType === 'local_audio';
 
-  // 视频时间更新 → 字幕高亮同步
-  const handleTimeUpdate = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const currentMs = video.currentTime * 1000;
-    const idx = findActiveSegmentIndex(document.transcript.segments, currentMs);
-    setActiveSegmentIndex(idx);
-  }, [document.transcript.segments]);
+  // 播放进度变化 → 字幕高亮同步
+  const handleTimeUpdate = useCallback(
+    (currentMs: number) => {
+      const idx = findActiveSegmentIndex(document.transcript.segments, currentMs);
+      setActiveSegmentIndex((prev) => (prev === idx ? prev : idx));
+    },
+    [document.transcript.segments],
+  );
 
   // 自动滚动到当前高亮字幕
   useEffect(() => {
@@ -77,22 +85,19 @@ export function VideoImportPreviewPane({
 
   // 点击字幕跳转视频时间
   const handleSegmentClick = useCallback((segment: TranscriptSegment) => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.currentTime = segment.startMs / 1000;
-    if (video.paused) {
-      video.play();
-    }
+    playerRef.current?.playFromMs(segment.startMs);
   }, []);
 
   // 在 Finder/Explorer 中显示
   const handleShowInFolder = useCallback(() => {
-    window.electronAPI.showItemInFolder(document.media.videoPath);
-  }, [document.media.videoPath]);
+    window.electronAPI.showItemInFolder(isAudioOnly ? document.media.audioPath : document.media.videoPath);
+  }, [document.media.audioPath, document.media.videoPath, isAudioOnly]);
 
   // 用系统默认浏览器打开来源页
   const handleOpenSourcePage = useCallback(() => {
-    window.electronAPI.openExternal(document.metadata.resolvedPageUrl);
+    if (document.metadata.resolvedPageUrl) {
+      window.electronAPI.openExternal(document.metadata.resolvedPageUrl);
+    }
   }, [document.metadata.resolvedPageUrl]);
 
   return (
@@ -140,7 +145,7 @@ export function VideoImportPreviewPane({
               }}
             >
               <PlaySquare size={12} />
-              抖音导入预览
+              {getPreviewBadgeLabel(document.sourceType)}
             </div>
             <h3
               style={{
@@ -185,6 +190,7 @@ export function VideoImportPreviewPane({
             <button
               type="button"
               onClick={handleOpenSourcePage}
+              disabled={!document.metadata.resolvedPageUrl}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -194,7 +200,8 @@ export function VideoImportPreviewPane({
                 background: 'var(--color-window-bg)',
                 color: 'var(--color-text-primary)',
                 padding: '8px 12px',
-                cursor: 'pointer',
+                cursor: document.metadata.resolvedPageUrl ? 'pointer' : 'not-allowed',
+                opacity: document.metadata.resolvedPageUrl ? 1 : 0.5,
               }}
             >
               <ExternalLink size={14} />
@@ -212,7 +219,7 @@ export function VideoImportPreviewPane({
             minHeight: 240,
           }}
         >
-          {videoError ? (
+          {mediaError ? (
             <div
               style={{
                 display: 'flex',
@@ -225,24 +232,19 @@ export function VideoImportPreviewPane({
                 gap: 8,
               }}
             >
-              <span>视频文件加载失败</span>
-              <span style={{ fontSize: 11 }}>{document.media.videoPath}</span>
+              <span>{isAudioOnly ? '音频文件加载失败' : '视频文件加载失败'}</span>
+              <span style={{ fontSize: 11 }}>
+                {isAudioOnly ? document.media.audioPath : document.media.videoPath}
+              </span>
             </div>
           ) : (
-            <video
-              ref={videoRef}
-              controls
-              preload="metadata"
-              src={toFileSrc(document.media.videoPath)}
+            <MediaPreviewPlayer
+              ref={playerRef}
+              src={toFileSrc(isAudioOnly ? document.media.audioPath : document.media.videoPath)}
+              isAudio={isAudioOnly}
               poster={document.media.coverUrl ?? undefined}
               onTimeUpdate={handleTimeUpdate}
-              onError={() => setVideoError(true)}
-              style={{
-                display: 'block',
-                width: '100%',
-                maxHeight: 420,
-                background: '#000',
-              }}
+              onError={() => setMediaError(true)}
             />
           )}
         </div>
@@ -259,11 +261,14 @@ export function VideoImportPreviewPane({
           }}
         >
           <MetaRow label="预览文件" value={filePath} />
-          <MetaRow label="视频文件" value={getFileNameFromPath(document.media.videoPath)} />
+          <MetaRow
+            label={isAudioOnly ? '音频文件' : '视频文件'}
+            value={getFileNameFromPath(isAudioOnly ? document.media.audioPath : document.media.videoPath)}
+          />
           <MetaRow label="字幕文件" value={getFileNameFromPath(document.transcript.srtPath)} />
           <MetaRow label="原稿同步" value={document.syncedToOriginal ? '已同步到 original.md' : '未同步'} />
           <MetaRow label="导入时间" value={document.createdAt} />
-          <MetaRow label="分享链接" value={document.metadata.sourceUrl} />
+          <MetaRow label="来源" value={document.metadata.sourceUrl ?? document.metadata.sourcePath ?? '本地媒体'} />
         </div>
       </section>
 

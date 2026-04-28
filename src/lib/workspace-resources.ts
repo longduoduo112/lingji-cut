@@ -2,7 +2,7 @@
 import type { FileEntry } from './electron-api';
 import { isVideoImportPreviewFile, parseVideoImportPreviewDocument } from './video-import-preview';
 
-export type ResourceGroup = 'original' | 'script' | 'douyin';
+export type ResourceGroup = 'original' | 'script' | 'douyin' | 'local_video' | 'local_audio';
 
 export interface ResourceItem {
   path: string;
@@ -15,6 +15,7 @@ export interface ResourceItem {
 export interface PreviewMeta {
   title: string;
   videoId: string;
+  sourceType?: ResourceGroup;
 }
 
 export type PreviewMetaCache = Map<string, PreviewMeta | 'failed'>;
@@ -40,6 +41,18 @@ function extractVideoId(previewPath: string): string {
   return parts[parts.length - 2] ?? previewPath;
 }
 
+function inferPreviewGroup(previewPath: string): ResourceGroup {
+  if (previewPath.includes('/local_video/')) return 'local_video';
+  if (previewPath.includes('/local_audio/')) return 'local_audio';
+  return 'douyin';
+}
+
+function getPreviewGroupLabel(group: ResourceGroup): string {
+  if (group === 'local_video') return '本地视频';
+  if (group === 'local_audio') return '本地音频';
+  return '抖音';
+}
+
 export function collectScriptResources(
   fileEntries: FileEntry[],
   cache: PreviewMetaCache,
@@ -55,26 +68,30 @@ export function collectScriptResources(
     } else if (isVideoImportPreviewFile(path)) {
       const videoId = extractVideoId(path);
       const cached = cache.get(path);
+      const group = cached && cached !== 'failed'
+        ? cached.sourceType ?? inferPreviewGroup(path)
+        : inferPreviewGroup(path);
+      const groupLabel = getPreviewGroupLabel(group);
       if (cached === 'failed') {
         items.push({
           path,
           displayName: videoId,
-          group: 'douyin',
-          subtitle: '抖音 · 解析失败',
+          group,
+          subtitle: `${groupLabel} · 解析失败`,
         });
       } else if (cached) {
         items.push({
           path,
           displayName: cached.title || videoId,
-          group: 'douyin',
-          subtitle: `抖音 · ${cached.videoId || videoId}`,
+          group,
+          subtitle: `${groupLabel} · ${cached.videoId || videoId}`,
         });
       } else {
         items.push({
           path,
           displayName: videoId,
-          group: 'douyin',
-          subtitle: '抖音 · 解析中',
+          group,
+          subtitle: `${groupLabel} · 解析中`,
           loading: true,
         });
       }
@@ -89,7 +106,7 @@ export function listUncachedPreviewPaths(
   cache: PreviewMetaCache,
 ): string[] {
   return items
-    .filter((it) => it.group === 'douyin' && !cache.has(it.path))
+    .filter((it) => ['douyin', 'local_video', 'local_audio'].includes(it.group) && !cache.has(it.path))
     .map((it) => it.path);
 }
 
@@ -111,7 +128,7 @@ export async function hydratePreviewMeta(
         cache.set(path, 'failed');
         continue;
       }
-      cache.set(path, { title: doc.title, videoId: doc.videoId });
+      cache.set(path, { title: doc.title, videoId: doc.videoId, sourceType: doc.sourceType });
     } catch {
       cache.set(path, 'failed');
     }
@@ -135,5 +152,7 @@ export function groupResources(items: ResourceItem[]): Record<ResourceGroup, Res
     original: items.filter((it) => it.group === 'original'),
     script: items.filter((it) => it.group === 'script'),
     douyin: items.filter((it) => it.group === 'douyin'),
+    local_video: items.filter((it) => it.group === 'local_video'),
+    local_audio: items.filter((it) => it.group === 'local_audio'),
   };
 }

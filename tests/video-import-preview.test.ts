@@ -49,6 +49,22 @@ describe('video import preview helpers', () => {
     expect(parsed?.media.videoPath).toContain('video.mp4');
   });
 
+  it('parses local media previews with a source path instead of a source url', () => {
+    const parsed = parseVideoImportPreviewDocument(JSON.stringify({
+      ...JSON.parse(previewJson),
+      sourceType: 'local_audio',
+      metadata: {
+        sourcePath: '/Users/demo/voice.wav',
+        originalPath: '/tmp/demo/original.md',
+        sourceMetadataPath: '/tmp/demo/imports/local_audio/voice/source.json',
+        resultMetadataPath: '/tmp/demo/imports/local_audio/voice/import-result.json',
+      },
+    }));
+
+    expect(parsed?.sourceType).toBe('local_audio');
+    expect(parsed?.metadata.sourcePath).toContain('voice.wav');
+  });
+
   it('rejects invalid preview content', () => {
     expect(isVideoImportPreviewDocument({ schema: 'other' })).toBe(false);
     expect(parseVideoImportPreviewDocument('{"schema":"other"}')).toBeNull();

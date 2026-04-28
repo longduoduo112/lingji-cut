@@ -204,7 +204,7 @@ function createVariableCompletionSource(
   };
 }
 
-export type CodeEditorLanguage = 'yaml';
+export type CodeEditorLanguage = 'yaml' | 'text';
 
 export interface CodeEditorVariable {
   name: string;
@@ -227,6 +227,8 @@ export interface CodeEditorProps {
 
 function languageExtension(language: CodeEditorLanguage) {
   switch (language) {
+    case 'text':
+      return [];
     case 'yaml':
     default:
       return yaml();

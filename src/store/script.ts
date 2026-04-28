@@ -288,7 +288,7 @@ const initialState: ScriptState = {
   },
   pendingDouyinUrl: null,
   pendingImportedScript: null,
-  fileTreeView: 'all',
+  fileTreeView: 'resources',
 };
 
 export const useScriptStore = create<ScriptState & ScriptActions>((set, get) => ({
@@ -449,12 +449,12 @@ export const useScriptStore = create<ScriptState & ScriptActions>((set, get) => 
   reset: () => {
     const { projectDir, selectedRole } = get();
     // 重置脚本内容但保留工作目录（与 Editor 共享）
-    set({ ...initialState, projectDir, selectedRole, fileTreeView: 'all' });
+    set({ ...initialState, projectDir, selectedRole, fileTreeView: 'resources' });
   },
 
   clearProjectSession: () => {
     const { selectedRole } = get();
-    set({ ...initialState, projectDir: null, selectedRole, fileTreeView: 'all' });
+    set({ ...initialState, projectDir: null, selectedRole, fileTreeView: 'resources' });
   },
 
   // --- 新增 actions ---
