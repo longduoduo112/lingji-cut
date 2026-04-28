@@ -403,4 +403,92 @@ describe('video import service', () => {
     expect(status?.status).toBe('done');
     expect(status?.result?.transcriptPath).toBe(result.transcriptPath);
   });
+
+  it('imports local video without using the douyin downloader', async () => {
+    const localVideoPath = path.join(tmpDir, 'fixtures', 'clip.mp4');
+    await fs.mkdir(path.dirname(localVideoPath), { recursive: true });
+    await fs.writeFile(localVideoPath, 'video-binary', 'utf8');
+
+    const resolveSource = vi.fn();
+    const downloadToPath = vi.fn();
+    const extractAudioToMp3 = vi.fn(async (_videoPath: string, audioPath: string) => {
+      await fs.writeFile(audioPath, 'audio-binary', 'utf8');
+      return audioPath;
+    });
+    const transcribe = vi.fn(async () => ({
+      engine: 'bcut' as const,
+      fullText: '本地视频第一段',
+      srtText: '1\n00:00:00,000 --> 00:00:01,000\n本地视频第一段\n',
+      segments: [{ text: '本地视频第一段', startMs: 0, endMs: 1000 }],
+    }));
+
+    const service = createVideoImportService({
+      downloader: { resolveSource, downloadToPath },
+      mediaExtractor: { extractAudioToMp3 },
+      asrRunner: { transcribe },
+      now: () => new Date('2026-04-10T00:00:00.000Z'),
+    });
+
+    const result = await service.importVideoSource({
+      sourceType: 'local_video',
+      filePath: localVideoPath,
+      projectDir: tmpDir,
+      syncToOriginal: true,
+    });
+
+    expect(resolveSource).not.toHaveBeenCalled();
+    expect(downloadToPath).not.toHaveBeenCalled();
+    expect(extractAudioToMp3).toHaveBeenCalledWith(result.videoPath, result.audioPath);
+    expect(transcribe).toHaveBeenCalledWith(result.audioPath);
+    expect(result.sourceType).toBe('local_video');
+    expect(result.importDir).toContain(path.join('imports', 'local_video'));
+    expect(result.sourcePath).toBe(localVideoPath);
+    await expect(fs.readFile(result.sourceMetadataPath, 'utf8')).resolves.toContain('"sourceType": "local_video"');
+    await expect(fs.readFile(result.previewMetadataPath, 'utf8')).resolves.toContain('"sourcePath"');
+  });
+
+  it('imports local audio by converting it to mp3 before transcription', async () => {
+    const localAudioPath = path.join(tmpDir, 'fixtures', 'voice.wav');
+    await fs.mkdir(path.dirname(localAudioPath), { recursive: true });
+    await fs.writeFile(localAudioPath, 'audio-binary', 'utf8');
+
+    const resolveSource = vi.fn();
+    const downloadToPath = vi.fn();
+    const extractAudioToMp3 = vi.fn();
+    const convertAudioToMp3 = vi.fn(async (_sourceAudioPath: string, audioPath: string) => {
+      await fs.writeFile(audioPath, 'converted-audio', 'utf8');
+      return audioPath;
+    });
+    const transcribe = vi.fn(async () => ({
+      engine: 'bcut' as const,
+      fullText: '本地音频第一段',
+      srtText: '1\n00:00:00,000 --> 00:00:01,000\n本地音频第一段\n',
+      segments: [{ text: '本地音频第一段', startMs: 0, endMs: 1000 }],
+    }));
+
+    const service = createVideoImportService({
+      downloader: { resolveSource, downloadToPath },
+      mediaExtractor: { extractAudioToMp3, convertAudioToMp3 },
+      asrRunner: { transcribe },
+      now: () => new Date('2026-04-10T00:00:00.000Z'),
+    });
+
+    const result = await service.importVideoSource({
+      sourceType: 'local_audio',
+      filePath: localAudioPath,
+      projectDir: tmpDir,
+      syncToOriginal: true,
+    });
+
+    expect(resolveSource).not.toHaveBeenCalled();
+    expect(downloadToPath).not.toHaveBeenCalled();
+    expect(extractAudioToMp3).not.toHaveBeenCalled();
+    expect(convertAudioToMp3).toHaveBeenCalledWith(localAudioPath, result.audioPath);
+    expect(transcribe).toHaveBeenCalledWith(result.audioPath);
+    expect(result.sourceType).toBe('local_audio');
+    expect(result.importDir).toContain(path.join('imports', 'local_audio'));
+    expect(result.sourcePath).toBe(localAudioPath);
+    await expect(fs.readFile(result.originalPath, 'utf8')).resolves.toContain('本地音频第一段');
+    await expect(fs.readFile(result.previewMetadataPath, 'utf8')).resolves.toContain('"sourceType": "local_audio"');
+  });
 });

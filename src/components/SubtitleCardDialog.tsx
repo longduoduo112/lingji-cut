@@ -14,14 +14,13 @@ import {
 import type { AICardType } from '../types/ai';
 import type { SubtitleCardDraftInput } from '../lib/ai-analysis';
 import { generateAndInsertSingleCardFromSubtitles } from '../lib/single-card-generation';
-
-const CARD_TYPE_OPTIONS: Array<{ value: AICardType; label: string }> = [
-  { value: 'summary', label: '摘要（summary）' },
-  { value: 'insight', label: '观点 / 洞察（insight）' },
-  { value: 'quote', label: '金句（quote）' },
-  { value: 'data', label: '数据（data）' },
-  { value: 'chapter', label: '章节（chapter）' },
-];
+import { createManualMediaCard } from '../lib/manual-media-card';
+import {
+  MANUAL_CARD_CONTENT_TYPE_OPTIONS,
+  MANUAL_CARD_KIND_OPTIONS,
+  type ManualCardContentType,
+  type ManualCardKind,
+} from '../lib/manual-card-types';
 
 interface SubtitleCardDialogProps {
   open: boolean;
@@ -30,9 +29,16 @@ interface SubtitleCardDialogProps {
     text: string;
     startMs: number;
     endMs: number;
+    kind?: ManualCardKind;
+    contentType?: ManualCardContentType;
+    promptHint?: string;
+    title?: string;
+    insertToTimeline?: boolean;
+    allowedKinds?: ManualCardKind[];
+    requireText?: boolean;
   } | null;
   /** 生成成功后的回调（弹窗已自动关闭） */
-  onGenerated?: () => void;
+  onGenerated?: (cardId?: string) => void;
 }
 
 interface ValidationState {
@@ -80,9 +86,20 @@ function SubtitleCardDialogBody({
   onOpenChange,
   onGenerated,
 }: {
-  initial: { text: string; startMs: number; endMs: number };
+  initial: {
+    text: string;
+    startMs: number;
+    endMs: number;
+    kind?: ManualCardKind;
+    contentType?: ManualCardContentType;
+    promptHint?: string;
+    title?: string;
+    insertToTimeline?: boolean;
+    allowedKinds?: ManualCardKind[];
+    requireText?: boolean;
+  };
   onOpenChange: (open: boolean) => void;
-  onGenerated?: () => void;
+  onGenerated?: (cardId?: string) => void;
 }) {
   const { showToast } = useToast();
   const [text, setText] = useState(initial.text);
@@ -91,16 +108,38 @@ function SubtitleCardDialogBody({
   const [durationInput, setDurationInput] = useState(
     formatMs(Math.max(1000, initial.endMs - initial.startMs)),
   );
-  const [type, setType] = useState<AICardType>('summary');
-  const [promptHint, setPromptHint] = useState('');
+  const [cardKind, setCardKind] = useState<ManualCardKind>(initial.kind ?? 'motion');
+  const [contentType, setContentType] = useState<ManualCardContentType>(
+    initial.contentType ?? 'summary',
+  );
+  const [promptHint, setPromptHint] = useState(initial.promptHint ?? '');
   const [submitting, setSubmitting] = useState(false);
+  const allowedKindSet = useMemo(
+    () => new Set(initial.allowedKinds ?? MANUAL_CARD_KIND_OPTIONS.map((item) => item.kind)),
+    [initial.allowedKinds],
+  );
+  const cardKindOptions = useMemo(
+    () => MANUAL_CARD_KIND_OPTIONS.filter((item) => allowedKindSet.has(item.kind)),
+    [allowedKindSet],
+  );
 
   useEffect(() => {
     setText(initial.text);
     setStartMsInput(formatMs(initial.startMs));
     setEndMsInput(formatMs(initial.endMs));
     setDurationInput(formatMs(Math.max(1000, initial.endMs - initial.startMs)));
-  }, [initial.text, initial.startMs, initial.endMs]);
+    setCardKind(initial.kind ?? cardKindOptions[0]?.kind ?? 'motion');
+    setContentType(initial.contentType ?? 'summary');
+    setPromptHint(initial.promptHint ?? '');
+  }, [
+    cardKindOptions,
+    initial.contentType,
+    initial.endMs,
+    initial.kind,
+    initial.promptHint,
+    initial.startMs,
+    initial.text,
+  ]);
 
   const startMs = useMemo(() => parseMs(startMsInput), [startMsInput]);
   const endMs = useMemo(() => parseMs(endMsInput), [endMsInput]);
@@ -108,7 +147,7 @@ function SubtitleCardDialogBody({
 
   const validation: ValidationState = useMemo(() => {
     const v: ValidationState = {};
-    if (!text.trim()) {
+    if ((initial.requireText ?? true) && !text.trim()) {
       v.textError = '字幕内容不能为空';
     }
     if (!(startMs < endMs)) {
@@ -124,7 +163,7 @@ function SubtitleCardDialogBody({
       v.hintError = 'Prompt Hint 最多 200 字';
     }
     return v;
-  }, [text, startMs, endMs, durationMs, promptHint]);
+  }, [initial.requireText, text, startMs, endMs, durationMs, promptHint]);
 
   const canSubmit =
     !submitting &&
@@ -141,14 +180,33 @@ function SubtitleCardDialogBody({
       startMs,
       endMs,
       displayDurationMs: durationMs,
-      type,
+      type: contentType as AICardType,
       promptHint: promptHint.trim() || undefined,
     };
     onOpenChange(false);
     try {
-      await generateAndInsertSingleCardFromSubtitles({ draft });
-      showToast('内容卡片已生成并插入时间轴', { type: 'success', duration: 3000 });
-      onGenerated?.();
+      const card =
+        cardKind === 'image' || cardKind === 'video'
+          ? await createManualMediaCard({
+              mediaType: cardKind,
+              segmentId: `manual:subtitle:${Date.now()}`,
+              title: initial.title?.trim() || (cardKind === 'image' ? '手选图片卡' : '手选视频卡'),
+              prompt: [
+                `内容维度：${MANUAL_CARD_CONTENT_TYPE_OPTIONS.find((item) => item.value === contentType)?.label ?? contentType}`,
+                promptHint.trim(),
+                text.trim(),
+              ].filter(Boolean).join('\n\n'),
+              startMs,
+              endMs,
+              displayDurationMs: durationMs,
+              displayMode: 'fullscreen',
+              insertToTimeline: initial.insertToTimeline ?? true,
+            })
+          : await generateAndInsertSingleCardFromSubtitles({ draft });
+      const toastLabel =
+        cardKind === 'image' ? '图片卡已创建并插入时间轴' : cardKind === 'video' ? '视频卡已创建并插入时间轴' : 'Motion 卡已生成并插入时间轴';
+      showToast(toastLabel, { type: 'success', duration: 3000 });
+      onGenerated?.(card.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : '生成失败';
       showToast(message, { title: '生成内容卡片失败', type: 'error', duration: 5000 });
@@ -161,7 +219,10 @@ function SubtitleCardDialogBody({
     startMs,
     endMs,
     durationMs,
-    type,
+    cardKind,
+    contentType,
+    initial.insertToTimeline,
+    initial.title,
     promptHint,
     onOpenChange,
     onGenerated,
@@ -171,21 +232,23 @@ function SubtitleCardDialogBody({
   return (
     <DialogContent size="lg">
       <DialogHeader>
-        <DialogTitle>生成内容卡片</DialogTitle>
+        <DialogTitle>创建内容卡片</DialogTitle>
         <p className="mt-1 text-sm text-mac-text-muted">
-          基于选中字幕二次编辑后生成单张 Motion 卡片（LLM 生成的 Remotion 组件会实时编译校验）。
+          基于选中字幕二次编辑后创建单张卡片；卡片类型决定载体，内容维度决定表达方向。
         </p>
       </DialogHeader>
       <DialogBody className="space-y-4">
         <div className="space-y-1">
-          <label className="text-xs font-medium text-mac-text-muted">字幕文本</label>
+          <label className="text-xs font-medium text-mac-text-muted">
+            参考文本 / Prompt 种子
+          </label>
           <Textarea
             value={text}
             onChange={(event) => setText(event.target.value)}
             rows={5}
             resize="vertical"
             error={Boolean(validation.textError)}
-            placeholder="将交给 LLM 的字幕内容；可删改冗余词或合并表达"
+            placeholder="可填写字幕、画面描述或生成提示词；后续也可在 Inspector 中继续编辑"
           />
           {validation.textError ? (
             <p className="text-xs text-mac-red">{validation.textError}</p>
@@ -239,12 +302,23 @@ function SubtitleCardDialogBody({
 
         <div className="space-y-1">
           <label className="text-xs font-medium text-mac-text-muted">
-            卡片类型倾向
+            卡片类型
           </label>
           <Select
-            value={type}
-            options={CARD_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-            onChange={(event) => setType(event.target.value as AICardType)}
+            value={cardKind}
+            options={cardKindOptions.map((o) => ({ value: o.kind, label: o.label }))}
+            onChange={(event) => setCardKind(event.target.value as ManualCardKind)}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-mac-text-muted">
+            内容维度
+          </label>
+          <Select
+            value={contentType}
+            options={MANUAL_CARD_CONTENT_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            onChange={(event) => setContentType(event.target.value as ManualCardContentType)}
           />
         </div>
 
@@ -270,7 +344,7 @@ function SubtitleCardDialogBody({
           取消
         </Button>
         <Button variant="primary" onClick={handleSubmit} disabled={!canSubmit}>
-          生成并插入
+          创建卡片
         </Button>
       </DialogFooter>
     </DialogContent>

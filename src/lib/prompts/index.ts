@@ -26,6 +26,7 @@ export {
   renderUserPromptWithLock,
   parsePromptYaml,
   serializePromptYaml,
+  createPromptYamlFromUserText,
   parseUserPromptYaml,
   serializeUserPromptYaml,
   type UserPromptYamlBody,

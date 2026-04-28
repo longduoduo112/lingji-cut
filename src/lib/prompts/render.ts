@@ -78,6 +78,16 @@ export function serializePromptYaml(template: PromptTemplate): string {
   });
 }
 
+export function createPromptYamlFromUserText(
+  base: PromptTemplate,
+  userText: string,
+): string {
+  return serializePromptYaml({
+    ...base,
+    user: userText,
+  });
+}
+
 export interface UserPromptYamlBody {
   name: string;
   description: string;

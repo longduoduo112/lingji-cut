@@ -4,10 +4,23 @@ import type {
   VideoImportPreviewDocument,
   VideoImportResult,
 } from '../../src/lib/video-import-types';
-import type { DouyinImportPaths, DouyinSourceMetadata } from './types';
+import type {
+  DouyinImportPaths,
+  DouyinSourceMetadata,
+  LocalMediaSourceMetadata,
+  VideoImportPaths,
+} from './types';
 
 export function buildDouyinImportPaths(projectDir: string, videoId: string): DouyinImportPaths {
-  const importDir = path.join(projectDir, 'imports', 'douyin', videoId);
+  return buildVideoImportPaths(projectDir, 'douyin', videoId);
+}
+
+export function buildVideoImportPaths(
+  projectDir: string,
+  sourceType: string,
+  videoId: string,
+): VideoImportPaths {
+  const importDir = path.join(projectDir, 'imports', sourceType, videoId);
 
   return {
     importDir,
@@ -36,7 +49,7 @@ function normalizeTranscriptMarkdown(fullText: string): string {
 
 export async function writeSourceMetadata(
   paths: DouyinImportPaths,
-  metadata: DouyinSourceMetadata,
+  metadata: DouyinSourceMetadata | LocalMediaSourceMetadata,
 ): Promise<void> {
   await ensureImportDir(paths);
   await fs.writeFile(

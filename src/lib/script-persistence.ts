@@ -67,7 +67,7 @@ export function createPersistedScriptState(
     manualStageOverride: options?.manualStageOverride ?? null,
     createdAt: options?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    fileTreeView: options?.fileTreeView ?? 'all',
+    fileTreeView: options?.fileTreeView ?? 'resources',
   };
 }
 

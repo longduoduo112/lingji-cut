@@ -28,10 +28,14 @@ const GROUP_LABEL: Record<ResourceGroup, string> = {
   original: '原始文稿',
   script: '口播脚本',
   douyin: '抖音导入',
+  local_video: '本地视频',
+  local_audio: '本地音频',
 };
 
 function iconForGroup(group: ResourceGroup) {
-  if (group === 'douyin') return <Film size={14} strokeWidth={1.8} />;
+  if (group === 'douyin' || group === 'local_video' || group === 'local_audio') {
+    return <Film size={14} strokeWidth={1.8} />;
+  }
   return <FileText size={14} strokeWidth={1.8} />;
 }
 
@@ -92,7 +96,7 @@ export function ScriptResourceView({
       <div className={styles.empty}>
         <EmptyState
           title="暂无稿件资源"
-          description="导入文稿或抖音视频后，会在此快速访问。"
+          description="导入文稿或媒体后，会在此快速访问。"
         />
       </div>
     );

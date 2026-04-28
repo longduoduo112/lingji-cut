@@ -249,7 +249,7 @@ export interface ElectronAPI {
   getProjectMetadata: (projectDir: string) => Promise<ProjectMetadata>;
   selectProjectDirectory: () => Promise<string | null>;
   selectSetupFile: (kind: ImportKind) => Promise<string | null>;
-  selectMediaFile: (kind: 'audio' | 'srt') => Promise<string | null>;
+  selectMediaFile: (kind: 'audio' | 'video' | 'srt') => Promise<string | null>;
   getPathForFile: (file: File) => string;
   addAsset: () => Promise<{
     path: string;
@@ -287,6 +287,9 @@ export interface ElectronAPI {
   resolveDouyinUrl: (url: string) => Promise<{ title: string; videoId: string }>;
   importVideoSource: (request: VideoImportRequest) => Promise<VideoImportProgress>;
   getVideoImportStatus: (importId: string) => Promise<VideoImportProgress | null>;
+  onVideoImportProgress: (
+    callback: (snapshot: VideoImportTaskSnapshot) => void,
+  ) => () => void;
   onDouyinImportProgress: (
     callback: (snapshot: VideoImportTaskSnapshot) => void,
   ) => () => void;
@@ -380,6 +383,7 @@ export interface ElectronAPI {
   writePrompt: (args: {
     kind: PromptKind;
     scope: 'global' | 'project';
+    /** 用户编辑的纯文本 user 段；主进程负责拼接为合法 YAML。 */
     content: string;
     projectDir?: string;
   }) => Promise<{ kind: PromptKind; scope: 'global' | 'project'; filePath: string }>;

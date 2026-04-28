@@ -273,7 +273,7 @@ export function PromptsConfigTab() {
     [projectDirArg],
   );
 
-  // 切换到 kind 编辑器时加载 YAML
+  // 切换到 kind 编辑器时加载用户可编辑的纯文本提示词正文
   useEffect(() => {
     if (active.type === 'kind') {
       void loadKind(active.kind, scope);
@@ -663,7 +663,7 @@ export function PromptsConfigTab() {
     <div className={styles.root}>
       <SettingsPageHeader
         title="提示词配置"
-        description="编辑 AI 内容卡片、封面图、Motion 动效以及口播模板的提示词，支持全局或项目级覆盖。"
+        description="编辑 AI 内容卡片、封面图、Motion 动效以及口播模板的提示词正文；系统会自动保存为合法 YAML。"
       />
 
       {!hasProject && (
@@ -840,10 +840,11 @@ export function PromptsConfigTab() {
                 <CodeEditor
                   value={content}
                   onChange={setContent}
-                  language="yaml"
+                  language="text"
                   minHeight="100%"
-                  ariaLabel={`${activeMeta.label} 提示词 YAML 编辑器`}
+                  ariaLabel={`${activeMeta.label} 提示词正文编辑器`}
                   variables={activeMeta.variables}
+                  placeholder="直接输入提示词正文，无需填写 YAML 字段或缩进"
                 />
               </div>
 

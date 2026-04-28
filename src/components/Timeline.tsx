@@ -46,6 +46,7 @@ import { TimelineToolbar } from './timeline/TimelineToolbar';
 import { TrackDropZone } from './timeline/TrackDropZone';
 import { SnapGuides } from './timeline/SnapGuides';
 import styles from './Timeline.module.css';
+import type { ManualCardKind } from '../lib/manual-card-types';
 
 interface TimelineProps {
   currentTimeMs: number;
@@ -118,6 +119,7 @@ export function Timeline({
     text: string;
     startMs: number;
     endMs: number;
+    kind?: ManualCardKind;
   } | null>(null);
   const [pendingTrackDeletion, setPendingTrackDeletion] = useState<PendingTrackDeletion | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -1304,6 +1306,7 @@ export function Timeline({
                     text: payload.text,
                     startMs: payload.startMs,
                     endMs: payload.endMs,
+                    kind: payload.kind,
                   });
                   setSubtitleCardDialogOpen(true);
                 }}
@@ -1695,6 +1698,11 @@ export function Timeline({
         open={subtitleCardDialogOpen}
         onOpenChange={setSubtitleCardDialogOpen}
         initial={subtitleCardDialogInitial}
+        onGenerated={(cardId) => {
+          if (cardId) {
+            onOpenAICardInspector?.(cardId);
+          }
+        }}
       />
     </div>
   );

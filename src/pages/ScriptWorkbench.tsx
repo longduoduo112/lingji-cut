@@ -51,6 +51,11 @@ import {
   isVideoImportPreviewFile,
   parseVideoImportPreviewDocument,
 } from '../lib/video-import-preview';
+import type {
+  VideoImportRequest,
+  VideoImportSourceInput,
+  VideoImportSourceType,
+} from '../lib/video-import-types';
 import { ScriptEditor } from '../ui/components/script-editor';
 import { AlertProvider } from '../ui/components/alert';
 import { Button } from '../ui';
@@ -69,6 +74,12 @@ interface ScriptWorkbenchProps {
 }
 
 const SPECIAL_FILES = new Set(['original.md', 'script.md']);
+
+function getVideoImportTaskLabel(sourceType: VideoImportSourceType): string {
+  if (sourceType === 'douyin') return '抖音视频导入';
+  if (sourceType === 'local_video') return '本地视频导入';
+  return '本地音频导入';
+}
 
 export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptWorkbenchProps) {
   const { workflow } = useAIVideoWorkflow();
@@ -234,9 +245,7 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
     activeFileIsVideoPreview && !(activeFile! in extraFileContents),
   );
 
-  const hasDouyinDetailAction = Boolean(
-    lastVideoImport && lastVideoImport.sourceType === 'douyin',
-  );
+  const hasImportDetailAction = Boolean(lastVideoImport);
 
   // 正在/已经完成 hydrate 的目录，避免挂载恢复与 projectDir 监听重复执行
   const hydratedDirRef = useRef<string | null>(null);
@@ -301,7 +310,7 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
             scriptDocVersion: persisted.lastReviewedDocVersion,
             manualStageOverride: persisted.manualStageOverride ?? null,
             workspaceFiles: { hasOriginalFile: hasOriginal, hasScriptFile: hasScript },
-            fileTreeView: persisted.fileTreeView ?? 'all',
+            fileTreeView: 'resources',
           });
           setFileEntries(entries);
           if (!openedFile) {
@@ -707,12 +716,12 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
   );
 
   const waitForVideoImport = useCallback(
-    async (importId: string, dir: string) => {
-      const importTaskId = `import-douyin-${Date.now()}`;
+    async (importId: string, dir: string, sourceType: VideoImportSourceType) => {
+      const importTaskId = `import-${sourceType}-${Date.now()}`;
       useTaskProgressStore.getState().startTask({
         id: importTaskId,
         category: 'import',
-        label: '抖音视频导入',
+        label: getVideoImportTaskLabel(sourceType),
         mode: 'determinate',
         progress: 0,
         phase: '下载中',
@@ -744,7 +753,7 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
             return;
           }
           if (status.status === 'error') {
-            setDouyinImportError(status.error ?? '抖音导入失败');
+            setDouyinImportError(status.error ?? '媒体导入失败');
             useTaskProgressStore.getState().failTask(importTaskId, status.error ?? '导入失败');
             setDouyinImportBusy(false);
             return;
@@ -765,11 +774,14 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
     ],
   );
 
-  const handleImportDouyin = useCallback(
-    async (url?: string) => {
-      const link = url?.trim();
-      if (!link) {
+  const handleImportMediaSource = useCallback(
+    async (source: VideoImportSourceInput) => {
+      if (source.sourceType === 'douyin' && !source.url.trim()) {
         setDouyinImportError('请先粘贴抖音分享链接');
+        return;
+      }
+      if (source.sourceType !== 'douyin' && !source.filePath.trim()) {
+        setDouyinImportError('请先选择媒体文件');
         return;
       }
 
@@ -782,16 +794,15 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
 
       try {
         const initialProgress = await window.electronAPI.importVideoSource({
-          sourceType: 'douyin',
-          url: link,
+          ...source,
           projectDir: dir,
           syncToOriginal: true,
-        });
+        } as VideoImportRequest);
         setVideoImportProgress(initialProgress);
-        await waitForVideoImport(initialProgress.importId, dir);
+        await waitForVideoImport(initialProgress.importId, dir, source.sourceType);
       } catch (error) {
         setDouyinImportError(
-          error instanceof Error ? error.message : '抖音导入失败',
+          error instanceof Error ? error.message : '媒体导入失败',
         );
         setDouyinImportBusy(false);
       }
@@ -802,6 +813,16 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
       setVideoImportProgress,
       waitForVideoImport,
     ],
+  );
+
+  const handleImportDouyin = useCallback(
+    async (url?: string) => {
+      await handleImportMediaSource({
+        sourceType: 'douyin',
+        url: url?.trim() ?? '',
+      });
+    },
+    [handleImportMediaSource],
   );
 
   const handleOpenImportPreview = useCallback(() => {
@@ -1679,7 +1700,7 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
             <AutoRunLauncher projectDir={projectDir} setPage={setPage} />
           ) : null}
 
-          {/* 快捷操作栏：导入文稿 / 抖音视频 */}
+          {/* 快捷操作栏：导入文稿 / 媒体 */}
           {projectDir && (
             <QuickActionBar
               onImportText={() => { void handleImportText(); }}
@@ -1689,7 +1710,7 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
               }}
             />
           )}
-          {projectDir && hasDouyinDetailAction && (workflow.step === 'idle' || workflow.step === 'error') && !hasAICardOverlays ? (
+          {projectDir && hasImportDetailAction && (workflow.step === 'idle' || workflow.step === 'error') && !hasAICardOverlays ? (
             <div className={styles.workflowBar}>
               <Button
                 variant="ghost"
@@ -1698,7 +1719,7 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
                 onClick={handleOpenImportPreview}
               >
                 <AppIcon name="folder-open" size={14} />
-                <span>查看抖音详情</span>
+                <span>查看导入详情</span>
               </Button>
             </div>
           ) : null}
@@ -1808,7 +1829,7 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
                           }}
                         >
                           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                            {activePreviewPending ? '正在加载抖音预览…' : '预览文件格式无效'}
+                            {activePreviewPending ? '正在加载导入预览…' : '预览文件格式无效'}
                           </div>
                           <div style={{ maxWidth: 520, textAlign: 'center', lineHeight: 1.7 }}>
                             {activePreviewPending
@@ -2012,7 +2033,7 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
             setDouyinImportError(null);
           }
         }}
-        onSubmit={handleImportDouyin}
+        onSubmit={handleImportMediaSource}
       />
     </AlertProvider>
   );

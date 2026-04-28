@@ -7,9 +7,10 @@ import { msToFrame } from '../lib/utils';
 interface MediaOverlayProps {
   overlay: OverlayItem;
   fps: number;
+  zIndex?: number;
 }
 
-export function MediaOverlay({ overlay, fps }: MediaOverlayProps) {
+export function MediaOverlay({ overlay, fps, zIndex }: MediaOverlayProps) {
   const globalFrame = useCurrentFrame();
   const from = msToFrame(overlay.startMs, fps);
   const durationInFrames = Math.max(1, msToFrame(overlay.durationMs, fps));
@@ -29,6 +30,7 @@ export function MediaOverlay({ overlay, fps }: MediaOverlayProps) {
     objectFit: 'cover' as const,
     opacity: motionStyle.opacity,
     transform: motionStyle.transform,
+    zIndex,
   };
 
   return (

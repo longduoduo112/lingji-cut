@@ -77,7 +77,7 @@ describe('ScriptResourceView', () => {
       />,
     );
     expect(html).toContain('暂无稿件资源');
-    expect(html).toContain('导入文稿或抖音视频后');
+    expect(html).toContain('导入文稿或媒体后');
   });
 
   it('renders three group headings and the douyin videoId placeholder before hydration', () => {

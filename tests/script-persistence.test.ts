@@ -201,9 +201,9 @@ describe('v1 → v2 migration', () => {
 });
 
 describe('fileTreeView persistence', () => {
-  it('defaults to "all" when option not provided', () => {
+  it('defaults to "resources" when option not provided', () => {
     const state = createPersistedScriptState('idle', 0, 'news-broadcast', []);
-    expect(state.fileTreeView).toBe('all');
+    expect(state.fileTreeView).toBe('resources');
   });
 
   it('persists explicit fileTreeView option', () => {

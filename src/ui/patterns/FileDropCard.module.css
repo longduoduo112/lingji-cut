@@ -20,6 +20,15 @@
   background: var(--color-control-bg);
 }
 
+.active {
+  border-color: var(--drop-accent);
+  background: color-mix(in srgb, var(--drop-accent) 10%, var(--color-panel-elevated));
+}
+
+.active .value {
+  border-color: var(--drop-accent);
+}
+
 .filled {
   border-color: var(--color-separator);
   background: var(--color-panel-elevated);

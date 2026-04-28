@@ -39,7 +39,7 @@ describe('ScriptWorkbench', () => {
 
     expect(html).toContain('选择工作目录');
     expect(html).toContain('导入文本文件');
-    expect(html).toContain('导入抖音视频');
+    expect(html).toContain('导入媒体');
   });
 
   it('renders the review workspace when original text is available', () => {
@@ -64,6 +64,15 @@ describe('ScriptWorkbench', () => {
     // OperationBar 摘要行应显示原稿字数统计
     expect(html).toContain('原稿');
     expect(html).toContain('original.md');
+  });
+
+  it('defaults the file tree to manuscript resources', () => {
+    expect(useScriptStore.getState().fileTreeView).toBe('resources');
+
+    useScriptStore.setState({ fileTreeView: 'all' });
+    useScriptStore.getState().reset();
+
+    expect(useScriptStore.getState().fileTreeView).toBe('resources');
   });
 
   it('keeps activeStream in the ScriptWorkbench store destructuring', () => {
@@ -118,14 +127,14 @@ describe('ScriptWorkbench', () => {
     expect(source).not.toContain('handleGenerateVideo');
   });
 
-  it('declares a quick douyin detail action beside the AI video workflow entry', () => {
+  it('declares a quick import detail action beside the AI video workflow entry', () => {
     const source = readFileSync(
       new URL('../src/pages/ScriptWorkbench.tsx', import.meta.url),
       'utf8',
     );
 
-    expect(source).toContain('查看抖音详情');
-    expect(source).toContain('hasDouyinDetailAction');
+    expect(source).toContain('查看导入详情');
+    expect(source).toContain('hasImportDetailAction');
     expect(source).toContain('handleOpenImportPreview');
   });
 

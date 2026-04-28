@@ -156,27 +156,37 @@ export function registerTools(
   server.registerTool(
     'lingji_import_video_source',
     {
-      title: '导入视频来源为原稿',
-      description: '导入抖音视频到当前项目，自动下载、转录并同步为 original.md。',
+      title: '导入媒体来源为原稿',
+      description: '导入抖音链接、本地视频或本地音频到当前项目，自动转换、转录并同步为 original.md。',
       inputSchema: {
-        sourceType: z.literal('douyin').describe('当前仅支持 douyin'),
-        url: z.string().describe('抖音分享链接'),
+        sourceType: z.enum(['douyin', 'local_video', 'local_audio']).describe('媒体来源类型'),
+        url: z.string().optional().describe('抖音分享链接，sourceType=douyin 时必填'),
+        filePath: z.string().optional().describe('本地媒体文件路径，sourceType=local_video/local_audio 时必填'),
         projectDir: z.string().describe('目标项目目录'),
         syncToOriginal: z.boolean().optional().describe('是否同步为 original.md，默认 true'),
       },
     },
-    async ({ sourceType, url, projectDir, syncToOriginal }) =>
+    async ({ sourceType, url, filePath, projectDir, syncToOriginal }) =>
       withToolLog(
         'lingji_import_video_source',
-        { sourceType, url, projectDir, syncToOriginal },
+        { sourceType, url, filePath, projectDir, syncToOriginal },
         async () => {
           try {
-            const result = await videoImportService.importVideoSource({
-              sourceType,
-              url,
-              projectDir,
-              syncToOriginal: syncToOriginal ?? true,
-            });
+            const result = await videoImportService.importVideoSource(
+              sourceType === 'douyin'
+                ? {
+                    sourceType,
+                    url: url ?? '',
+                    projectDir,
+                    syncToOriginal: syncToOriginal ?? true,
+                  }
+                : {
+                    sourceType,
+                    filePath: filePath ?? '',
+                    projectDir,
+                    syncToOriginal: syncToOriginal ?? true,
+                  },
+            );
             return jsonResult(result);
           } catch (error) {
             return errorResult(

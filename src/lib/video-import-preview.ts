@@ -20,7 +20,13 @@ export function isVideoImportPreviewDocument(
   if (!isRecord(value.media) || typeof value.media.videoPath !== 'string') return false;
   if (!isRecord(value.transcript) || typeof value.transcript.text !== 'string') return false;
   if (!Array.isArray(value.transcript.segments)) return false;
-  if (!isRecord(value.metadata) || typeof value.metadata.sourceUrl !== 'string') return false;
+  if (!isRecord(value.metadata)) return false;
+  if (
+    typeof value.metadata.sourceUrl !== 'string' &&
+    typeof value.metadata.sourcePath !== 'string'
+  ) {
+    return false;
+  }
   return true;
 }
 

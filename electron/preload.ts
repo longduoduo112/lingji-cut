@@ -123,7 +123,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-project-metadata', projectDir) as Promise<ProjectMetadata>,
   selectProjectDirectory: () => ipcRenderer.invoke('select-project-directory'),
   selectSetupFile: (kind: 'audio' | 'srt') => ipcRenderer.invoke('select-setup-file', kind),
-  selectMediaFile: (kind: 'audio' | 'srt') => ipcRenderer.invoke('select-media-file', kind),
+  selectMediaFile: (kind: 'audio' | 'video' | 'srt') => ipcRenderer.invoke('select-media-file', kind),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   addAsset: () => ipcRenderer.invoke('add-asset'),
   scanProjectAssets: (projectDir: string) =>
@@ -180,6 +180,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('import-video-source', request),
   getVideoImportStatus: (importId: string) =>
     ipcRenderer.invoke('get-video-import-status', importId),
+  onVideoImportProgress: (callback: (snapshot: VideoImportTaskSnapshot) => void) => {
+    const handler = (_event: unknown, snapshot: VideoImportTaskSnapshot) => callback(snapshot);
+    ipcRenderer.on('video-import-progress', handler);
+    return () => ipcRenderer.removeListener('video-import-progress', handler);
+  },
   onDouyinImportProgress: (callback: (snapshot: VideoImportTaskSnapshot) => void) => {
     const handler = (_event: unknown, snapshot: VideoImportTaskSnapshot) => callback(snapshot);
     ipcRenderer.on('douyin-import-progress', handler);

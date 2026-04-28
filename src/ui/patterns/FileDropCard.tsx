@@ -9,11 +9,13 @@ export interface FileDropCardProps extends Omit<HTMLAttributes<HTMLDivElement>, 
   accentColor: string;
   icon?: ReactNode;
   action?: ReactNode;
+  active?: boolean;
   compact?: boolean;
 }
 
 export function FileDropCard({
   accentColor,
+  active = false,
   action,
   className,
   compact = false,
@@ -32,6 +34,7 @@ export function FileDropCard({
       className={joinClassNames(
         styles.root,
         compact ? styles.compact : '',
+        active ? styles.active : '',
         value ? styles.filled : '',
         className,
       )}

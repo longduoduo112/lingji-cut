@@ -15,6 +15,7 @@ const previewContent = JSON.stringify({
   version: 1,
   title: '周杰伦新专辑回归',
   videoId: 'v_abc123',
+  sourceType: 'douyin',
   media: { videoPath: '/v.mp4' },
   transcript: { text: '', segments: [] },
   metadata: { sourceUrl: 'https://douyin.com/x' },
@@ -95,6 +96,7 @@ describe('hydratePreviewMeta', () => {
     expect(cache.get('douyin/v_abc123/preview.json')).toEqual({
       title: '周杰伦新专辑回归',
       videoId: 'v_abc123',
+      sourceType: 'douyin',
     });
   });
 
@@ -134,5 +136,7 @@ describe('groupResources', () => {
     expect(g.original).toHaveLength(1);
     expect(g.script).toHaveLength(1);
     expect(g.douyin).toHaveLength(2);
+    expect(g.local_video).toHaveLength(0);
+    expect(g.local_audio).toHaveLength(0);
   });
 });

@@ -8,9 +8,10 @@ import { getTextAnimationStyle } from '../lib/text-animations';
 interface TextOverlayProps {
   overlay: OverlayItem;
   fps: number;
+  zIndex?: number;
 }
 
-export function TextOverlay({ overlay, fps }: TextOverlayProps) {
+export function TextOverlay({ overlay, fps, zIndex }: TextOverlayProps) {
   const globalFrame = useCurrentFrame();
   const { textData } = overlay;
   if (!textData) return null;
@@ -78,6 +79,7 @@ export function TextOverlay({ overlay, fps }: TextOverlayProps) {
           : 'flex-start',
     wordBreak: 'break-word',
     whiteSpace: 'pre-wrap',
+    zIndex,
   };
 
   return (

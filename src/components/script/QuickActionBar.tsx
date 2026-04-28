@@ -173,7 +173,7 @@ export function QuickActionBar({ onImportText, onImportDouyin }: QuickActionBarP
         </button>
         <button type="button" className={styles.btn} onClick={onImportDouyin}>
           <FileUp size={12} />
-          导入抖音视频
+          导入媒体
         </button>
       </>,
     );
@@ -272,7 +272,7 @@ export function QuickActionBar({ onImportText, onImportDouyin }: QuickActionBarP
           </button>
           <button type="button" className={styles.btn} onClick={onImportDouyin}>
             <FileUp size={12} />
-            抖音导入
+            媒体导入
           </button>
         </>
       ) : null}
@@ -288,7 +288,7 @@ export function QuickActionBar({ onImportText, onImportDouyin }: QuickActionBarP
           </button>
           <button type="button" className={styles.btn} onClick={onImportDouyin}>
             <FileUp size={12} />
-            导入抖音视频
+            导入媒体
           </button>
         </>
       ) : null}

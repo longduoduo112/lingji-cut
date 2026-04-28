@@ -6,7 +6,9 @@ import {
   deletePromptYaml,
   listPromptOverview,
   loadEffectivePromptTemplate,
+  readPromptUserText,
   readRawPromptYaml,
+  writePromptUserText,
   writePromptYaml,
 } from '../electron/prompts-io';
 
@@ -93,6 +95,56 @@ describe('write / read / delete', () => {
     await expect(
       writePromptYaml('global', 'planning.segment', 'name: x\nuser: ""\n', { userDataPath }),
     ).rejects.toThrow();
+  });
+
+  it('writes user text as valid YAML while users only edit plain text', async () => {
+    const userText = [
+      '请按下面要求生成内容：',
+      '- 使用中文冒号：不用转义',
+      '{{globalPrompt}}',
+    ].join('\n');
+
+    await writePromptUserText('global', 'cover.regeneration', userText, { userDataPath });
+
+    const raw = await readRawPromptYaml('global', 'cover.regeneration', { userDataPath });
+    expect(raw).toContain('user:');
+    expect(raw).toContain('请按下面要求生成内容');
+
+    const text = await readPromptUserText('global', 'cover.regeneration', { userDataPath });
+    expect(text).toBe(userText);
+
+    const tpl = await loadEffectivePromptTemplate('cover.regeneration', { userDataPath });
+    expect(tpl.sourceScope).toBe('global');
+    expect(tpl.user).toBe(userText);
+  });
+
+  it('preserves existing YAML metadata when replacing user text', async () => {
+    await writePromptYaml(
+      'global',
+      'script.review',
+      [
+        'name: 自定义审查',
+        'description: 已有描述',
+        'version: 9',
+        'system: |-',
+        '  你是审查编辑。',
+        'user: |-',
+        '  旧正文',
+        '',
+      ].join('\n'),
+      { userDataPath },
+    );
+
+    await writePromptUserText('global', 'script.review', '新正文 {{scriptText}}', {
+      userDataPath,
+    });
+
+    const tpl = await loadEffectivePromptTemplate('script.review', { userDataPath });
+    expect(tpl.name).toBe('自定义审查');
+    expect(tpl.description).toBe('已有描述');
+    expect(tpl.version).toBe(9);
+    expect(tpl.system).toBe('你是审查编辑。');
+    expect(tpl.user).toBe('新正文 {{scriptText}}');
   });
 
   it('deletes an existing override', async () => {
