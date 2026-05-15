@@ -223,4 +223,4 @@ Lingji Cut 目前是桌面优先的创作工具，最小窗口约束约为 `1100
 
 ## License
 
-ISC
+Apache License 2.0. See [LICENSE](LICENSE).
