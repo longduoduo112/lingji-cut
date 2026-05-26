@@ -71,6 +71,14 @@ import { HeadlessAcpProvider, type HeadlessAcpProviderEvent } from './acp/headle
 import { registerConversationIpc } from './conversations/ipc';
 import { registerMcpIpc } from './mcp/ipc';
 import { registerScriptHistoryIpc } from './script-history/ipc';
+import {
+  appendAutoRunEvent,
+  getAutoRunLogDir,
+  getLatestRunId,
+  listRecentRuns,
+  readRunEvents,
+  type AutoRunEvent,
+} from './telemetry/auto-run-logger';
 import { startMcpServer, stopMcpServer } from './mcp/server';
 import { loadProjectFile, saveProjectSection } from './project-file';
 import {
@@ -670,6 +678,60 @@ ipcMain.handle('get-file-mtime', async (_event, filePath: string) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────
+// 一键成稿 / AI 流水线观测日志：renderer 写事件 + 读取近期运行
+// 日志落盘 <userData>/logs/auto-run/<runId>.jsonl
+// ─────────────────────────────────────────────────────────────
+ipcMain.handle(
+  'auto-run-telemetry/append',
+  async (_event, event: AutoRunEvent) => {
+    if (!event || typeof event.runId !== 'string' || typeof event.kind !== 'string') {
+      return;
+    }
+    // ts 缺省补当前时间，方便 renderer 端少写一个字段
+    const normalized: AutoRunEvent = {
+      ...event,
+      ts: typeof event.ts === 'number' && Number.isFinite(event.ts) ? event.ts : Date.now(),
+    };
+    await appendAutoRunEvent(normalized);
+  },
+);
+
+ipcMain.handle('auto-run-telemetry/list-recent', async (_event, limit?: number) => {
+  return listRecentRuns(typeof limit === 'number' ? limit : 20);
+});
+
+ipcMain.handle('auto-run-telemetry/read-run', async (_event, runId: string) => {
+  return readRunEvents(runId);
+});
+
+ipcMain.handle('auto-run-telemetry/get-latest', async () => {
+  const runId = await getLatestRunId();
+  if (!runId) return null;
+  return { runId, events: await readRunEvents(runId) };
+});
+
+ipcMain.handle('auto-run-telemetry/get-log-dir', async () => getAutoRunLogDir());
+
+/**
+ * 把"主进程内部的耗时事件"统一以 runId 上报到 jsonl 日志。
+ * 调用方（analyze-srt / generate-cover-images / generate-tts 等 IPC handler）拿到
+ * renderer 传过来的 telemetryRunId 后，调用 makeMainTelemetry(runId) 即可得到一个
+ * 满足 TelemetryHook 接口的钩子，再传给 lib 层的 analyzeSrt / generateSubtitleHighlights。
+ * runId 为空 / 不传则得到 no-op，业务路径完全保持原样。
+ */
+function makeMainTelemetry(runId?: string | null): { emit: (kind: string, extra?: Record<string, unknown>) => void } {
+  if (!runId || typeof runId !== 'string' || !runId.trim()) {
+    return { emit: () => undefined };
+  }
+  const id = runId.trim();
+  return {
+    emit: (kind, extra = {}) => {
+      void appendAutoRunEvent({ runId: id, ts: Date.now(), kind, ...extra }).catch(() => undefined);
+    },
+  };
+}
+
 ipcMain.handle(
   'analyze-srt',
   async (
@@ -681,6 +743,8 @@ ipcMain.handle(
       globalPrompt?: string;
       projectDir?: string;
       projectBindings?: PromptBindingMap | null;
+      /** 一键流水线传过来的运行 ID；用于把内部耗时事件写进 auto-run jsonl */
+      telemetryRunId?: string | null;
     },
   ) => {
     writeAppLog(
@@ -703,6 +767,10 @@ ipcMain.handle(
         projectDir: args.projectDir,
       });
       const imageTemplate = await loadEffectivePromptTemplate('card.image', {
+        userDataPath,
+        projectDir: args.projectDir,
+      });
+      const coverTemplate = await loadEffectivePromptTemplate('cover.regeneration', {
         userDataPath,
         projectDir: args.projectDir,
       });
@@ -739,16 +807,37 @@ ipcMain.handle(
             );
           }
         : undefined;
+      const telemetry = makeMainTelemetry(args.telemetryRunId);
       const result = await analyzeSrt(entries, args.settings, {
         globalPrompt: args.globalPrompt,
         projectStylePrompt,
         planningTemplate,
         cardTemplate,
         imageTemplate,
+        coverTemplate,
         projectBindings: args.projectBindings ?? null,
         generateCardImage,
         onProgress: (progress) => {
           mainWindow?.webContents.send('analyze-progress', progress);
+        },
+        telemetry,
+        // 规划完成后立刻把 segments / summary 等回吐给 renderer，
+        // 卡片生成与"独立的 cover.regeneration LLM 调用"由 lib 层并行触发。
+        // 注意：这里的 coverPrompts 是 planning.segment 模板顺带的 fallback，
+        // 真正的封面提示词以 'analyze-cover-prompts-ready' 事件为准。
+        onPlanningDone: (planning) => {
+          mainWindow?.webContents.send('analyze-planning-done', {
+            segments: planning.segments,
+            coverPrompts: planning.coverPrompts,
+            summary: planning.summary,
+            keywords: planning.keywords,
+            globalPrompt: planning.globalPrompt,
+          });
+        },
+        // 独立 cover.regeneration 调用完成（COVER_REGENERATION 视觉系统）。
+        // Track C 收到此事件后才发起 generate-cover-images。
+        onCoverPromptsReady: (prompts) => {
+          mainWindow?.webContents.send('analyze-cover-prompts-ready', { prompts });
         },
       });
       writeAppLog(
@@ -1065,8 +1154,12 @@ ipcMain.handle(
       settings: AISettings;
       projectDir: string;
       projectBindings?: PromptBindingMap | null;
+      telemetryRunId?: string | null;
     },
   ) => {
+    const telemetry = makeMainTelemetry(args.telemetryRunId);
+    const coverStart = Date.now();
+    telemetry.emit('stage.start', { stage: 'cover', prompts: args.prompts.length });
     const coversDir = path.join(args.projectDir, 'covers');
     const binding = resolvePromptBinding(
       'cover.regeneration',
@@ -1100,13 +1193,31 @@ ipcMain.handle(
         });
       },
     };
-    return generateCoverCandidates(
-      mergedPrompts,
-      binding.imageProvider,
-      binding.imageModel,
-      coversDir,
-      coverProgressCtx,
-    );
+    try {
+      const candidates = await generateCoverCandidates(
+        mergedPrompts,
+        binding.imageProvider,
+        binding.imageModel,
+        coversDir,
+        coverProgressCtx,
+      );
+      telemetry.emit('stage.end', {
+        stage: 'cover',
+        durationMs: Date.now() - coverStart,
+        ok: true,
+        total: candidates.length,
+        succeeded: candidates.filter((c) => c.imageUrl && !c.error).length,
+      });
+      return candidates;
+    } catch (err) {
+      telemetry.emit('stage.end', {
+        stage: 'cover',
+        durationMs: Date.now() - coverStart,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
   },
 );
 
@@ -2117,6 +2228,7 @@ ipcMain.handle(
       model: string;
       apiKey: string;
       projectDir: string;
+      telemetryRunId?: string | null;
     },
   ) => {
     const { requestId, text, voiceId, speed, vol, pitch, emotion, model, apiKey, projectDir } =
@@ -2124,6 +2236,9 @@ ipcMain.handle(
     const controller = new AbortController();
     activeTtsRequests.set(requestId, controller);
     mainWindow?.webContents.send('tts-progress', 0);
+    const ttsTelemetry = makeMainTelemetry(args.telemetryRunId);
+    const ttsStartTs = Date.now();
+    ttsTelemetry.emit('stage.start', { stage: 'tts', chars: text.length, model });
 
     // MiniMax t2a_v2 是同步接口，等待 30~120s。期间无回调信号，用估算心跳把进度从 2% 缓慢推到 30%，
     // 避免 UI 视觉上"卡在 0%"。fetch 返回后会立刻覆盖到 35%。
@@ -2263,9 +2378,21 @@ ipcMain.handle(
         }
       }
       mainWindow?.webContents.send('tts-progress', 100);
+      ttsTelemetry.emit('stage.end', {
+        stage: 'tts',
+        durationMs: Date.now() - ttsStartTs,
+        ok: true,
+        audioDurationMs: durationMs,
+      });
 
       return { audioPath, srtPath, durationMs };
     } catch (error) {
+      ttsTelemetry.emit('stage.end', {
+        stage: 'tts',
+        durationMs: Date.now() - ttsStartTs,
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
       if ((error as { name?: string }).name === 'AbortError') {
         throw new Error('TTS 任务已取消');
       }

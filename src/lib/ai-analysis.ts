@@ -24,6 +24,7 @@ import {
 import type { MotionCardPayload } from '../types/motion';
 import { generateStructuredData, generateText } from './llm';
 import { resolvePromptBinding } from './llm/binding-resolver';
+import type { TelemetryHook } from './telemetry/auto-run';
 import type { PromptKind } from './prompts/types';
 import {
   getBuiltinPromptTemplate,
@@ -71,8 +72,22 @@ interface AnalyzeSrtOptions {
   planningTemplate?: PromptTemplate;
   cardTemplate?: PromptTemplate;
   imageTemplate?: PromptTemplate;
+  /** cover.regeneration 模板；提供则一键流水线会在 planning 完成后单独跑一轮
+   * 封面提示词生成（COVER_REGENERATION 视觉系统），覆盖 planning 内置的 coverPrompts。 */
+  coverTemplate?: PromptTemplate;
   projectBindings?: PromptBindingMap | null;
   onProgress?: (progress: AnalyzeSrtProgress) => void;
+  /** 一键流水线观测 hook；中途阶段 / 单卡耗时通过这里上报 */
+  telemetry?: TelemetryHook;
+  /** 规划阶段完成后，先把 planning 结果回吐给主进程，再继续生成卡片，
+   * 让 renderer / 主进程能在卡片生成的同时并行启动封面生成。
+   *
+   * 注意：当上层使用 onCoverPromptsReady 路径时，此回调里的 coverPrompts 仅作 fallback，
+   * Track C 应优先等 onCoverPromptsReady 拿到的 COVER_REGENERATION 产物。 */
+  onPlanningDone?: (planning: SegmentPlanningResult) => void;
+  /** 独立的 cover.regeneration LLM 调用完成时回调，prompts 已遵循 COVER_REGENERATION 视觉系统。
+   * 失败时不调用；调用方应使用 onPlanningDone 的 coverPrompts 作为兜底或放弃封面生成。 */
+  onCoverPromptsReady?: (prompts: string[]) => void;
 }
 
 interface RegenerateCardOptions {
@@ -422,6 +437,54 @@ function normalizeSegment(rawSegment: unknown, index: number): AISegmentAnalysis
     keywords: normalizeStringArray(candidate.keywords),
     entities: normalizeStringArray(candidate.entities),
     visualType: normalizeVisualType(candidate.visualType),
+  };
+}
+
+/**
+ * image 段直接合成卡片 shell：cards.segment 模板自 v7 起为 motion-only，
+ * 不再为 image 段调用 LLM。这里给一个最小合法 image AICard，
+ * 真正的中文文生图 prompt 由后续 card.image 链路填充到 cardPrompt / content.prompt。
+ */
+function buildImageCardShell(params: {
+  segment: AISegment;
+  cardPrompt?: string;
+  currentCard?: AICard;
+}): AICard {
+  const { segment, cardPrompt, currentCard } = params;
+  const previousMedia: Partial<MediaCardContent> =
+    currentCard && currentCard.type === 'image' && currentCard.content && typeof currentCard.content === 'object'
+      ? (currentCard.content as MediaCardContent)
+      : {};
+  const displayMode: 'fullscreen' | 'pip' =
+    currentCard?.displayMode === 'pip' ? 'pip' : 'fullscreen';
+  const aspectRatio: ImageAspectRatio =
+    previousMedia.aspectRatio ?? (displayMode === 'pip' ? '1:1' : '16:9');
+  const title = segment.title?.trim() || `卡片 ${segment.id}`;
+  const placeholderContent: MediaCardContent = {
+    mediaType: 'image',
+    assetPath: null,
+    aspectRatio,
+    prompt: cardPrompt?.trim() ?? '',
+    providerId: null,
+    model: null,
+    generationStatus: 'pending',
+  };
+
+  return {
+    id: currentCard?.id ?? `${segment.id}-card-1`,
+    segmentId: segment.id,
+    type: 'image',
+    title,
+    startMs: segment.startMs,
+    endMs: segment.endMs,
+    displayDurationMs: currentCard?.displayDurationMs ?? DEFAULT_CARD_DURATION_MS,
+    displayMode,
+    template: currentCard?.template ?? getDefaultTemplate('image'),
+    enabled: currentCard?.enabled !== false,
+    style: currentCard?.style ?? getDefaultCardStyle('image'),
+    cardPrompt: cardPrompt?.trim() || undefined,
+    content: placeholderContent,
+    renderMode: 'legacy',
   };
 }
 
@@ -940,6 +1003,7 @@ async function generateImagePromptForSegment(params: {
   cardPromptHint?: string;
   imageTemplate?: PromptTemplate;
   projectBindings?: PromptBindingMap | null | undefined;
+  telemetry?: TelemetryHook;
 }): Promise<string> {
   const {
     segment,
@@ -953,6 +1017,7 @@ async function generateImagePromptForSegment(params: {
     cardPromptHint,
     imageTemplate,
     projectBindings,
+    telemetry,
   } = params;
   if (card.type !== 'image' || !card.content || typeof card.content !== 'object' || !('mediaType' in card.content)) {
     throw new Error('generateImagePromptForSegment: 仅适用于 image 占位卡片');
@@ -972,8 +1037,36 @@ async function generateImagePromptForSegment(params: {
     imageTemplate,
   );
   const binding = maybeResolveBinding('card.image', settings, projectBindings);
+  const label = `card.image(${segment.id})`;
+  const startTs = Date.now();
+  telemetry?.emit('llm.start', {
+    label,
+    attempt: 0,
+    model: binding?.model ?? null,
+    provider: binding?.provider?.id ?? null,
+    userChars: userMessage.length,
+  });
   // card.image 的 system prompt 完全由模板 user 段承载，传空 system 即可。
-  const text = await requestText(settings, '', userMessage, binding);
+  let text: string;
+  try {
+    text = await requestText(settings, '', userMessage, binding);
+  } catch (err) {
+    telemetry?.emit('llm.end', {
+      label,
+      attempt: 0,
+      durationMs: Date.now() - startTs,
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
+  telemetry?.emit('llm.end', {
+    label,
+    attempt: 0,
+    durationMs: Date.now() - startTs,
+    outputChars: text.length,
+    ok: true,
+  });
   const trimmed = text.trim();
   if (!trimmed) {
     throw new Error('card.image LLM 返回空内容；请重新生成');
@@ -992,6 +1085,7 @@ export async function planTranscriptSegments(
     projectStylePrompt,
     planningTemplate,
     projectBindings,
+    telemetry,
   } = options;
 
   if (entries.length === 0) {
@@ -1004,7 +1098,7 @@ export async function planTranscriptSegments(
     buildSegmentPlanningPrompt(globalPrompt, projectStylePrompt, planningTemplate),
     buildSrtText(entries),
     binding,
-    { label: 'planning.segment' },
+    { label: 'planning.segment', telemetry },
   );
   const parsed = parseSegmentPlanningResult(payload);
   if (!parsed) {
@@ -1052,6 +1146,7 @@ export async function generateCardForSegment(
     prevSegment?: AISegment;
     nextSegment?: AISegment;
     visualType?: AISegmentVisualType;
+    telemetry?: TelemetryHook;
   } = {},
 ): Promise<AICard> {
   const {
@@ -1069,14 +1164,13 @@ export async function generateCardForSegment(
     prevSegment,
     nextSegment,
     visualType,
+    telemetry,
   } = options;
 
   if (entries.length === 0) {
     throw new Error('没有可用于生成卡片的字幕内容');
   }
 
-  // 只发段内逐字稿（含 ±2s 缓冲），而不是整篇 SRT，显著降低单次请求体积
-  const segmentTranscript = buildSrtTextRange(entries, segment.startMs, segment.endMs);
   const programContext = buildProgramContext({
     programSummary: planning.summary,
     keywords: planning.keywords,
@@ -1087,41 +1181,56 @@ export async function generateCardForSegment(
     nextSegment,
   });
 
-  const binding = maybeResolveBinding('cards.segment', settings, projectBindings);
-  const positionLabel =
-    typeof segmentIndex === 'number' && typeof totalSegments === 'number'
-      ? `cards.segment#${segmentIndex + 1}/${totalSegments}（${segment.id}）`
-      : `cards.segment（${segment.id}）`;
-  const payload = await requestStructuredData(
-    settings,
-    buildSegmentCardPrompt(
-      {
-        programContext,
-        segment,
-        globalPrompt: globalPrompt?.trim() || planning.globalPrompt,
-        projectStylePrompt,
-        cardPrompt,
-        currentCard,
-        programSummary: planning.summary,
-        keywords: planning.keywords,
-        visualType,
-      },
-      cardTemplate,
-    ),
-    segmentTranscript,
-    binding,
-    { label: positionLabel },
-  );
-  const parsed = normalizeCard(payload, 0, segment.id, cardPrompt, visualType);
-  if (!parsed) {
-    throw new Error('LLM 未返回有效的卡片结果');
-  }
+  let finalCard: AICard;
 
-  let finalCard: AICard = {
-    ...parsed,
-    segmentId: segment.id,
-    cardPrompt: cardPrompt?.trim() || parsed.cardPrompt,
-  };
+  if (visualType === 'image') {
+    // image 段落不再走 cards.segment LLM：cards.segment 模板自 v7 起仅描述 Motion Card，
+    // 这里直接合成一张 image 占位卡片 shell，下面的 card.image 调用会回填中文文生图 prompt。
+    finalCard = buildImageCardShell({
+      segment,
+      cardPrompt,
+      currentCard,
+    });
+  } else {
+    // 只发段内逐字稿（含 ±2s 缓冲），而不是整篇 SRT，显著降低单次请求体积
+    const segmentTranscript = buildSrtTextRange(entries, segment.startMs, segment.endMs);
+
+    const binding = maybeResolveBinding('cards.segment', settings, projectBindings);
+    const positionLabel =
+      typeof segmentIndex === 'number' && typeof totalSegments === 'number'
+        ? `cards.segment#${segmentIndex + 1}/${totalSegments}（${segment.id}）`
+        : `cards.segment（${segment.id}）`;
+    const payload = await requestStructuredData(
+      settings,
+      buildSegmentCardPrompt(
+        {
+          programContext,
+          segment,
+          globalPrompt: globalPrompt?.trim() || planning.globalPrompt,
+          projectStylePrompt,
+          cardPrompt,
+          currentCard,
+          programSummary: planning.summary,
+          keywords: planning.keywords,
+          visualType,
+        },
+        cardTemplate,
+      ),
+      segmentTranscript,
+      binding,
+      { label: positionLabel, telemetry },
+    );
+    const parsed = normalizeCard(payload, 0, segment.id, cardPrompt, visualType);
+    if (!parsed) {
+      throw new Error('LLM 未返回有效的卡片结果');
+    }
+
+    finalCard = {
+      ...parsed,
+      segmentId: segment.id,
+      cardPrompt: cardPrompt?.trim() || parsed.cardPrompt,
+    };
+  }
 
   // image 卡片：cards.segment 不再直接产 prompt，这里追加一次 card.image LLM 调用，
   // 用配置中心的 card.image 模板生成中文文生图提示词，并回填到 cardPrompt / content.prompt。
@@ -1138,6 +1247,7 @@ export async function generateCardForSegment(
       cardPromptHint: cardPrompt,
       imageTemplate,
       projectBindings,
+      telemetry,
     });
     const prevContent = finalCard.content as MediaCardContent;
     finalCard = {
@@ -1197,19 +1307,101 @@ export async function analyzeSrt(
     planningTemplate,
     cardTemplate,
     imageTemplate,
+    coverTemplate,
     projectBindings,
     onProgress,
+    telemetry,
+    onPlanningDone,
+    onCoverPromptsReady,
   } = options;
 
   onProgress?.({ phase: 'planning', percent: 0, message: '规划分段与封面提示词…' });
 
-  const planning = await planTranscriptSegments(entries, settings, {
-    generateStructuredData: requestStructuredData,
-    globalPrompt,
-    projectStylePrompt,
-    planningTemplate,
-    projectBindings,
+  const planningStart = Date.now();
+  telemetry?.emit('stage.start', { stage: 'analyze.planning', srtEntries: entries.length });
+  let planning: SegmentPlanningResult;
+  try {
+    planning = await planTranscriptSegments(entries, settings, {
+      generateStructuredData: requestStructuredData,
+      globalPrompt,
+      projectStylePrompt,
+      planningTemplate,
+      projectBindings,
+      telemetry,
+    });
+  } catch (err) {
+    telemetry?.emit('stage.end', {
+      stage: 'analyze.planning',
+      durationMs: Date.now() - planningStart,
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
+  telemetry?.emit('stage.end', {
+    stage: 'analyze.planning',
+    durationMs: Date.now() - planningStart,
+    ok: true,
+    segments: planning.segments.length,
+    coverPrompts: planning.coverPrompts.length,
   });
+  // 让外层（main.ts -> renderer）能在卡片生成之前就拿到 planning 概要（segments / summary 等），
+  // 卡片生成立即与封面提示词生成并行启动。
+  // 注意：planning.coverPrompts 是 planning.segment 模板顺带产出的 fallback，
+  // 真正用于一键流水线的封面提示词来自下方独立的 cover.regeneration LLM 调用。
+  try {
+    onPlanningDone?.(planning);
+  } catch {
+    // 回调出错不影响卡片生成
+  }
+
+  // 独立的 cover.regeneration LLM 调用，与卡片生成并行进行。
+  // 完成后通过 onCoverPromptsReady 回吐给上层（Track C 等这条事件再触发封面图生成）。
+  // 失败时静默退回 planning.coverPrompts（已经通过 onPlanningDone 给了上层）。
+  const coverPromptsPromise: Promise<string[] | null> = (async () => {
+    if (!onCoverPromptsReady && !coverTemplate) {
+      // 调用方既未注入模板也不订阅事件：保持向后兼容，跳过这次额外调用。
+      return null;
+    }
+    const coverStart = Date.now();
+    telemetry?.emit('stage.start', { stage: 'analyze.cover-prompt' });
+    try {
+      const prompts = await regenerateCoverPrompt(entries, settings, {
+        generateStructuredData: requestStructuredData,
+        globalPrompt: planning.globalPrompt ?? globalPrompt,
+        projectStylePrompt,
+        coverTemplate,
+        projectBindings,
+      });
+      telemetry?.emit('stage.end', {
+        stage: 'analyze.cover-prompt',
+        durationMs: Date.now() - coverStart,
+        ok: true,
+        prompts: prompts.length,
+      });
+      try {
+        onCoverPromptsReady?.(prompts);
+      } catch {
+        // 回调出错不影响主流程
+      }
+      return prompts;
+    } catch (err) {
+      telemetry?.emit('stage.end', {
+        stage: 'analyze.cover-prompt',
+        durationMs: Date.now() - coverStart,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // 失败也要触发回调，避免上层（renderer Track C）无限等待 cover-prompts-ready；
+      // 给 fallback 让上层可以决定是否仍然跑封面图生成。
+      try {
+        onCoverPromptsReady?.(planning.coverPrompts);
+      } catch {
+        // 回调出错不影响主流程
+      }
+      return null;
+    }
+  })();
 
   const total = planning.segments.length;
   onProgress?.({
@@ -1220,9 +1412,15 @@ export async function analyzeSrt(
     cardTotal: total,
   });
 
-  // 并发池：同时跑 CARD_CONCURRENCY 个段的卡片生成；进度按"完成顺序"累加
+  // 并发池：同时跑 N 个段的卡片生成；进度按"完成顺序"累加
   // 单段失败不阻塞其它段——失败段记入 cardErrors，UI 可引导用户对该段单独重生成
-  const CARD_CONCURRENCY = 4;
+  // 并发数从 settings.cardGenerationConcurrency 读取（默认 2，必须 >= 1）；
+  // image 卡片的图像 Provider 调用嵌套在 worker 内，所以该值也决定信息图并行度
+  const rawConcurrency = settings.cardGenerationConcurrency;
+  const CARD_CONCURRENCY =
+    typeof rawConcurrency === 'number' && Number.isFinite(rawConcurrency)
+      ? Math.max(1, Math.floor(rawConcurrency))
+      : 2;
   const cardSlots: (AICard | null)[] = new Array(planning.segments.length).fill(null);
   const cardErrors: AIAnalysisCardError[] = [];
   let done = 0;
@@ -1236,6 +1434,13 @@ export async function analyzeSrt(
       if (i >= planning.segments.length) return;
       const segment = planning.segments[i];
       const visualType: AISegmentVisualType = segment.visualType ?? 'motion';
+      const cardStart = Date.now();
+      telemetry?.emit('card.start', {
+        segmentIndex: i,
+        totalSegments: total,
+        segmentId: segment.id,
+        visualType,
+      });
       try {
         let card = await generateCardForSegment(entries, planning, segment, settings, {
           generateStructuredData: requestStructuredData,
@@ -1250,16 +1455,31 @@ export async function analyzeSrt(
           prevSegment: i > 0 ? planning.segments[i - 1] : undefined,
           nextSegment: i + 1 < planning.segments.length ? planning.segments[i + 1] : undefined,
           visualType,
+          telemetry,
         });
+        const llmDoneTs = Date.now();
         // image 卡片：LLM 拿到 prompt 后立即调图像 provider 物化资产
         if (card.type === 'image') {
           if (!generateCardImage) {
             throw new Error('image 卡片需要 generateCardImage 注入（主进程未提供）');
           }
+          telemetry?.emit('card.image.start', { segmentIndex: i, segmentId: segment.id });
           card = await materializeImageCard(card, generateCardImage);
+          telemetry?.emit('card.image.end', {
+            segmentIndex: i,
+            segmentId: segment.id,
+            durationMs: Date.now() - llmDoneTs,
+          });
         }
         cardSlots[i] = card;
         done += 1;
+        telemetry?.emit('card.end', {
+          segmentIndex: i,
+          segmentId: segment.id,
+          durationMs: Date.now() - cardStart,
+          ok: true,
+          visualType,
+        });
       } catch (error) {
         failed += 1;
         cardErrors.push({
@@ -1268,6 +1488,14 @@ export async function analyzeSrt(
           segmentIndex: i,
           totalSegments: total,
           message: error instanceof Error ? error.message : String(error),
+        });
+        telemetry?.emit('card.end', {
+          segmentIndex: i,
+          segmentId: segment.id,
+          durationMs: Date.now() - cardStart,
+          ok: false,
+          visualType,
+          error: error instanceof Error ? error.message : String(error),
         });
       }
       const completed = done + failed;
@@ -1287,8 +1515,30 @@ export async function analyzeSrt(
   };
 
   const workerCount = Math.min(CARD_CONCURRENCY, Math.max(1, planning.segments.length));
+  const cardsStartTs = Date.now();
+  telemetry?.emit('stage.start', {
+    stage: 'analyze.cards',
+    totalSegments: total,
+    concurrency: workerCount,
+  });
   await Promise.all(Array.from({ length: workerCount }, () => runOne()));
+  telemetry?.emit('stage.end', {
+    stage: 'analyze.cards',
+    durationMs: Date.now() - cardsStartTs,
+    ok: true,
+    done,
+    failed,
+    totalSegments: total,
+  });
   const cards: AICard[] = cardSlots.filter((card): card is AICard => card !== null);
+
+  // 等待并行启动的 cover.regeneration LLM 调用收尾，
+  // 让返回的 AIAnalysisResult.coverPrompts 优先反映 COVER_REGENERATION 产物。
+  const coverPromptsFromCoverTemplate = await coverPromptsPromise;
+  const finalCoverPrompts =
+    coverPromptsFromCoverTemplate && coverPromptsFromCoverTemplate.length > 0
+      ? coverPromptsFromCoverTemplate
+      : planning.coverPrompts;
 
   onProgress?.({
     phase: 'done',
@@ -1300,7 +1550,7 @@ export async function analyzeSrt(
   return {
     segments: planning.segments,
     cards,
-    coverPrompts: planning.coverPrompts,
+    coverPrompts: finalCoverPrompts,
     summary: planning.summary,
     keywords: planning.keywords,
     globalPrompt: planning.globalPrompt,

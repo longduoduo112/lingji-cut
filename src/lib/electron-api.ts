@@ -211,7 +211,20 @@ export interface ElectronAPI {
     globalPrompt?: string;
     projectDir?: string;
     projectBindings?: PromptBindingMap | null;
+    telemetryRunId?: string | null;
   }) => Promise<unknown>;
+  onAnalyzePlanningDone: (
+    callback: (planning: {
+      segments: import('../types/ai').AISegmentAnalysis[];
+      coverPrompts: string[];
+      summary: string;
+      keywords: string[];
+      globalPrompt?: string;
+    }) => void,
+  ) => () => void;
+  onAnalyzeCoverPromptsReady: (
+    callback: (payload: { prompts: string[] }) => void,
+  ) => () => void;
   regenerateAICard: (args: {
     entries: SrtEntry[];
     card: AICard;
@@ -248,6 +261,7 @@ export interface ElectronAPI {
     settings: AISettings;
     projectDir: string;
     projectBindings?: PromptBindingMap | null;
+    telemetryRunId?: string | null;
   }) => Promise<CoverCandidate[]>;
   generateCardImage: (args: GenerateCardImageArgs) => Promise<MediaCardContent>;
   generateCardVideo: (args: GenerateCardVideoArgs) => Promise<MediaCardContent>;
@@ -359,6 +373,7 @@ export interface ElectronAPI {
     model: string;
     apiKey: string;
     projectDir: string;
+    telemetryRunId?: string | null;
   }) => Promise<{ audioPath: string; srtPath: string; durationMs: number }>;
   onTTSProgress: (callback: (pct: number) => void) => () => void;
   onAnalyzeProgress: (
@@ -385,6 +400,15 @@ export interface ElectronAPI {
   showEditorContextMenu: () => Promise<void>;
   showWorkbenchTabContextMenu: (request: WorkbenchTabContextMenuRequest) => Promise<void>;
   onWorkbenchTabMenuAction: (callback: (event: WorkbenchTabMenuEvent) => void) => () => void;
+  // 一键成稿观测日志
+  appendAutoRunEvent: (event: import('./telemetry/auto-run').AutoRunEvent) => Promise<void>;
+  listAutoRunLogs: (limit?: number) => Promise<import('./telemetry/auto-run').AutoRunLogMeta[]>;
+  readAutoRunLog: (runId: string) => Promise<import('./telemetry/auto-run').AutoRunEvent[]>;
+  getLatestAutoRunLog: () => Promise<{
+    runId: string;
+    events: import('./telemetry/auto-run').AutoRunEvent[];
+  } | null>;
+  getAutoRunLogDir: () => Promise<string>;
   // 最近项目管理
   loadRecentProjects: () => Promise<RecentProjectEntry[]>;
   addRecentProject: (projectDir: string, projectName?: string) => Promise<RecentProjectEntry[]>;

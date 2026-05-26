@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { runScriptGenerating } from '../lib/auto-workflow';
 import { createPersistedAIState, selectCoverCandidate } from '../lib/ai-persistence';
 import { getAISettingsIssue } from '../lib/ai-settings';
+import { createAutoRunTelemetry, type AutoRunTelemetry } from '../lib/telemetry/auto-run';
 import {
   DEFAULT_WORKFLOW_META,
   type ProjectData,
@@ -57,6 +58,9 @@ interface WorkflowSessionState {
   autoMode: boolean;
   autoParams: AutoWorkflowParams | null;
   originalText: string;
+  /** 一键流水线观测：每次 start() 生成一个新的 runId，贯穿写稿→TTS→分析→封面→排布 */
+  telemetryRunId: string;
+  telemetry: AutoRunTelemetry | null;
 }
 
 const workflowSession: WorkflowSessionState = {
@@ -71,6 +75,8 @@ const workflowSession: WorkflowSessionState = {
   autoMode: false,
   autoParams: null,
   originalText: '',
+  telemetryRunId: '',
+  telemetry: null,
 };
 
 function resetWorkflowSession(): void {
@@ -85,6 +91,8 @@ function resetWorkflowSession(): void {
   workflowSession.autoMode = false;
   workflowSession.autoParams = null;
   workflowSession.originalText = '';
+  workflowSession.telemetryRunId = '';
+  workflowSession.telemetry = null;
 }
 
 function buildWorkflowError(prefix: string, error: unknown): string {
@@ -487,6 +495,11 @@ export function useAIVideoWorkflow() {
           });
           useTaskProgressStore.getState().failTask(workflowTaskId, msg);
           workflowSession.retryStep = 'script_generating';
+          workflowSession.telemetry?.event('run.end', {
+            ok: false,
+            failedStage: 'script',
+            error: msg,
+          });
           return;
         }
       }
@@ -535,6 +548,7 @@ export function useAIVideoWorkflow() {
             model: settings.minimaxModel ?? 'speech-2.8-hd',
             apiKey: settings.minimaxApiKey,
             projectDir,
+            telemetryRunId: workflowSession.telemetryRunId,
           });
 
           cleanupProgress();
@@ -624,6 +638,11 @@ export function useAIVideoWorkflow() {
           });
           useTaskProgressStore.getState().failTask(workflowTaskId, ttsErrorMsg);
           workflowSession.retryStep = 'tts_generating';
+          workflowSession.telemetry?.event('run.end', {
+            ok: false,
+            failedStage: 'tts',
+            error: ttsErrorMsg,
+          });
           return;
         }
       }
@@ -632,9 +651,19 @@ export function useAIVideoWorkflow() {
         return;
       }
 
-      // ===== 阶段 2: AI 分析 =====
+      // ===== 阶段 2-3-5（合并并行）: AI 分析 + 字幕高亮 + 封面生成 =====
+      //
+      // 旧链路是串行：planning → cards → 然后 highlights ‖ cover。
+      // 新链路最多三路并行：
+      //   Track A: planning → cards（由 main 的 analyzeSrt 内部完成）
+      //   Track B: 字幕高亮（只依赖 srtEntries，TTS 完成即可启动）
+      //   Track C: 封面图生成（依赖 planning 的 coverPrompts，
+      //           main 在 planning 完成的瞬间通过 'analyze-planning-done' 事件回传 coverPrompts，
+      //           Track C 收到事件后立即启动，不再等 cards 全部完成）
+      // 三路 progress 取激活轨道的平均值，统一映射到 33-84% 区间。
       if (fromStep === 'ai_analyzing' || fromStep === 'tts_done') {
         const phase = PHASES.analyze;
+        const tel = workflowSession.telemetry;
         ensureWorkflowTask(workflowTaskId, phase, {
           subPercent: 0,
           subMessage: '准备素材',
@@ -663,225 +692,222 @@ export function useAIVideoWorkflow() {
           return;
         }
 
-        setWorkflow({
-          step: 'ai_analyzing',
-          progress: mapSubProgressToGlobal(phase, 5),
-          stepLabel: buildStepLabel(phase, '规划分段'),
-          error: null,
-          canCancel: true,
-        });
+        // 合并进度区间：analyze + highlights + cover 共享 baseStart .. arrange.baseStart
+        const postStart = phase.baseStart;
+        const postEnd = PHASES.arrange.baseStart;
+        const postSpan = postEnd - postStart;
+        const timelineStateAtStart = useTimelineStore.getState();
+        const srtEntries = timelineStateAtStart.srtEntries;
+        const hasHighlightWork = srtEntries.length > 0;
+        let analyzePercent = 0;
+        let highlightPercent = hasHighlightWork ? 0 : 100;
+        let coverPercent = 100; // 默认满分，确认有 coverPrompts 后再降到 0
+        let analyzeActive = true;
+        let highlightsActive = hasHighlightWork;
+        // 封面是否激活要等 planning.coverPrompts 回传后才能确定
+        let coverActive = false;
+        let coverDecided = false;
+        let postGlobalProgress = postStart;
+        const refreshCombinedProgress = (subMessage?: string): void => {
+          const activeUnits =
+            Number(analyzeActive) + Number(highlightsActive) + Number(coverActive);
+          // 用平均权重；任何一个轨道完成（active=false）就退出权重池
+          const combinedPercent =
+            activeUnits > 0
+              ? (
+                  (analyzeActive ? analyzePercent : 100) +
+                  (highlightsActive ? highlightPercent : 100) +
+                  (coverActive ? coverPercent : 100)
+                ) /
+                (Number(analyzeActive) + Number(highlightsActive) + Number(coverActive) + 0.000001)
+              : 100;
+          const nextGlobal = Math.round(
+            postStart + (Math.max(0, Math.min(100, combinedPercent)) / 100) * postSpan,
+          );
+          const global = Math.max(postGlobalProgress, nextGlobal);
+          postGlobalProgress = global;
+          const composedMessage =
+            subMessage ??
+            `分析 ${analyzePercent}% · 高亮 ${hasHighlightWork ? `${highlightPercent}%` : '跳过'} · 封面 ${
+              coverDecided ? `${coverPercent}%` : '等待规划'
+            }`;
+          setWorkflow({
+            step: 'ai_analyzing',
+            progress: global,
+            stepLabel: buildStepLabel(phase, composedMessage),
+            error: null,
+            canCancel: true,
+          });
+          useTaskProgressStore.getState().updateTask(workflowTaskId, {
+            category: phase.category,
+            label: buildStepLabel(phase),
+            progress: global,
+            phase: composedMessage,
+            canCancel: true,
+            onCancel: buildPhaseOnCancel('analyze'),
+          });
+        };
 
         ensureWorkflowTask(workflowTaskId, phase, {
-          subPercent: 5,
-          subMessage: '规划分段',
+          subPercent: 0,
+          subMessage: '启动 3 路并行：分析 / 高亮 / 封面',
           canCancel: true,
           onCancel: buildPhaseOnCancel('analyze'),
         });
+        refreshCombinedProgress('启动 3 路并行：分析 / 高亮 / 封面');
 
+        // ── Track A: analyze (main 进程内部按 planning → cards 顺序跑) ──
         const cleanupAnalyzeProgress = window.electronAPI.onAnalyzeProgress((progress) => {
           if (isStaleRun()) return;
-          const global = mapSubProgressToGlobal(phase, progress.percent);
-          const subMessage = progress.message ?? phase.label;
-          setWorkflow({
-            progress: global,
-            stepLabel: buildStepLabel(phase, subMessage),
-          });
-          useTaskProgressStore.getState().updateTask(workflowTaskId, {
-            progress: global,
-            phase: subMessage,
-          });
+          analyzePercent = progress.percent;
+          refreshCombinedProgress();
         });
 
+        // ── Track C 触发器：等独立的 cover.regeneration LLM 调用（COVER_REGENERATION）完成 ──
+        //
+        // 旧链路：planning-done 事件直接附带 coverPrompts → 立刻启动封面图生成。
+        // 新链路：planning-done 仅用于上报 segments；真正的封面提示词来自 main 的
+        //         'analyze-cover-prompts-ready'（ai-analysis 内部独立跑 cover.regeneration）。
+        // 失败 / fallback 时 ai-analysis 仍会以 planning.coverPrompts 兜底回吐，保证此事件必发。
+        let coverPromptsBuffer: string[] = [];
+        let resolveCoverPrompts: () => void = () => undefined;
+        let rejectCoverPrompts: (err: unknown) => void = () => undefined;
+        const coverPromptsReadyPromise = new Promise<void>((resolve, reject) => {
+          resolveCoverPrompts = resolve;
+          rejectCoverPrompts = reject;
+        });
+        const cleanupPlanningDone = window.electronAPI.onAnalyzePlanningDone((planning) => {
+          if (isStaleRun()) return;
+          tel?.event('planning.done.received', {
+            coverPrompts: planning.coverPrompts?.length ?? 0,
+            segments: planning.segments?.length ?? 0,
+          });
+        });
+        const cleanupCoverPromptsReady = window.electronAPI.onAnalyzeCoverPromptsReady(
+          ({ prompts }) => {
+            if (isStaleRun()) return;
+            coverPromptsBuffer = prompts ?? [];
+            coverDecided = true;
+            coverActive = coverPromptsBuffer.length > 0;
+            coverPercent = coverActive ? 0 : 100;
+            tel?.event('cover-prompts.ready.received', {
+              coverPrompts: coverPromptsBuffer.length,
+            });
+            resolveCoverPrompts();
+            refreshCombinedProgress();
+          },
+        );
+
+        // ── Track B: highlights，立刻启动，与 planning/cards 完全并行 ──
+        const highlightsTrack = (async (): Promise<void> => {
+          if (!hasHighlightWork) {
+            tel?.event('highlights.skipped', { reason: 'no-srt' });
+            return;
+          }
+          try {
+            const highlights = await generateSubtitleHighlights(srtEntries, settings, {
+              concurrency: 4,
+              onProgress: (p) => {
+                if (isStaleRun()) return;
+                highlightPercent = p.percent;
+                refreshCombinedProgress();
+              },
+              shouldCancel: isStaleRun,
+              telemetry: tel ? { emit: (k, e) => tel.event(k, e) } : undefined,
+            });
+            if (isStaleRun()) return;
+            if (highlights.length > 0) {
+              timelineStore.setSubtitleHighlights(highlights);
+              timelineStore.updateSubtitleStyle({ highlightEnabled: true });
+            }
+          } catch (error) {
+            // 字幕高亮失败不阻断后续
+            console.warn('字幕高亮生成失败，继续后续流程:', error);
+            tel?.event('highlights.error', {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          } finally {
+            highlightPercent = 100;
+            highlightsActive = false;
+            if (!isStaleRun()) refreshCombinedProgress();
+          }
+        })();
+
+        // ── Track C: cover，等 cover-prompts-ready 后立即启动（不等卡片生成完成） ──
+        const coverTrack = (async (): Promise<CoverCandidate[] | null> => {
+          try {
+            await coverPromptsReadyPromise;
+          } catch {
+            // analyze 失败提前 reject：cover 直接放弃
+            coverActive = false;
+            coverPercent = 100;
+            return null;
+          }
+          if (isStaleRun() || coverPromptsBuffer.length === 0) {
+            coverActive = false;
+            coverPercent = 100;
+            refreshCombinedProgress();
+            return null;
+          }
+          const cleanupCoverProgress = window.electronAPI.onCoverProgress((progress) => {
+            if (isStaleRun()) return;
+            coverPercent = progress.percent;
+            refreshCombinedProgress();
+          });
+          try {
+            let nextCandidates = await window.electronAPI.generateCoverImages({
+              prompts: coverPromptsBuffer,
+              settings,
+              projectDir,
+              projectBindings: useAIStore.getState().projectBindings,
+              telemetryRunId: workflowSession.telemetryRunId,
+            });
+            if (isStaleRun()) return null;
+            const validCandidates = nextCandidates.filter(
+              (candidate) => candidate.imageUrl && !candidate.error,
+            );
+            if (validCandidates.length > 0) {
+              const randomPick =
+                validCandidates[Math.floor(Math.random() * validCandidates.length)];
+              nextCandidates = selectCoverCandidate(nextCandidates, randomPick.id);
+              selectCover(randomPick.id);
+              timelineStore.setGlobalBackground(randomPick.imageUrl);
+            }
+            setCoverCandidates(nextCandidates);
+            return nextCandidates;
+          } catch (error) {
+            console.warn('封面生成失败，继续后续时间轴排布:', error);
+            tel?.event('cover.error', {
+              message: error instanceof Error ? error.message : String(error),
+            });
+            return null;
+          } finally {
+            cleanupCoverProgress();
+            coverPercent = 100;
+            coverActive = false;
+            if (!isStaleRun()) refreshCombinedProgress();
+          }
+        })();
+
+        // ── Track A 主等待 ──
+        let analysisResult: AIAnalysisResult | null = null;
         try {
-          const analysisResult = (await window.electronAPI.analyzeSrt({
-            entries: useTimelineStore.getState().srtEntries,
+          analysisResult = (await window.electronAPI.analyzeSrt({
+            entries: srtEntries,
             settings,
             projectDir,
             projectBindings: useAIStore.getState().projectBindings,
+            telemetryRunId: workflowSession.telemetryRunId,
           })) as AIAnalysisResult;
-
-          cleanupAnalyzeProgress();
-
-          if (isStaleRun()) {
-            return;
-          }
-
-          setAnalysisResult(analysisResult);
-          setCoverCandidates([]);
-          await persistAIState(projectDir, analysisResult, []);
-
-          // 阶段切换：结束 analyze，并行处理字幕高亮与封面生成。
-          // 两者都只依赖 analysisResult / srtEntries / settings，互不阻塞。
-          const highlightsPhase = PHASES.highlights;
-          const coverPhase = PHASES.cover;
-          const timelineState = useTimelineStore.getState();
-          const highlightEntries = timelineState.srtEntries;
-          const coverPrompts = analysisResult.coverPrompts ?? [];
-          const hasHighlightWork = highlightEntries.length > 0;
-          const hasCoverWork = coverPrompts.length > 0;
-          const activePhase = hasCoverWork ? coverPhase : highlightsPhase;
-          const activeStep: WorkflowStep = hasCoverWork ? 'cover_generating' : 'ai_analyzing';
-          const postStart = highlightsPhase.baseStart;
-          const postEnd = PHASES.arrange.baseStart;
-          let highlightPercent = hasHighlightWork ? 0 : 100;
-          let coverPercent = hasCoverWork ? 0 : 100;
-          let postGlobalProgress = postStart;
-
-          const updatePostAnalysisProgress = (subMessage: string): void => {
-            const activeUnits = Number(hasHighlightWork) + Number(hasCoverWork);
-            const combinedPercent = activeUnits > 0
-              ? (Number(hasHighlightWork) * highlightPercent +
-                Number(hasCoverWork) * coverPercent) / activeUnits
-              : 100;
-            const nextGlobal = Math.round(
-              postStart + (Math.max(0, Math.min(100, combinedPercent)) / 100) * (postEnd - postStart),
-            );
-            const global = Math.max(postGlobalProgress, nextGlobal);
-            postGlobalProgress = global;
-            setWorkflow({
-              step: activeStep,
-              progress: global,
-              stepLabel: buildStepLabel(activePhase, subMessage),
-              error: null,
-              canCancel: true,
-            });
-            useTaskProgressStore.getState().updateTask(workflowTaskId, {
-              category: activePhase.category,
-              label: buildStepLabel(activePhase),
-              progress: global,
-              phase: subMessage,
-              canCancel: true,
-              onCancel: buildPhaseOnCancel(hasCoverWork ? 'cover' : 'highlights'),
-            });
-          };
-
-          setWorkflow({
-            step: activeStep,
-            progress: mapSubProgressToGlobal(highlightsPhase, 0),
-            stepLabel: buildStepLabel(activePhase, '准备并行任务'),
-            error: null,
-            canCancel: true,
-          });
-          ensureWorkflowTask(workflowTaskId, activePhase, {
-            subPercent: 0,
-            subMessage: '准备并行任务',
-            canCancel: true,
-            onCancel: buildPhaseOnCancel(hasCoverWork ? 'cover' : 'highlights'),
-          });
-
-          const runHighlights = async (): Promise<void> => {
-            if (!hasHighlightWork) {
-              updatePostAnalysisProgress('无字幕条目，跳过高亮');
-              return;
-            }
-            try {
-              const highlights = await generateSubtitleHighlights(highlightEntries, settings, {
-                onProgress: (p) => {
-                  if (isStaleRun()) return;
-                  highlightPercent = p.percent;
-                  updatePostAnalysisProgress(`高亮 ${p.processedEntries}/${p.totalEntries}`);
-                },
-                shouldCancel: isStaleRun,
-              });
-
-              if (isStaleRun()) {
-                return;
-              }
-
-              if (highlights.length > 0) {
-                timelineStore.setSubtitleHighlights(highlights);
-                timelineStore.updateSubtitleStyle({ highlightEnabled: true });
-              }
-            } catch (error) {
-              // 字幕高亮失败不阻断后续，仅提示并落入 phase 描述
-              console.warn('字幕高亮生成失败，继续后续流程:', error);
-              useTaskProgressStore.getState().updateTask(workflowTaskId, {
-                phase: '字幕高亮跳过（失败）',
-              });
-            } finally {
-              highlightPercent = 100;
-              if (!isStaleRun()) {
-                updatePostAnalysisProgress('字幕高亮完成');
-              }
-            }
-          };
-
-          const runCoverGeneration = async (): Promise<void> => {
-            if (!hasCoverWork) {
-              setCoverCandidates([]);
-              await persistAIState(projectDir, analysisResult, []);
-              updatePostAnalysisProgress('无封面提示词，跳过封面');
-              return;
-            }
-
-            const cleanupCoverProgress = window.electronAPI.onCoverProgress((progress) => {
-              if (isStaleRun()) return;
-              coverPercent = progress.percent;
-              updatePostAnalysisProgress(progress.message || '生成封面');
-            });
-
-            try {
-              let nextCandidates = await window.electronAPI.generateCoverImages({
-                prompts: coverPrompts,
-                settings,
-                projectDir,
-                projectBindings: useAIStore.getState().projectBindings,
-              });
-
-              if (isStaleRun()) {
-                return;
-              }
-
-              const validCandidates = nextCandidates.filter(
-                (candidate) => candidate.imageUrl && !candidate.error,
-              );
-
-              if (validCandidates.length > 0) {
-                const randomPick =
-                  validCandidates[Math.floor(Math.random() * validCandidates.length)];
-                nextCandidates = selectCoverCandidate(nextCandidates, randomPick.id);
-                selectCover(randomPick.id);
-                timelineStore.setGlobalBackground(randomPick.imageUrl);
-              }
-
-              setCoverCandidates(nextCandidates);
-              await persistAIState(projectDir, analysisResult, nextCandidates);
-            } catch (error) {
-              console.warn('封面生成失败，继续后续时间轴排布:', error);
-            } finally {
-              cleanupCoverProgress();
-              coverPercent = 100;
-              if (!isStaleRun()) {
-                updatePostAnalysisProgress('封面生成完成');
-              }
-            }
-          };
-
-          await Promise.all([runHighlights(), runCoverGeneration()]);
-
-          if (isStaleRun()) {
-            return;
-          }
-
-          // 阶段切换：进入 arrange 起点
-          const arrangePhase = PHASES.arrange;
-          setWorkflow({
-            step: 'arranging',
-            progress: mapSubProgressToGlobal(arrangePhase, 0),
-            stepLabel: buildStepLabel(arrangePhase, '准备中'),
-            error: null,
-            canCancel: true,
-          });
-          ensureWorkflowTask(workflowTaskId, arrangePhase, {
-            subPercent: 0,
-            subMessage: '准备中',
-            canCancel: true,
-            onCancel: buildPhaseOnCancel('arrange'),
-          });
-          workflowSession.retryStep = 'arranging';
-          fromStep = 'arranging';
         } catch (error) {
+          // analyze 失败：cover-prompts-ready 可能根本没发出，主动解除 cover 的等待
+          rejectCoverPrompts(error);
           cleanupAnalyzeProgress();
+          cleanupPlanningDone();
+          cleanupCoverPromptsReady();
+          analyzeActive = false;
+          // 等高亮/封面收尾（封面会 catch reject）
+          await Promise.allSettled([highlightsTrack, coverTrack]);
           if (isStaleRun()) {
             return;
           }
@@ -896,8 +922,53 @@ export function useAIVideoWorkflow() {
           });
           useTaskProgressStore.getState().failTask(workflowTaskId, analyzeErrorMsg);
           workflowSession.retryStep = 'ai_analyzing';
+          tel?.event('run.end', {
+            ok: false,
+            failedStage: 'analyze',
+            error: error instanceof Error ? error.message : String(error),
+          });
           return;
         }
+
+        // analyze 成功收尾
+        cleanupAnalyzeProgress();
+        cleanupPlanningDone();
+        cleanupCoverPromptsReady();
+        analyzeActive = false;
+        analyzePercent = 100;
+        if (isStaleRun()) return;
+
+        setAnalysisResult(analysisResult);
+        setCoverCandidates([]);
+        await persistAIState(projectDir, analysisResult, []);
+
+        // 等高亮 / 封面跑完（多数情况下封面已经在 cards 期间就启动了）
+        const [, coverCandidatesResult] = await Promise.all([highlightsTrack, coverTrack]);
+
+        if (isStaleRun()) return;
+
+        if (coverCandidatesResult && coverCandidatesResult.length > 0) {
+          // 用 cover 完成后的候选覆盖之前空写的占位
+          await persistAIState(projectDir, analysisResult, coverCandidatesResult);
+        }
+
+        // 阶段切换：进入 arrange 起点
+        const arrangePhase = PHASES.arrange;
+        setWorkflow({
+          step: 'arranging',
+          progress: mapSubProgressToGlobal(arrangePhase, 0),
+          stepLabel: buildStepLabel(arrangePhase, '准备中'),
+          error: null,
+          canCancel: true,
+        });
+        ensureWorkflowTask(workflowTaskId, arrangePhase, {
+          subPercent: 0,
+          subMessage: '准备中',
+          canCancel: true,
+          onCancel: buildPhaseOnCancel('arrange'),
+        });
+        workflowSession.retryStep = 'arranging';
+        fromStep = 'arranging';
       }
 
       if (isStaleRun()) {
@@ -1043,6 +1114,7 @@ export function useAIVideoWorkflow() {
             onCancel: undefined,
           });
           useTaskProgressStore.getState().completeTask(workflowTaskId);
+          workflowSession.telemetry?.event('run.end', { ok: true });
         } catch (error) {
           if (isStaleRun()) {
             return;
@@ -1058,6 +1130,11 @@ export function useAIVideoWorkflow() {
           });
           useTaskProgressStore.getState().failTask(workflowTaskId, arrangingErrorMsg);
           workflowSession.retryStep = 'arranging';
+          workflowSession.telemetry?.event('run.end', {
+            ok: false,
+            failedStage: 'arrange',
+            error: arrangingErrorMsg,
+          });
         }
       }
     },
@@ -1075,6 +1152,17 @@ export function useAIVideoWorkflow() {
       resetWorkflowSession();
       workflowSession.requestId = crypto.randomUUID();
       workflowSession.taskId = `ai-workflow-${Date.now()}`;
+      // 给本次一键流程生成唯一 runId，所有阶段（TTS / 分析 / 封面 / 排布）共用，
+      // jsonl 日志路径 = <userData>/logs/auto-run/<runId>.jsonl
+      workflowSession.telemetryRunId = `autorun-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+      workflowSession.telemetry = createAutoRunTelemetry(workflowSession.telemetryRunId);
+      workflowSession.telemetry.event('run.start', {
+        autoMode: options?.autoMode ?? false,
+        startFromStep: options?.startFromStep ?? null,
+        pauseAfterTts: options?.pauseAfterTts ?? false,
+        ttsOnly: options?.ttsOnly ?? false,
+        projectDir: getProjectDir() ?? '',
+      });
       const initialStep =
         options?.startFromStep ?? (options?.autoMode ? 'script_generating' : 'tts_generating');
       workflowSession.retryStep = initialStep;
@@ -1129,6 +1217,7 @@ export function useAIVideoWorkflow() {
       cancelWorkflowTask(currentTaskId, '任务已取消');
     }
 
+    workflowSession.telemetry?.event('run.end', { ok: false, cancelled: true });
     resetWorkflow();
   }, [resetWorkflow]);
 

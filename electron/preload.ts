@@ -26,8 +26,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
     globalPrompt?: string;
     projectDir?: string;
     projectBindings?: PromptBindingMap | null;
+    /** 一键流水线观测 runId；用于把内部耗时事件写进 auto-run jsonl */
+    telemetryRunId?: string | null;
   }) =>
     ipcRenderer.invoke('analyze-srt', args),
+  onAnalyzePlanningDone: (
+    callback: (planning: {
+      segments: import('../src/types/ai').AISegmentAnalysis[];
+      coverPrompts: string[];
+      summary: string;
+      keywords: string[];
+      globalPrompt?: string;
+    }) => void,
+  ) => {
+    const handler = (
+      _event: unknown,
+      planning: {
+        segments: import('../src/types/ai').AISegmentAnalysis[];
+        coverPrompts: string[];
+        summary: string;
+        keywords: string[];
+        globalPrompt?: string;
+      },
+    ) => callback(planning);
+    ipcRenderer.on('analyze-planning-done', handler);
+    return () => ipcRenderer.removeListener('analyze-planning-done', handler);
+  },
+  onAnalyzeCoverPromptsReady: (
+    callback: (payload: { prompts: string[] }) => void,
+  ) => {
+    const handler = (_event: unknown, payload: { prompts: string[] }) =>
+      callback(payload);
+    ipcRenderer.on('analyze-cover-prompts-ready', handler);
+    return () => ipcRenderer.removeListener('analyze-cover-prompts-ready', handler);
+  },
   regenerateAICard: (args: {
     entries: SrtEntry[];
     card: AICard;
@@ -65,6 +97,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     settings: AISettings;
     projectDir: string;
     projectBindings?: PromptBindingMap | null;
+    telemetryRunId?: string | null;
   }) => ipcRenderer.invoke('generate-cover-images', args),
   generateCardImage: (args: import('../src/lib/electron-api').GenerateCardImageArgs) =>
     ipcRenderer.invoke('generate-card-image', args),
@@ -219,6 +252,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     model: string;
     apiKey: string;
     projectDir: string;
+    telemetryRunId?: string | null;
   }) => ipcRenderer.invoke('generate-tts', args),
   onTTSProgress: (callback: (pct: number) => void) => {
     const handler = (_event: unknown, pct: number) => callback(pct);
@@ -311,6 +345,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('workbench-tab-menu-action', handler);
     return () => ipcRenderer.removeListener('workbench-tab-menu-action', handler);
   },
+  // ── 一键成稿 / AI 流水线观测日志 ──
+  appendAutoRunEvent: (event: import('../src/lib/telemetry/auto-run').AutoRunEvent) =>
+    ipcRenderer.invoke('auto-run-telemetry/append', event),
+  listAutoRunLogs: (limit?: number) =>
+    ipcRenderer.invoke('auto-run-telemetry/list-recent', limit) as Promise<
+      import('../src/lib/telemetry/auto-run').AutoRunLogMeta[]
+    >,
+  readAutoRunLog: (runId: string) =>
+    ipcRenderer.invoke('auto-run-telemetry/read-run', runId) as Promise<
+      import('../src/lib/telemetry/auto-run').AutoRunEvent[]
+    >,
+  getLatestAutoRunLog: () =>
+    ipcRenderer.invoke('auto-run-telemetry/get-latest') as Promise<{
+      runId: string;
+      events: import('../src/lib/telemetry/auto-run').AutoRunEvent[];
+    } | null>,
+  getAutoRunLogDir: () => ipcRenderer.invoke('auto-run-telemetry/get-log-dir') as Promise<string>,
   loadRecentProjects: () => ipcRenderer.invoke('load-recent-projects'),
   addRecentProject: (projectDir: string, projectName?: string) =>
     ipcRenderer.invoke('add-recent-project', projectDir, projectName),
