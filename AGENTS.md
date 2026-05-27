@@ -135,3 +135,52 @@ ls -lt "$LOGDIR"/*.jsonl | head -10
 - 不要在 lib 层直接调用 electron IPC；用 `TelemetryHook` 接口，main 显式注入
 - 不要把任何 API Key / 项目敏感内容放进 telemetry payload；只记 label / durationMs / 字符数 / 段数等度量
 - 用户说"系统慢"时，不要直接给猜测和建议；先读 jsonl，再讨论
+
+---
+
+## 版本发布与 CHANGELOG 维护（铁律）
+
+每次 bump `package.json` 版本号、打 tag、发 GitHub Release 时，**必须同步更新 `CHANGELOG.md`**。不允许只 bump 版本不写 changelog，也不允许"明天补一下"——一次发布一次落盘。
+
+### 强制流程
+
+发布新版本 = **三件事一起做**，缺一不可：
+
+1. **更新 `CHANGELOG.md`**：在文件顶部新增 `## [x.y.z] - YYYY-MM-DD` 段落，按 Keep a Changelog 分类（Added / Changed / Fixed / Removed / Deprecated / Security）。底部更新 `[x.y.z]: https://github.com/yoqu/lingji-cut/compare/<prev>...<this>` 比较链接。
+2. **bump `package.json` + `package-lock.json`**：跑 `npm install --package-lock-only` 让 lockfile 同步。
+3. **打 tag 并推到 origin**：`git tag -a vX.Y.Z -m "Release vX.Y.Z" && git push origin vX.Y.Z`，触发 `.github/workflows/release.yml` 多平台构建。
+
+### Release Notes 同步
+
+GitHub Release 的 body **必须**来自 `CHANGELOG.md` 对应版本段落（中文 + emoji 头），让用户在 Release 页直接看到改了啥。两种姿势：
+
+- **预创建**：tag 推送后立即 `gh release edit vX.Y.Z --notes-file <提取后的段落>`，让 workflow 把二进制附加上去。
+- **后修正**：workflow 完成后用 `gh release edit vX.Y.Z --notes-file` 覆盖 body。
+
+### 怎么写 CHANGELOG 条目
+
+- 一句话写清楚**用户视角的变化**（"封面提示词改版"），而不是技术细节（"重构 prompts/defaults.ts"）。
+- 内部重构 / 测试 / 打包细节归到 `Changed` 末尾或 `Build / Packaging`，不要单列在 Added。
+- 涉及破坏性变更（IPC 改名、`project.json` schema 变更、Composition ID 变化）必须在条目里**显式标注 BREAKING**。
+- 引用具体文件路径时用反引号包裹（`src/lib/...`），让阅读者能直接跳代码。
+
+### Semver 边界
+
+- **patch (x.y.Z)**：bug 修复、文档、依赖小升、不影响外部行为的重构。
+- **minor (x.Y.0)**：新功能、新 IPC、新 Provider、新 prompt kind，向后兼容。
+- **major (X.0.0)**：破坏性变更——`project.json` schema 不兼容、IPC 删除 / 改名、Composition 入口变化、要求用户手动迁移的任何场景。
+
+拿不准时跑 `git log v<上一版>..HEAD --first-parent --pretty=format:"%h %s"` 看变化量级，再做判断。
+
+### Agent 自检清单
+
+被要求"发版" / "release 一个新版本" / "更新版本号" 时，按这个顺序：
+
+1. `git status` 确认工作区干净
+2. `git log v<latest-tag>..HEAD --first-parent` 拉变更列表，按 Keep a Changelog 分类
+3. 在 `CHANGELOG.md` 顶部新增版本段落（含日期、分类、compare 链接）
+4. 改 `package.json` 版本号，跑 `npm install --package-lock-only` 同步 lockfile
+5. 一个 commit 提交（消息：`chore(release): bump version to X.Y.Z`），或 changelog + bump 分两个 commit 都可
+6. push main → 打 tag → push tag → 等 workflow → `gh release edit` 写入 Release notes
+
+漏掉任何一步都算不完整发布。
