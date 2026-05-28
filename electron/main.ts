@@ -2061,7 +2061,7 @@ ipcMain.handle('select-text-file', async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     title: '选择报告文件',
-    filters: [{ name: '文本文件', extensions: ['txt', 'md'] }],
+    filters: [{ name: '文本文件', extensions: ['txt', 'md', 'html', 'htm'] }],
     properties: ['openFile'],
   });
 

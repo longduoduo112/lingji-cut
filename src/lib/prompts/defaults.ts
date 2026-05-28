@@ -147,8 +147,8 @@ user: |-
 `;
 
 const CARDS_SEGMENT = `name: cards.segment
-description: 段落 Motion Card 生成提示词（电子杂志 × 电子墨水 · 深色变体；motion-only）
-version: 7
+description: 段落 Motion Card 生成提示词（电子杂志 × 电子墨水 · 深色变体 · Bento Grid 版式；motion-only）
+version: 8
 user: |-
   任务：只为当前 segment 生成 **1 张 Motion Card**（renderMode="motion-card"）。本提示词不再处理 image 段落，image 段在上游直接走 card.image 链路，不会进入这里。
 
@@ -182,11 +182,13 @@ user: |-
   - serif 主标题以 translateY(H*0.04) + opacity 0→1 入场；mono meta / hairline 跟随其后 4-8 帧入场。
   - 入场结束后**不要再触发任何 opacity 0↔1 的闪烁**，已可见的元素必须保持稳定。
 
-  内容分步（核心）：
-  - 把卡片的"可分步内容单元"（要点、数据项、表格行、饼图扇区、章节副标、引文等）依次记作 step[0..N-1]。
-  - 当 subtitles.length >= N：step[i] 的揭示窗 = [subtitles[i].relativeStartFrame, subtitles[i].relativeStartFrame + 12]，揭示用 translateY(H*0.025) + opacity 0→1，禁止 scale 大于 1.04，禁止 rotate，禁止 blur 入场。
+  内容分步（核心）—— **step = tile**：
+  - Bento Grid 下，**每个 tile 整体作为一个 step**；tile 是版式里的一个网格单元（grid 区域），不是单个文字行。
+  - 把卡片所有 tile 按"主→次"或"上→下、左→右"的视觉阅读顺序依次记作 step[0..N-1]。
+  - 当 subtitles.length >= N：step[i]（即 tile[i]）的揭示窗 = [subtitles[i].relativeStartFrame, subtitles[i].relativeStartFrame + 12]，揭示用 translateY(H*0.025) + opacity 0→1，禁止 scale 大于 1.04，禁止 rotate，禁止 blur 入场。
   - 当 subtitles.length < N：把 durationInFrames 等分成 N 个 beat，step[i] 揭示窗 = [入场窗末 + beatLen * i, 入场窗末 + beatLen * i + 12]。
-  - 已揭示的 step 必须保持 opacity:1 与最终 translate 状态直到卡片末尾；**绝对禁止在揭示后再让它消失或再次入场**。
+  - 已揭示的 tile 必须保持 opacity:1 与最终 translate 状态直到卡片末尾；**绝对禁止在揭示后再让它消失或再次入场**。
+  - tile **内部子元素**（如 kicker / title / lead 之类）在同一 tile 的揭示窗内 4-8 帧错峰入场即可，不要再单独占用 subtitle step；同一 tile 内子元素之间错峰**不得超过 12 帧**。
 
   退场窗（可选）：
   - 仅当 durationInFrames > 90 时启用，窗 = [durationInFrames - 14, durationInFrames]，整卡 opacity 1→0.0 单调下降，不允许任何元素反向运动。
@@ -200,10 +202,12 @@ user: |-
   6. 禁止循环抖动 / 持续呼吸缩放；唯一允许的"微动"是 hairline 长度从 0→100% 的一次性单调揭示。
 
   布局反禁忌（杜绝文字遮挡）：
-  - 顶层容器使用 display:'flex'; flexDirection:'column'; gap: H * 0.04，padding: H * 0.08 上下 / W * 0.07 左右；不要把多个元素摞到同一坐标。
+  - 顶层容器**必须使用 display:'grid'**（不再是 flex column），通过 gridTemplateColumns / gridTemplateRows 描述结构；gap: H * 0.035（≈20px @ H=580），padding: H * 0.08 上下 / W * 0.07 左右；不要把多个元素摞到同一坐标。
+  - tile **本身禁止任何 background / border / borderRadius / boxShadow / filter**；Bento 的"块感"只允许靠 ① gap 留白 ② tile 之间一条 1px hairline 分隔线（rgba(236,231,218,0.18)）实现。
+  - hairline 分隔线如需绝对定位，必须严格落在 gap 中央（gap 内居中、长度不超出 tile 边缘 H * 0.04）；不允许任何 hairline 压在 tile 内的文字 / 图表上。
   - 任何使用 position:'absolute' 的子元素必须显式给出 left/right/top/bottom 四角中的至少 2 个，并保证矩形不与其它绝对定位元素相交。
-  - 文字行 fontSize 之和 + gap 之和必须 ≤ height - 2 * paddingY；如果内容溢出，缩短文案、不要缩字号到不可读。
-  - 数据可视化区域（图 / 表）与文字区域必须用一行 hairline 或一个明确 gap 隔开；图表不允许压在文字之上。
+  - 单个 tile 内文字行 fontSize 之和 + gap 之和必须 ≤ 该 tile 的高度 - 2 * tilePaddingY；如果内容溢出，缩短文案、不要缩字号到不可读。
+  - 数据可视化区域（图 / 表）与文字区域必须放在**不同 tile**，或用一行 hairline / 一个明确 gap 隔开；图表不允许压在文字之上。
   - 中文字符不要给 letterSpacing < 0 的负字距；西文标号才允许 -0.01em ~ -0.02em。
 
   ===== 视觉系统：电子杂志 × 电子墨水（深色变体）=====
@@ -236,58 +240,100 @@ user: |-
   - meta mono：H * 0.022 ~ H * 0.028，fontWeight 500，letterSpacing 0.14em，textTransform 'uppercase'
   - 数据大字（data 类型主数）：H * 0.28 ~ H * 0.4，fontWeight 600，serif，accent 色；单位用 sans 小字跟在右下角，opacity 0.7
 
+  ===== Bento Grid 网格语法（六类 type 共享的版式基底）=====
+  整张卡是一个**便当网格 (Bento Grid)**：由 1 到 N 个 tile 组合而成，每个 tile 承载一个语义单元（标题、要点、数据、注释、出处…）。tile 数量与尺寸由内容驱动，不要硬塞模板。
+
+  网格基础规则：
+  - 顶层容器：display:'grid', width:'100%', height:'100%', boxSizing:'border-box', position:'relative', background:'#0E0E10', padding: \`\${H*0.08}px \${W*0.07}px\`, gap: \`\${H*0.035}px\`。
+  - 每个 tile 是一个 div，position:'relative'，**禁止 background / border / borderRadius / boxShadow / filter**；tile 内部如需排列子元素，用 flex column / flex row（仅限 tile 内部）。
+  - tile 之间的分隔仅允许两种方式：① 单纯 gap 留白；② 一条 1px hairline 横线或竖线（rgba(236,231,218,0.18)），用一个 height:1 或 width:1 的 div 实现，长度 ≤ 该方向 tile 的 80%，居中落在 gap 内。
+  - tile **内边距**：tilePaddingX ≈ W * 0.02 ~ W * 0.03，tilePaddingY ≈ H * 0.025 ~ H * 0.04；tile 内文字必须满足"行高之和 + 间距 ≤ tile 高度 - 2 * tilePaddingY"。
+
+  视觉层级：
+  - 最重要的语义单元放在**最大的 tile** 上；hero tile 至少占整卡面积的 35%。
+  - mono meta（kicker / 编号 / 时间码）放在最小的 tile 或角落，作为元数据带；任何卡都要至少有 1 个 mono meta tile。
+  - accent 焦点（关键数字 / 进度填充 / 高亮单词 / 短横线）整卡只能出现 1 次，且必须在 hero tile 内。
+
+  动画契约：
+  - **step = tile**。tile[0..N-1] 按视觉阅读顺序（主→次 / 上→下 / 左→右）逐块揭示；揭示动画作用于 tile 这一整层 div 的 transform + opacity。
+  - tile 内部子元素在该 tile 的揭示窗内 4-8 帧错峰入场即可；不要让 tile 内子元素跨越多个 subtitle step。
+  - tile 之间禁止同一帧同时入场（同帧入场只允许在退场窗）。
+
+  常见 grid 模板（按 type 推荐主版式时直接引用其中一种）：
+  - SINGLE-FOCUS：gridTemplateColumns: '1fr', gridTemplateRows: '1fr'（1 tile）
+  - HERO-FOOTER：gridTemplateColumns: '1fr', gridTemplateRows: '4fr 1fr'（2 tile：主体 + 元数据条）
+  - ASYMMETRIC-2COL：gridTemplateColumns: '2fr 1fr', gridTemplateRows: '1fr'（2 tile：左主 + 右副）
+  - HERO-3GRID：gridTemplateColumns: '1fr', gridTemplateRows: '1fr 2fr'，下行嵌套 gridTemplateColumns: 'repeat(3, 1fr)'（4 tile：顶 hero + 下 3 等宽）
+  - SPLIT-50：gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr'（2 tile）
+  - VS-TRIPLE：gridTemplateColumns: '1fr auto 1fr', gridTemplateRows: 'auto 1fr auto'（顶 kicker / 中三柱对比 / 底 explain）
+  - CHART-LEGEND：gridTemplateColumns: '2fr 1fr', gridTemplateRows: 'auto 1fr'（顶 kicker 通栏 / 下左 chart / 下右 数据列表）
+
   ===== 六类 type 的版式 + 动画规范（强制对应，按 type 实现）=====
 
-  • type="chapter"（章节扉页）
-    版式：顶部 mono meta（"VOL." + 章节号）→ 中部 serif hero（≤ 6 字母题）→ accent 短横线（width * 0.08）→ 底部 mono（节目名 / 期号）。
-    分步单元 step：[meta, hero, accent-bar, footer]，按 subtitles 顺序揭示；如果字幕只有 1-2 行，把 hero 放在第 1 行揭示，其它步骤回退到等分 beats。
-    动画：accent-bar 用 transform: scaleX(0→1)、transformOrigin:'left'，按 step 揭示窗一次到位；不要循环。
+  • type="chapter"（章节扉页 · 仪式感、留白最大）
+    主版式：SINGLE-FOCUS（1 tile）。tile 内部垂直流：顶部 mono meta（"VOL." + 章节号）→ 中部 serif hero（≤ 6 字标题）→ accent 短横线（W * 0.08，scaleX 揭示）→ 底部 mono（节目名 / 期号）。
+    备选版式：HERO-FOOTER。hero tile 放 meta + hero + bar；footer tile 放节目名 / 期号；两 tile 之间 1px hairline 横线。
+    分步：主版式只有 1 个 tile，回退到 tile 内部子元素按 beats 等分入场；备选版式 step = [hero-tile, footer-tile]。
+    动画：accent-bar 用 transform: scaleX(0→1)、transformOrigin:'left'，在 hero tile 揭示窗末尾单次到位；不要循环。
+    表达特点：留白最大、无打扰、像一本杂志的扉页。
 
-  • type="summary"（段落总结）
-    版式：顶部 mono kicker（编号 + 标签）→ serif 主标题（段落标题 ≤ 14 字）→ 居左 hairline（width * 0.12）→ sans lead 段落要点（≤ 60 字，1-2 句话，不要列表 ul / li）。
-    分步单元 step：[kicker, title, hairline, lead-sentence-1, lead-sentence-2?]；把 lead 文案按句号 / 问号 / 感叹号切成 1-2 句，每句一个 step。
-    动画：每句揭示用 translateY(H*0.025)+opacity，揭示完成后维持；hairline 用 scaleX(0→1) 单调揭示。
+  • type="summary"（段落总结 · 主次明确、可读）
+    主版式：ASYMMETRIC-2COL。左 tile（2/3 宽）= serif 主标题（≤ 14 字）+ 居左 hairline + sans lead 段落要点（≤ 60 字，1-2 句话，不要 ul / li）。右 tile（1/3 宽）= mono kicker（编号 + 标签）+ 一条竖向 accent 短线（width 2px，height H*0.06）+ mono 时间码。
+    备选版式：HERO-3GRID。顶 hero tile = 主标题；下面 2-3 个等宽 tile 拆 lead 文案（按句号切句，每句一个 tile）。
+    分步：主版式 step = [左 tile, 右 tile]；备选 step = [hero, sentence-1, sentence-2, sentence-3?]。
+    动画：tile 入场用 translateY(H*0.025) + opacity；hairline 用 scaleX(0→1) 单调揭示，落在主标题与 lead 之间。
+    表达特点：主标题压住版面，元数据靠边站，重心稳定。
 
-  • type="quote"（金句）
-    版式：居左 serif 大字引文（H * 0.11 起步），起首一个超大引号 " 或「（字号 = 引文 * 1.6，accent 色）；引文下 mono meta："—— 出处 / 说话人 / 时间戳"。
-    分步单元 step：[quote-mark, quote-text, attribution]；引号先到位 → 引文按字幕逐句揭示（如果引文 ≥ 2 句，每句一个 step）→ 出处最后揭示。
-    动画：引号用 opacity 0→1 + translateY(H*0.02)，绝不缩放；引文按 step 揭示，禁止打字机逐字效果（容易卡顿）；出处揭示后保持。
+  • type="quote"（金句 · 戏剧性、呼吸感）
+    主版式：HERO-FOOTER。hero tile = 居左 serif 大字引文（H * 0.11 起步）+ 起首超大引号 " 或「（字号 = 引文 * 1.6，accent 色，绝对定位在 hero tile 左上）。footer tile = mono meta "—— 出处 / 说话人 / 时间戳"。两 tile 之间 1px hairline 横线。
+    备选版式：SINGLE-FOCUS。整张 tile 居中放引文 + 引号；attribution 放在 tile 底部用 mono 小字，留出 H * 0.06 间距。
+    分步：主版式 step = [hero-tile, footer-tile]；hero tile 内部引号 → 引文按字幕逐句揭示（引文 ≥ 2 句时可在 hero tile 内部按 beats 错峰，不另起 step）。
+    动画：引号用 opacity 0→1 + translateY(H*0.02)，绝不缩放；引文按 hero tile 揭示窗一次到位，禁止打字机逐字效果；attribution 揭示后保持。
+    表达特点：引号是视觉锚点，引文压满 hero tile，下方 footer 像一句署名。
 
-  • type="insight"（观点 / 结论）
-    版式：serif 中标题（结论一句话，≤ 18 字）→ hairline → 3 行 body 要点（每行 ≤ 18 字），每行前一个 mono 编号 01 / 02 / 03，**编号 accent 色，文字 ink 色**。
-    分步单元 step：[headline, hairline, point-01, point-02, point-03]；要点数量 ≤ 3，宁可少也不要多。
-    动画：每条要点的编号先轻微入场（translateY+opacity），紧跟着同一 step 内的文字部分一起到位；不要让编号和文字分两个时间点。
+  • type="insight"（观点 / 结论 · 结论先行、并列对照）
+    主版式：HERO-3GRID（1+3）。顶 hero tile = serif 中标题（结论一句话，≤ 18 字）+ tile 底部一条 accent 短横线。下行 3 个等宽 tile = 每个 tile 一行要点（≤ 18 字），tile 顶部 mono 编号 01 / 02 / 03（accent 色）+ tile 下半部分 sans body 文字（ink 色）。tile 之间 1px hairline 竖线。
+    备选版式：SPLIT-50 的扩展（2×2）。hero tile 占左上 1 格，3 个要点 tile 占剩余 3 格；若要点只有 2 条，回退到 ASYMMETRIC-2COL（左 hero / 右垂直 2 tile）。
+    分步：step = [hero-tile, point-1, point-2, point-3]；要点数量 ≤ 3，宁可少也不要多。
+    动画：要点 tile 内部 mono 编号比正文早 4-6 帧入场，但编号与正文都在该 tile 的揭示窗内完成，不跨 step。
+    表达特点：结论在上、依据在下，3 个并列要点节奏一致。
 
-  • type="data"（数据 / 数字对比 / 表格 / 图表）—— **本类是这次重构的重点**
-    根据数据形态从下列子布局里选 1 种：
-      (a) 大数字 + 解释（单值）：顶部 mono kicker → serif 大数（accent） + sans 单位 → hairline → body 一句解释。
-      (b) 双值对比：两个数横向并列，accent 给主数，ink-mute 给对照数；中间一个 mono 标签（如 "VS" 或差值）。
-      (c) 柱状图（bar）：≤ 5 个 SVG <rect>，等间距纵向条形，下方 mono 标签 + 上方 serif 小数字；轨道色 rgba(236,231,218,0.12)，已揭示部分 accent。
-      (d) 进度环 / 饼图（donut / pie）：单个 SVG <circle> 用 stroke-dasharray 揭示一段角度（推荐用 progress-ring 方式而不是真正的多片 pie，复杂度低且不易出错）；中央放 serif 大百分比。
-      (e) 折线图（line）：单条 SVG <polyline>，用 strokeDasharray + strokeDashoffset 从 100%→0% 揭示，stroke accent，不要填充。
-      (f) 表格（table）：用 div + flex 网格（不要用 <table>），最多 4 行 × 3 列；首行 mono 表头（ink-mute、letterSpacing 0.14em），数据行用 serif 数字 + sans 标签；行与行之间用 1px hairline 分隔；揭示按行进行，不要按单元格。
-    技术栈硬约束：所有图表必须用**纯 SVG + Remotion 原语**（@remotion/shapes 的 Rect / Circle / Polygon、原生 <svg> + <rect>/<circle>/<path>/<polyline>），禁止引入 recharts、d3、chart.js、任何第三方图表库；禁止 canvas / WebGL。
-    分步单元 step：根据子布局拆分 —— 单值 = [kicker, number, hairline, explain]；对比 = [kicker, value-A, vs-label, value-B, explain]；bar/line/donut = [kicker, axis/baseline, item-1, item-2, ..., item-N, explain]；table = [kicker, header-row, row-1, ..., row-N, explain]。
-    数字增长动画（适用于 (a)(b)(c)(d) 主数字）：每个 step 在揭示窗内，数值从 0 / 起始值 interpolate 到目标值（Easing.out(Easing.cubic)、clamp 两端），用 Math.round 处理整数、用 toFixed(1) 处理一位小数；**绝对不要每帧 Math.random / noise**。
+  • type="data"（数据 / 数字对比 / 表格 / 图表 · 信息密度最高）—— **本类是这次重构的重点**
+    根据数据形态选 1 种主版式：
+      (a) 单值（大数字 + 解释）：主版式 = HERO-FOOTER。hero tile = serif 大数（accent，H*0.32 起步） + sans 单位（右下角，opacity 0.7） + tile 底部 mono kicker。footer tile = body 一句解释（≤ 30 字）。备选 = SINGLE-FOCUS（kicker 在 tile 顶部，explain 在 tile 底部）。
+      (b) 双值对比：主版式 = VS-TRIPLE。顶 mono kicker（跨 3 列）；中行三 tile：左 = 主数 (accent)，中 = mono 标签 "VS" 或差值，右 = 对照数 (ink-mute)；底 = body 解释（跨 3 列）。备选 = SPLIT-50（左右两数，attribution 放角落）。
+      (c) 柱状图（bar）：主版式 = CHART-LEGEND。顶 kicker 通栏；下左 tile = 单个 <svg> 内 ≤ 5 根 <rect>（轨道色 rgba(236,231,218,0.12) + 已揭示 accent，每根上方 serif 小数字 / 下方 mono 标签）；下右 tile = 对应数据列表（mono 标签 + serif 数字，每行一个数据项）。备选 = SINGLE-FOCUS（只放 chart，数字直接标在柱顶）。
+      (d) 进度环 / 饼图（donut）：主版式 = SINGLE-FOCUS，tile 居中放 SVG <circle>（stroke-dasharray 揭示一段角度，progress-ring 方式），中央 serif 大百分比；tile 顶部 mono kicker，底部 body 解释。禁止真正的多片 pie。
+      (e) 折线图（line）：主版式 = HERO-FOOTER。hero tile = 单条 <polyline>（strokeDasharray + strokeDashoffset 从 100%→0% 揭示，accent 描边、不填充）+ 两端各一个 SVG <circle> 标点 + 两端 mono 数值标签；footer tile = mono kicker + body 解释（横向并列）。
+      (f) 表格（table）：主版式 = SINGLE-FOCUS。tile 内 div + flex 网格（不要用 <table>），最多 4 行 × 3 列；首行 mono 表头（ink-mute、letterSpacing 0.14em），数据行 serif 数字 + sans 标签；行与行之间 1px hairline 分隔；揭示按行进行，每行可作为 tile 内部的子 step（不另开 grid tile）。
+    技术栈硬约束：所有图表必须用**纯 SVG + Remotion 原语**（@remotion/shapes 的 Rect / Circle / Polygon、原生 <svg> + <rect>/<circle>/<path>/<polyline>），禁止 recharts、d3、chart.js 等第三方图表库；禁止 canvas / WebGL。
+    分步单元 step：(a) 主 = [hero-tile, footer-tile]；(b) 主 = [kicker-tile, value-A-tile, vs-tile, value-B-tile, footer-tile]（VS 与 footer 可并入相邻 tile）；(c) 主 = [kicker-tile, chart-tile, legend-tile]，chart tile 内柱子按 beats 错峰；(d) (e) (f) 主 = [tile]，tile 内部子元素按 beats 错峰。
+    数字增长动画（适用于 (a)(b)(c)(d) 主数字）：每个数字在所属 tile 的揭示窗内，从 0 / 起始值 interpolate 到目标值（Easing.out(Easing.cubic)、clamp 两端），用 Math.round 处理整数、用 toFixed(1) 处理一位小数；**绝对不要每帧 Math.random / noise**。
     图表入场动画：
-      - bar：每根柱子的 height（或 width）从 0 长到目标值，按 step 顺序触发；柱子之间不重叠、不挡文字。
+      - bar：每根柱子的 height（或 width）从 0 长到目标值，在 chart tile 揭示窗内按 beats 错峰；柱子之间不重叠、不挡文字。
       - line：strokeDashoffset 从总长 → 0，单调一次性揭示。
       - donut：strokeDashoffset 从 circumference → circumference*(1-pct)，单调一次性揭示，中央数字与环同步增长。
       - table：每行 translateY(H*0.02) + opacity 揭示；揭示后保持。
     数据真实性：所有数字 / 比例必须直接来自 segmentTranscriptExcerpt / segmentSummary；如果原文没有具体数字，请用 type="insight" 而不是 type="data" 编造数据。
+    表达特点：hero tile 是数据焦点，辅助 tile 给标签 / 解释 / 图例；信息密度最高、tile 数量最多。
 
-  • type="motion"（兜底 / 抽象概念）—— 极简 statement
-    版式：serif 中文短标题居中（≤ 10 字）→ hairline → 一句 sans 注解（≤ 24 字）→ 允许一个轻量 SVG 几何（直线 / 圆环 / 三角，stroke 1.5px，accent 描边，不填充）。
-    分步单元 step：[title, hairline, annotation, glyph]，按 subtitles 顺序揭示；几何描边可用 strokeDasharray 一次性单调揭示。
+  • type="motion"（兜底 / 抽象概念 · 极简 statement）
+    主版式：SINGLE-FOCUS。tile 内部居中：serif 中文短标题（≤ 10 字）→ hairline → 一句 sans 注解（≤ 24 字）→ 一个轻量 SVG 几何（直线 / 圆环 / 三角，stroke 1.5px，accent 描边，不填充）。
+    备选版式：SPLIT-50。左 tile = 标题 + 注解；右 tile = SVG 几何居中；两 tile 之间 1px hairline 竖线。
+    分步：主版式只 1 tile，内部子元素 [title, hairline, annotation, glyph] 按 beats 错峰；备选版式 step = [左 tile, 右 tile]。
+    动画：几何描边用 strokeDasharray 一次性单调揭示，不要循环。
+    表达特点：留白比章节扉页更彻底，是兜底版式，能不出现就不出现。
 
   ===== 强制视觉硬规则 =====
-  - 容器：position relative，背景 #0E0E10 满铺，flexDirection column；不要在外层加任何 borderRadius / boxShadow。
-  - 不允许任何 div 出现 background 为渐变、半透明白色磨砂、彩色发光圈。
-  - 不允许使用 emoji / 装饰性 unicode（★ ✦ ◆ ⚡ 之类）；装饰只用纯几何 SVG 或 mono 数字编号。
+  - 容器：position relative，背景 #0E0E10 满铺，**display:'grid'**；不要在外层加任何 borderRadius / boxShadow / border。
+  - tile 自身：**禁止 background / border / borderRadius / boxShadow / filter**；tile 区块感只能靠 gap 留白 + 1px hairline 分隔线实现。
+  - 不允许任何 div 出现 background 为渐变、半透明白色磨砂、彩色发光圈；半透明 ink 色块（≤ rgba(236,231,218,0.12)）只允许作为图表轨道使用，不得作为 tile 背景。
+  - 不允许使用 emoji / 装饰性 unicode（★ ✦ ◆ ⚡ 之类）；装饰只用纯几何 SVG、1px hairline 或 mono 数字编号。
   - 整张卡的非黑非白彩色块面积之和 ≤ 8%（accent + 数据已揭示区合计配额）。
   - 中文与西文混排时，西文（年份 / 缩写 / Vol. / 单位）用 mono；中文用 serif / sans。
-  - 每张卡必须包含至少 1 行 mono meta，强化"杂志一页"的元数据氛围。
-  - 入场仅允许 translateY + opacity；禁止 scale / rotate / blur 入场；禁止全屏 zoom-in。
+  - 每张卡必须包含至少 1 行 mono meta，强化"杂志一页"的元数据氛围；meta 必须落在一个独立 tile 或 hero tile 的角落，不要游离在 grid 外。
+  - 入场仅允许 translateY + opacity（作用于 tile 层）；禁止 scale / rotate / blur 入场；禁止全屏 zoom-in。
+  - tile 之间禁止同帧入场（同帧仅允许在退场窗）；同一 tile 内子元素错峰不得超过 12 帧。
 
   ===== 失败示例（生成完毕后必须自查）=====
   - ✗ 用 emoji ✨ 或 🚀 当标题修饰
@@ -302,6 +348,13 @@ user: |-
   - ✗ 柱状图柱子之间或与轴标签发生重叠
   - ✗ 用 Math.sin(frame/10) 驱动 opacity 制造闪烁
   - ✗ 引入 recharts / chart.js / d3 / canvas
+  - ✗ 给 tile 加半透明白色 / 任意 rgba 背景营造卡片感
+  - ✗ 给 tile 加 1px solid 边框围出方块（应该用 gap 留白 + hairline 分隔线代替）
+  - ✗ tile 之间没有 hairline 也没有足够 gap（< H * 0.03），导致两块内容糊在一起
+  - ✗ 顶层容器仍用 display:'flex' + flexDirection:'column' 而不是 display:'grid'
+  - ✗ 两个 tile 在同一帧同时入场（除非是退场窗）
+  - ✗ 同一 tile 内子元素错峰 > 12 帧，导致 tile 看起来分裂成两个 step
+  - ✗ hairline 分隔线压在 tile 内的文字或图表上，而不是落在 gap 中央
 
   节目定位：
   {{programContext}}

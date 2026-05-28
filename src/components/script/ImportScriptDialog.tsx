@@ -32,7 +32,8 @@ import {
 import type { AutoWorkflowParams } from '../../store/ai';
 import styles from './ImportScriptDialog.module.css';
 
-const ALLOWED_EXTENSIONS = ['.md', '.txt'] as const;
+const ALLOWED_EXTENSIONS = ['.md', '.txt', '.html', '.htm'] as const;
+const ALLOWED_LABEL = '.md / .txt / .html';
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB 上限，避免误拖音视频
 
 function stripExtension(name: string): string {
@@ -117,7 +118,7 @@ export function ImportScriptDialog({
 
   const applyFile = useCallback(async (file: File) => {
     if (!hasAllowedExtension(file.name)) {
-      setLocalError(`仅支持 ${ALLOWED_EXTENSIONS.join(' / ')} 文件`);
+      setLocalError(`仅支持 ${ALLOWED_LABEL} 文件`);
       return;
     }
     if (file.size > MAX_BYTES) {
@@ -144,7 +145,7 @@ export function ImportScriptDialog({
     const result = await window.electronAPI.selectTextFile();
     if (!result) return;
     if (!hasAllowedExtension(result.path)) {
-      setLocalError(`仅支持 ${ALLOWED_EXTENSIONS.join(' / ')} 文件`);
+      setLocalError(`仅支持 ${ALLOWED_LABEL} 文件`);
       return;
     }
     setContent(result.content);
@@ -210,7 +211,7 @@ export function ImportScriptDialog({
         <DialogHeader>
           <DialogTitle>导入文稿</DialogTitle>
           <DialogDescription>
-            粘贴原稿、拖拽文件或选择 .md / .txt 文件，导入后自动创建项目并开始 AI 写稿
+            粘贴原稿、拖拽文件或选择 .md / .txt / .html 文件，导入后自动创建项目并开始 AI 写稿
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
@@ -226,7 +227,7 @@ export function ImportScriptDialog({
               <Textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="在此粘贴或输入原稿内容，也可以拖拽 .md / .txt 文件到这里"
+                placeholder="在此粘贴或输入原稿内容，也可以拖拽 .md / .txt / .html 文件到这里"
                 rows={8}
                 resize="vertical"
               />
