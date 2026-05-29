@@ -2241,7 +2241,15 @@ ipcMain.handle(
             const partPath = path.join(tmpDir, `chunk-${i}.wav`);
             await fs.writeFile(partPath, buf);
             partPaths.push(partPath);
-            parts.push({ durMs: await readAudioDurationMs(partPath, { ffprobePath }), units: chunks[i] });
+            // 音频已生成成功；ffprobe 偶发失败时按字数估算时长兜底，不丢弃已合成音频
+            let durMs: number;
+            try {
+              durMs = await readAudioDurationMs(partPath, { ffprobePath });
+            } catch {
+              const chunkChars = chunks[i].reduce((n, u) => n + u.subtitle.length, 0);
+              durMs = Math.max(1_000, chunkChars * 200);
+            }
+            parts.push({ durMs, units: chunks[i] });
             mainWindow?.webContents.send('tts-progress', 35 + Math.round((50 * (i + 1)) / chunks.length));
           }
           await concatWavFiles(partPaths, audioPath, { ffmpegPath });
@@ -2278,7 +2286,7 @@ ipcMain.handle(
             : '';
       }
 
-      mainWindow?.webContents.send('tts-progress', 70);
+      if (!isMimoChunked) mainWindow?.webContents.send('tts-progress', 70);
       const srtPath = path.join(projectDir, 'podcast-subtitles.srt');
       const originalSrtPath = path.join(projectDir, 'podcast-subtitles.original.srt');
       await fs.writeFile(srtPath, srtText, 'utf-8');
