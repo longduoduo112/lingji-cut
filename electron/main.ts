@@ -33,10 +33,8 @@ import {
 } from './card-media-handlers';
 import { createHyperframesComposition } from '../src/hyperframes/composition';
 import { prepareTimelineForHyperframes, type HyperframesAssetDescriptor } from '../src/hyperframes/assets';
-import {
-  subtitleJsonToSRT,
-  toSRTTime,
-} from '../src/lib/minimax-tts';
+import { subtitleJsonToSRT } from '../src/lib/minimax-tts';
+import { buildEstimatedSrtTextFromText } from '../src/lib/srt-resegment';
 import { runTTSProvider } from './tts-provider-runner';
 import {
   buildLegacyMinimaxTTSProvider,
@@ -2240,11 +2238,12 @@ ipcMain.handle(
           durationMs = 1_000;
         }
       }
-      const fallbackSrtText = `1\n${toSRTTime(0)} --> ${toSRTTime(durationMs)}\n${text.trim()}\n`;
+      // Provider 返回了逐句时间戳（MiniMax）直接用；否则（MiMo 等无时间戳）
+      // 按字数等比分摊总时长，生成多条合法 SRT，避免把整段脚本塞进单条 cue。
       const srtText = result.subtitleText?.trim()
         ? result.subtitleText
         : text.trim()
-          ? fallbackSrtText
+          ? buildEstimatedSrtTextFromText(text, durationMs)
           : '';
       await fs.writeFile(srtPath, srtText, 'utf-8');
       await fs.writeFile(originalSrtPath, srtText, 'utf-8');

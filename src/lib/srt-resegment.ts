@@ -1,4 +1,5 @@
 import type { SrtEntry } from '../types';
+import { serializeSrtEntries } from './srt-parser';
 
 export const DEFAULT_MAX_CHARS_PER_ENTRY = 35;
 export const MIN_CHARS_PER_ENTRY = 20;
@@ -127,4 +128,37 @@ export function resegmentSrtEntries(entries: SrtEntry[], maxChars: number): SrtE
     split.push(...splitLongEntry(entry, maxChars));
   }
   return split.map((entry, idx) => ({ ...entry, index: idx + 1 }));
+}
+
+/**
+ * 为「不返回逐句时间戳」的 TTS Provider（如 MiMo）构造估算字幕。
+ *
+ * 没有真实时间戳时只能按字符数等比分摊总时长，得到近似对齐的多条字幕，
+ * 而不是把整段脚本塞进一条 cue。关键是先把换行/空行归一成单个空格：
+ * SRT 的空行是 cue 分隔符，若整段脚本（含段落空行）写进一条 cue，
+ * 重新解析时空行之后的内容会被整体丢弃。
+ */
+export function buildEstimatedSrtEntriesFromText(
+  text: string,
+  durationMs: number,
+  maxChars: number = DEFAULT_MAX_CHARS_PER_ENTRY,
+): SrtEntry[] {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return [];
+  }
+  const safeDuration = Math.max(MIN_SEGMENT_DURATION_MS, Math.round(durationMs) || 0);
+  const singleEntry: SrtEntry = { index: 1, startMs: 0, endMs: safeDuration, text: normalized };
+  return resegmentSrtEntries([singleEntry], maxChars);
+}
+
+/**
+ * buildEstimatedSrtEntriesFromText 的文本版本，直接返回可写入 .srt 文件的字符串。
+ */
+export function buildEstimatedSrtTextFromText(
+  text: string,
+  durationMs: number,
+  maxChars: number = DEFAULT_MAX_CHARS_PER_ENTRY,
+): string {
+  return serializeSrtEntries(buildEstimatedSrtEntriesFromText(text, durationMs, maxChars));
 }

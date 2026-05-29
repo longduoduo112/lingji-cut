@@ -3,10 +3,13 @@ import type { SrtEntry } from '../src/types';
 import {
   DEFAULT_MAX_CHARS_PER_ENTRY,
   MIN_SEGMENT_DURATION_MS,
+  buildEstimatedSrtEntriesFromText,
+  buildEstimatedSrtTextFromText,
   findBestBreakPoint,
   resegmentSrtEntries,
   splitLongEntry,
 } from '../src/lib/srt-resegment';
+import { parseSrt } from '../src/lib/srt-parser';
 
 function createEntry(overrides: Partial<SrtEntry> = {}): SrtEntry {
   return {
@@ -182,5 +185,70 @@ describe('resegmentSrtEntries', () => {
 
   it('returns empty array for empty input', () => {
     expect(resegmentSrtEntries([], 35)).toEqual([]);
+  });
+});
+
+describe('buildEstimatedSrtEntriesFromText (MiMo 等无时间戳 Provider 兜底)', () => {
+  // 真实复现：MiMo 返回的整段口播稿，含段落空行。
+  const SCRIPT = [
+    '各位好，我是一叶知秋。今天这期节目，我们来聊一个最近市场上争论特别激烈的话题。',
+    '',
+    '两家公司，大普微和兆易创新，市值都在三千亿附近徘徊。它们的基本面差距大得惊人。',
+  ].join('\n');
+
+  it('多段脚本生成多条 cue，而不是塞进单条', () => {
+    const entries = buildEstimatedSrtEntriesFromText(SCRIPT, 40_640);
+    expect(entries.length).toBeGreaterThan(1);
+    expect(entries.map((e) => e.index)).toEqual(entries.map((_, i) => i + 1));
+  });
+
+  it('归一化掉换行/空行，任何 cue 文本都不含换行', () => {
+    const entries = buildEstimatedSrtEntriesFromText(SCRIPT, 40_640);
+    expect(entries.every((e) => !e.text.includes('\n'))).toBe(true);
+  });
+
+  it('时间覆盖 [0, durationMs] 且严格递增', () => {
+    const entries = buildEstimatedSrtEntriesFromText(SCRIPT, 40_640);
+    expect(entries[0].startMs).toBe(0);
+    expect(entries[entries.length - 1].endMs).toBe(40_640);
+    for (let i = 0; i < entries.length - 1; i += 1) {
+      expect(entries[i].endMs).toBe(entries[i + 1].startMs);
+      expect(entries[i].endMs).toBeGreaterThanOrEqual(entries[i].startMs);
+    }
+  });
+
+  it('空白文本返回空数组', () => {
+    expect(buildEstimatedSrtEntriesFromText('   \n\n  ', 5_000)).toEqual([]);
+  });
+
+  it('durationMs 非法时回退到最小时长，不抛错', () => {
+    const entries = buildEstimatedSrtEntriesFromText('一句话', Number.NaN);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].endMs).toBe(MIN_SEGMENT_DURATION_MS);
+  });
+});
+
+describe('buildEstimatedSrtTextFromText 回归（修复前整段脚本会被解析丢失）', () => {
+  const SCRIPT = [
+    '各位好，我是一叶知秋。今天这期节目，我们来聊一个最近市场上争论特别激烈的话题。',
+    '',
+    '两家公司，大普微和兆易创新，市值都在三千亿附近徘徊。它们的基本面差距大得惊人。',
+  ].join('\n');
+
+  it('产出可被 parseSrt 正确解析为多条，且全文不丢失', () => {
+    const srtText = buildEstimatedSrtTextFromText(SCRIPT, 40_640);
+    const reparsed = parseSrt(srtText);
+    expect(reparsed.length).toBeGreaterThan(1);
+
+    // 修复前的单 cue 兜底：空行被当成 cue 分隔符，第二段整体丢失。
+    // 修复后，重解析拼接的文本应包含两段的关键内容。
+    const joined = reparsed.map((e) => e.text).join('');
+    expect(joined).toContain('一叶知秋');
+    expect(joined).toContain('大普微和兆易创新');
+    expect(joined).toContain('基本面差距大得惊人');
+  });
+
+  it('空白文本返回空串', () => {
+    expect(buildEstimatedSrtTextFromText('', 5_000)).toBe('');
   });
 });
