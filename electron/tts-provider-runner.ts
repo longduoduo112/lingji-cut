@@ -28,6 +28,8 @@ export interface TTSRunnerOptions {
   provider: TTSProvider;
   voice: TTSVoicePreset;
   signal: AbortSignal;
+  styleInstruction?: string;
+  speakText?: string;
 }
 
 async function runMinimaxTTS(options: TTSRunnerOptions): Promise<TTSRunnerResult> {
@@ -125,6 +127,8 @@ async function runXiaomiMimoTTS(options: TTSRunnerOptions): Promise<TTSRunnerRes
         voice,
         referenceAudioBase64: reference.data.toString('base64'),
         referenceAudioMime: reference.mime,
+        styleInstruction: options.styleInstruction,
+        speakText: options.speakText,
       }),
     ),
   });
