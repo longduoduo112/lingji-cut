@@ -1,10 +1,10 @@
 import { getRenderableOverlays, getRenderableVisualTracks } from '../lib/timeline-tracks';
-import { getEffectiveTimelineDurationMs } from '../lib/utils';
+import { getEffectiveTimelineDurationMs, toFileSrc } from '../lib/utils';
 import type { OverlayItem, SrtEntry, SubtitleHighlight, SubtitleStyle, TimelineData } from '../types';
 import { filterValidSubtitleHighlights } from '../lib/subtitle-highlights';
 import { isDataContent, isMediaContent } from '../types/ai';
 import type { HyperframesCompositionInput, HyperframesCompositionResult } from './types';
-import { hydrateAICardAssetPaths } from './assets';
+import { hydrateAICardAssetPaths, isAbsoluteFilesystemPath } from './assets';
 
 const SUBTITLE_Z_INDEX = 1000;
 const BACKGROUND_Z_INDEX = 1;
@@ -44,7 +44,13 @@ function px(value: number): string {
 }
 
 function mediaSrc(source: string): string {
-  return source;
+  // 导出链路会先把绝对路径改写成相对的 assets/... 路径，这类相对路径原样返回。
+  // 预览链路（含 npm run dev 的 http origin）拿到的是绝对文件路径，需要转成 file://，
+  // 否则在 hyperframes-player 的 srcdoc iframe 里会被解析成 http://host/Users/... 而无法加载。
+  if (!source || !isAbsoluteFilesystemPath(source)) {
+    return source;
+  }
+  return toFileSrc(source);
 }
 
 function formatTime(ms: number): string {
@@ -159,9 +165,9 @@ function renderLegacyCardContent(overlay: OverlayItem, chapterIndex: number): st
       return `<div class="hf-card-placeholder">素材生成中</div>`;
     }
     if (card.cardType === 'video') {
-      return `<video class="hf-card-media" src="${escapeAttr(card.content.assetPath)}" muted playsinline preload="auto"></video>`;
+      return `<video class="hf-card-media" src="${escapeAttr(mediaSrc(card.content.assetPath))}" muted playsinline preload="auto"></video>`;
     }
-    return `<img class="hf-card-media" src="${escapeAttr(card.content.assetPath)}" alt="" />`;
+    return `<img class="hf-card-media" src="${escapeAttr(mediaSrc(card.content.assetPath))}" alt="" />`;
   }
 
   if (card.cardType === 'data' && isDataContent(card.content)) {
@@ -301,7 +307,7 @@ function renderHtml(input: HyperframesCompositionInput): HyperframesCompositionR
     .join('\n');
   const audioHtml = [
     timeline.podcast.audioPath
-      ? `<audio id="podcast-audio" data-start="0" data-duration="${seconds(timeline.podcast.durationMs || durationMs)}" data-volume="1" data-track-index="0" src="${escapeAttr(timeline.podcast.audioPath)}" preload="auto"></audio>`
+      ? `<audio id="podcast-audio" data-start="0" data-duration="${seconds(timeline.podcast.durationMs || durationMs)}" data-volume="1" data-track-index="0" src="${escapeAttr(mediaSrc(timeline.podcast.audioPath))}" preload="auto"></audio>`
       : '',
     ...audioOverlays.map((overlay, index) => renderAudioOverlay(overlay, 2000 + index)),
   ].join('\n');

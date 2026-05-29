@@ -25,6 +25,8 @@ export interface BuildXiaomiMimoTtsRequestOptions {
   voice: TTSVoicePreset;
   referenceAudioBase64: string;
   referenceAudioMime: 'audio/mpeg' | 'audio/wav';
+  styleInstruction?: string;
+  speakText?: string;
 }
 
 export interface ReferenceAudioData {
@@ -80,11 +82,13 @@ export function buildXiaomiMimoTtsRequestBody(
     messages: [
       {
         role: 'user',
-        content: '请使用自然、清晰、适合视频口播的语气朗读下面的文本。',
+        content:
+          options.styleInstruction?.trim() ||
+          '请使用自然、清晰、适合视频口播的语气朗读下面的文本。',
       },
       {
         role: 'assistant',
-        content: options.text,
+        content: options.speakText?.trim() || options.text,
       },
     ],
     audio: {

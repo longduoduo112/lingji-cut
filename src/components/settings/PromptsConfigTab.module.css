@@ -146,7 +146,7 @@
   gap: var(--space-6);
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
   padding: var(--space-8) !important;
 }
 

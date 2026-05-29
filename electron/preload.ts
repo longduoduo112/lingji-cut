@@ -257,6 +257,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     emotion?: string;
     model?: string;
     apiKey?: string;
+    styleInstruction?: string;
+    sentences?: Array<{ subtitle: string; speak: string }>;
     projectDir: string;
     telemetryRunId?: string | null;
   }) => ipcRenderer.invoke('generate-tts', args),
@@ -412,6 +414,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     version?: number;
     system: string;
     user: string;
+    ttsStyle?: string;
+    ttsAnnotateHint?: string;
   }) => ipcRenderer.invoke('user-prompts:write', input),
   deleteUserPrompt: (category: string, id: string) =>
     ipcRenderer.invoke('user-prompts:delete', { category, id }),

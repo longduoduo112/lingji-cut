@@ -135,7 +135,10 @@ describe('createHyperframesComposition', () => {
     expect(html).toContain('<img id="image-1"');
     expect(html).toContain('class="clip hf-overlay hf-media-overlay"');
     expect(html).toContain('id="image-1" class="clip hf-overlay hf-media-overlay" data-start="0" data-duration="5" data-track-index="100"');
-    expect(html).toContain('src="/tmp/cover.png"');
+    // 绝对文件路径需转成 file:// URL，否则预览（含 npm run dev 的 http origin）无法加载本地媒体
+    expect(html).toContain('src="file:///tmp/cover.png"');
+    expect(html).not.toContain('src="/tmp/cover.png"');
+    expect(html).toContain('src="file:///tmp/music.mp3"');
     expect(html).toContain('<video id="video-1"');
     expect(html).toContain('id="video-1" class="clip hf-overlay hf-media-overlay" data-start="1" data-duration="3" data-track-index="102"');
     expect(html).toContain('muted playsinline');

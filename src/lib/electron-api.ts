@@ -390,6 +390,8 @@ export interface ElectronAPI {
     emotion?: string;
     model?: string;
     apiKey?: string;
+    styleInstruction?: string;
+    sentences?: Array<{ subtitle: string; speak: string }>;
     projectDir: string;
     telemetryRunId?: string | null;
   }) => Promise<{ audioPath: string; srtPath: string; durationMs: number }>;
@@ -499,6 +501,8 @@ export interface ElectronAPI {
     version?: number;
     system: string;
     user: string;
+    ttsStyle?: string;
+    ttsAnnotateHint?: string;
   }) => Promise<UserPromptEntry>;
   deleteUserPrompt: (
     category: PromptCategory,

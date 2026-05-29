@@ -12,6 +12,9 @@ import {
 import { hashScriptForPodcast } from '../lib/script-hash';
 import { serializeSrtEntries } from '../lib/srt-parser';
 import { generateSubtitleHighlights } from '../lib/subtitle-highlight-runner';
+import { splitIntoSentences } from '../lib/tts/sentence-split';
+import { resolveMimoStyleInstruction } from '../lib/tts/mimo-style';
+import { annotateForMimo } from '../lib/tts/mimo-annotate';
 import {
   DEFAULT_WORKFLOW,
   loadAISettings,
@@ -20,6 +23,7 @@ import {
 } from '../store/ai';
 import type { AutoWorkflowParams } from '../store/ai';
 import { getProjectDir, useTimelineStore } from '../store/timeline';
+import { useScriptStore } from '../store/script';
 import { useTaskProgressStore } from '../store/task-progress';
 import {
   buildAICardTimelineDraft,
@@ -547,6 +551,24 @@ export function useAIVideoWorkflow() {
         });
 
         try {
+          // —— MiMo：取当前口播模板演绎人设 + 分句 + AI 句级打标 ——
+          let mimoStyleInstruction: string | undefined;
+          let mimoSentences: Array<{ subtitle: string; speak: string }> | undefined;
+          if (defaultTtsConfig.provider?.type === 'xiaomi_mimo') {
+            const templateId = useScriptStore.getState().selectedTemplate;
+            const templates = useAIStore.getState().userPromptEntries['script-template'] ?? [];
+            const template = templates.find((t) => t.id === templateId);
+            mimoStyleInstruction = resolveMimoStyleInstruction(template);
+            const clean = splitIntoSentences(scriptText);
+            if (clean.length > 0) {
+              const tags = await annotateForMimo(clean, template?.ttsAnnotateHint ?? '', settings);
+              mimoSentences = clean.map((s, i) => ({
+                subtitle: s,
+                speak: tags[i] ? `(${tags[i]})${s}` : s,
+              }));
+            }
+          }
+
           const ttsResult = await window.electronAPI.generateTTS({
             requestId: currentRequestId,
             text: scriptText,
@@ -560,6 +582,8 @@ export function useAIVideoWorkflow() {
                       : defaultTtsConfig.voice.voiceId,
                 }
               : undefined,
+            styleInstruction: mimoStyleInstruction,
+            sentences: mimoSentences,
             projectDir,
             telemetryRunId: workflowSession.telemetryRunId,
           });
