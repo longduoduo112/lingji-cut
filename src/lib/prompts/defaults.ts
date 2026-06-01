@@ -178,10 +178,7 @@ user: |-
   项目统一风格要求：{{projectStylePrompt}}
   节目级总结：{{programSummary}}
   节目关键词：{{keywords}}
-
-  ===== 风格锚点（系统风格库注入）=====
   {{styleSystemBlock}}
-
   ===== 当前段落信息 =====
   段落 id：{{segmentId}}
   段落标题：{{segmentTitle}}

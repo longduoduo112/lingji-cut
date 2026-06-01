@@ -21,4 +21,9 @@ describe('editorial-eink facet 非空（motion/cover）', () => {
   it('cover facet 含「缩略图」锚点', () => {
     expect(getStyleFacetBlock('editorial-eink', 'cover')).toContain('缩略图');
   });
+  // 默认预设 editorial-eink 的 image facet 故意留空：card.image 用裸 {{styleSystemBlock}} 占位符，
+  // 空 facet 渲染为空字符串，不会产生悬挂的 ===== 风格锚点 ===== 标题（非疏漏）。
+  it('image facet 默认为空（非疏漏）', () => {
+    expect(getStyleFacetBlock('editorial-eink', 'image')).toBe('');
+  });
 });
