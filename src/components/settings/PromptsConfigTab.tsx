@@ -199,7 +199,7 @@ export function PromptsConfigTab() {
   const projectStylePresetId = useAIStore((s) => s.projectStylePresetId);
   const setProjectStylePresetId = useAIStore((s) => s.setProjectStylePresetId);
 
-  /** 写入全局默认风格：复用 StyleLibraryTab 的 load/save 模式，并同步本地 aiSettings */
+  /** 写入全局默认风格：持久化到 aiSettings 并同步本地状态 */
   const persistGlobalStyle = useCallback(
     async (id: string) => {
       try {
