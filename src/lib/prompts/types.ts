@@ -229,6 +229,7 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
       { name: 'projectStylePrompt', description: '项目统一风格要求（为空填"无"）' },
       { name: 'projectStylePromptBlock', description: '项目统一风格要求块；无值为空字符串' },
       { name: 'currentPrompt', description: '当前封面提示词（为空填"无"）' },
+      { name: 'styleSystemBlock', description: '系统风格库注入的视觉系统块；由所选风格预设的对应 facet 决定' },
     ],
     lockedContract: {
       position: 'user-tail',
@@ -259,6 +260,7 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
       { name: 'programContext', description: '节目级浓缩上下文（节目摘要、关键词、当前段在整期中的位置）' },
       { name: 'fullTranscript', description: '兼容旧模板：与 programContext 同值，不再注入完整全文，避免 token 爆炸' },
       { name: 'sandboxReference', description: 'HyperFrames Motion 片段运行时约束（cards.segment 校验 motion-card 所需）' },
+      { name: 'styleSystemBlock', description: '系统风格库注入的视觉系统块；由所选风格预设的对应 facet 决定' },
     ],
     lockedContract: {
       position: 'user-tail',
@@ -301,6 +303,7 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
       { name: 'displayMode', description: '显示模式：fullscreen 或 pip' },
       { name: 'aspectRatio', description: '画幅比例：16:9 / 9:16 / 1:1 / 4:3 / 3:4' },
       { name: 'cardPromptHint', description: '用户单卡追加提示词，可选（无则为"无"）' },
+      { name: 'styleSystemBlock', description: '系统风格库注入的视觉系统块；由所选风格预设的对应 facet 决定' },
     ],
     lockedContract: {
       position: 'user-tail',
