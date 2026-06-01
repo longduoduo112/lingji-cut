@@ -6,6 +6,9 @@ import { CYBER_GLITCH } from './card-style-presets/cyber-glitch';
 import { FILM_LEAK } from './card-style-presets/film-leak';
 import { HAND_SKETCH } from './card-style-presets/hand-sketch';
 import { SOFT_APPLE } from './card-style-presets/soft-apple';
+import { DARK_GRAPH } from './card-style-presets/dark-graph';
+import { XHS_PASTEL } from './card-style-presets/xhs-pastel';
+import { MONO_BOLD } from './card-style-presets/mono-bold';
 
 // editorial-eink 的 motion / cover facet 是从 defaults.ts 逐字抽出的视觉系统块（Task 3）。
 // 注入回 {{styleSystemBlock}} 后必须与重构前的提示词字节一致，请勿手改下面两段长文。
@@ -252,6 +255,9 @@ export const VISUAL_STYLE_PRESETS: VisualStylePreset[] = [
   FILM_LEAK,
   HAND_SKETCH,
   SOFT_APPLE,
+  DARK_GRAPH,
+  XHS_PASTEL,
+  MONO_BOLD,
 ];
 
 export function listStylePresets(): VisualStylePreset[] {

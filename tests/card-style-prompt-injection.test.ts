@@ -69,6 +69,24 @@ describe('新增风格预设 facet 锚点', () => {
     expect(block.length).toBeGreaterThan(0);
     expect(block).toMatch(/squircle|圆角|柔/);
   });
+
+  it('dark-graph motion facet 含「图谱」/「玻璃」/「光球」锚点且非空', () => {
+    const block = getStyleFacetBlock('dark-graph', 'motion');
+    expect(block.length).toBeGreaterThan(0);
+    expect(block).toMatch(/图谱|玻璃|光球/);
+  });
+
+  it('xhs-pastel motion facet 含「马卡龙」/「柔彩」/「圆角」锚点且非空', () => {
+    const block = getStyleFacetBlock('xhs-pastel', 'motion');
+    expect(block.length).toBeGreaterThan(0);
+    expect(block).toMatch(/马卡龙|柔彩|圆角/);
+  });
+
+  it('mono-bold motion facet 含「大字」/「满版」/「色条」锚点且非空', () => {
+    const block = getStyleFacetBlock('mono-bold', 'motion');
+    expect(block.length).toBeGreaterThan(0);
+    expect(block).toMatch(/大字|满版|色条/);
+  });
 });
 
 describe('build 函数注入 styleSystemBlock', () => {
