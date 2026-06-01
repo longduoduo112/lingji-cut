@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getAICardOverlayPosition } from '../lib/ai-card-layout';
+import { listStylePresets } from '../lib/card-style-presets';
 import { toFileSrc } from '../lib/utils';
 import { getVideoProvider } from '../lib/video-gen/registry';
 import { loadAISettings, useAIStore } from '../store/ai';
@@ -37,6 +38,13 @@ const CARD_TYPES: Array<PillGroupItem<AICardType>> = [
   { value: 'quote', label: '金句' },
 ];
 
+// PillGroup 需要受控的非空值，用哨兵值表示「跟随项目 / 全局」（实际持久化为 undefined）。
+const STYLE_INHERIT = '__inherit__';
+const STYLE_PRESET_ITEMS: Array<PillGroupItem<string>> = [
+  { value: STYLE_INHERIT, label: '跟随项目 / 全局' },
+  ...listStylePresets().map((p) => ({ value: p.id, label: p.name })),
+];
+
 const DISPLAY_MODES: Array<PillGroupItem<'fullscreen' | 'pip'>> = [
   { value: 'fullscreen' as const, label: '全屏' },
   { value: 'pip' as const, label: '画中画' },
@@ -58,6 +66,7 @@ export function AICardInspector({
   const [content, setContent] = useState('');
   const [cardPrompt, setCardPrompt] = useState('');
   const [type, setType] = useState<AICardType>('summary');
+  const [stylePresetId, setStylePresetId] = useState<string | undefined>(undefined);
   const [displayMode, setDisplayMode] = useState<'fullscreen' | 'pip'>('fullscreen');
   const [displayDurationMs, setDisplayDurationMs] = useState(5_000);
 
@@ -72,6 +81,7 @@ export function AICardInspector({
     );
     setCardPrompt(card.cardPrompt ?? '');
     setType(card.type);
+    setStylePresetId(card.stylePresetId);
     setDisplayMode(card.displayMode);
     setDisplayDurationMs(card.displayDurationMs);
   }, [card]);
@@ -115,6 +125,7 @@ export function AICardInspector({
     title,
     content: parsedContent,
     type,
+    stylePresetId,
     displayMode,
     displayDurationMs,
     cardPrompt: cardPrompt.trim() || undefined,
@@ -152,6 +163,18 @@ export function AICardInspector({
           className={styles.pillRow}
           itemClassName={styles.pillItem}
         />
+
+        <label className={styles.fieldStack}>
+          <span className={styles.fieldLabel}>卡片风格</span>
+          <PillGroup
+            items={STYLE_PRESET_ITEMS}
+            value={stylePresetId ?? STYLE_INHERIT}
+            onChange={(value) => setStylePresetId(value === STYLE_INHERIT ? undefined : value)}
+            size="sm"
+            className={styles.pillRow}
+            itemClassName={styles.pillItem}
+          />
+        </label>
 
         <label className={styles.fieldStack}>
           <span className={styles.fieldLabel}>标题</span>
