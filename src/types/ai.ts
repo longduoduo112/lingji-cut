@@ -74,11 +74,7 @@ export interface VisualStyleFonts {
 }
 
 /** 三个生成表面的「视觉系统」提示词块；缺省表示该表面回退默认风格 */
-export interface VisualStyleFacets {
-  motion?: string;
-  cover?: string;
-  image?: string;
-}
+export type VisualStyleFacets = Partial<Record<VisualStyleFacetKind, string>>;
 
 export interface VisualStylePreview {
   /** 静态 Motion Card HTML 片段（含内联 <style> + 同步 <script>，遵守 motion-card 契约） */
