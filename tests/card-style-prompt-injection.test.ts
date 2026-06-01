@@ -33,6 +33,26 @@ describe('editorial-eink facet 非空（motion/cover）', () => {
   });
 });
 
+describe('新增风格预设 facet 锚点', () => {
+  it('swiss-grid motion facet 含「网格」/「克莱因」锚点且非空', () => {
+    const block = getStyleFacetBlock('swiss-grid', 'motion');
+    expect(block.length).toBeGreaterThan(0);
+    expect(block).toMatch(/网格|克莱因/);
+  });
+
+  it('nyt-data motion facet 含「社论」/「SVG」锚点且非空', () => {
+    const block = getStyleFacetBlock('nyt-data', 'motion');
+    expect(block.length).toBeGreaterThan(0);
+    expect(block).toMatch(/社论|SVG/);
+  });
+
+  it('cyber-glitch motion facet 含「故障」/「扫描线」锚点且非空', () => {
+    const block = getStyleFacetBlock('cyber-glitch', 'motion');
+    expect(block.length).toBeGreaterThan(0);
+    expect(block).toMatch(/故障|扫描线/);
+  });
+});
+
 describe('build 函数注入 styleSystemBlock', () => {
   const segment: AISegment = {
     id: 'seg-1',
