@@ -18,6 +18,7 @@ import {
   regenerateCoverPrompt,
   type SubtitleCardDraftInput,
 } from '../src/lib/ai-analysis';
+import { resolveStylePresetId } from '../src/lib/card-style';
 import type { ExportConfig } from '../src/lib/export-settings';
 import { generateCoverCandidates } from '../src/lib/cover-generation';
 import {
@@ -749,6 +750,9 @@ ipcMain.handle(
       const result = await analyzeSrt(entries, args.settings, {
         globalPrompt: args.globalPrompt,
         projectStylePrompt,
+        // TODO(Task 7): 项目级 stylePresetId 持久化后从项目设置读取并透传。
+        projectStylePresetId: undefined,
+        defaultStylePresetId: args.settings.defaultStylePresetId,
         planningTemplate,
         cardTemplate,
         imageTemplate,
@@ -849,6 +853,10 @@ ipcMain.handle(
       return await regenerateAICard(args.entries, args.card, args.segment, args.settings, {
         globalPrompt: args.globalPrompt,
         projectStylePrompt,
+        // 单卡覆盖来自 args.card.stylePresetId（lib 层 resolve 时合并）；项目级见 Task 7。
+        // TODO(Task 7): 项目级 stylePresetId 持久化后从项目设置读取并透传。
+        projectStylePresetId: undefined,
+        defaultStylePresetId: args.settings.defaultStylePresetId,
         cardPrompt: args.cardPrompt,
         programSummary: args.programSummary,
         keywords: args.keywords,
@@ -923,6 +931,11 @@ ipcMain.handle(
         {
           globalPrompt: args.globalPrompt,
           projectStylePrompt,
+          // 失败段补生成无单卡覆盖；按 项目 → 全局 → 内置默认 解析。
+          // TODO(Task 7): 项目级 stylePresetId 持久化后并入 project 层。
+          stylePresetId: resolveStylePresetId({
+            global: args.settings.defaultStylePresetId,
+          }),
           cardPrompt: args.cardPrompt,
           cardTemplate,
           imageTemplate,
@@ -1015,6 +1028,10 @@ ipcMain.handle(
       return await generateSingleCardFromSubtitles(args.entries, args.draft, args.settings, {
         globalPrompt: args.globalPrompt,
         projectStylePrompt,
+        // 手动选段是新卡片，无单卡覆盖；项目级见 Task 7。
+        // TODO(Task 7): 项目级 stylePresetId 持久化后从项目设置读取并透传。
+        projectStylePresetId: undefined,
+        defaultStylePresetId: args.settings.defaultStylePresetId,
         programSummary: args.programSummary,
         keywords: args.keywords,
         cardTemplate,
@@ -1067,6 +1084,9 @@ ipcMain.handle(
       return await regenerateCoverPrompt(args.entries, args.settings, {
         globalPrompt: args.globalPrompt,
         projectStylePrompt,
+        // TODO(Task 7): 项目级 stylePresetId 持久化后从项目设置读取并透传。
+        projectStylePresetId: undefined,
+        defaultStylePresetId: args.settings.defaultStylePresetId,
         currentPrompt: args.currentPrompt,
         coverTemplate,
         projectBindings: args.projectBindings ?? null,
