@@ -1,5 +1,4 @@
 export const PROMPT_KINDS = [
-  'project.style',
   'planning.segment',
   'cover.regeneration',
   'cards.segment',
@@ -196,13 +195,6 @@ const LOCKED_CARD_IMAGE = `【系统契约 · 不可修改】
 画面中禁止出现任何文字 / UI 元素 / Logo / 水印 / 字幕条。`;
 
 export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
-  'project.style': {
-    kind: 'project.style',
-    label: '项目统一风格',
-    description: '统一定义整期项目的设计语言，可被其他提示词通过 {{projectStylePrompt}} 复用引用',
-    group: 'project',
-    variables: [],
-  },
   'planning.segment': {
     kind: 'planning.segment',
     label: '字幕分段规划',

@@ -1,12 +1,5 @@
 import type { PromptKind } from './types';
 
-const PROJECT_STYLE = `name: project.style
-description: 项目统一风格提示词
-version: 1
-user: |-
-  冷静克制的现代科技纪录片风格，深色背景，低饱和青蓝色点缀，细腻磨砂玻璃层次，电影级侧逆光，构图留白稳定，镜头运动缓慢顺滑，中文无衬线粗体标题，信息层级清晰，避免霓虹紫、强饱和电商橙、营销页式渐变、夸张粒子和廉价光效。
-`;
-
 const PLANNING_SEGMENT = `name: planning.segment
 description: 字幕分段规划提示词
 version: 5
@@ -228,7 +221,6 @@ user: |-
 
 
 export const DEFAULT_PROMPT_YAML: Record<PromptKind, string> = {
-  'project.style': PROJECT_STYLE,
   'planning.segment': PLANNING_SEGMENT,
   'cover.regeneration': COVER_REGENERATION,
   'cards.segment': CARDS_SEGMENT,
