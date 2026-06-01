@@ -58,6 +58,47 @@ export interface CardStyle {
   fontSize: number;
 }
 
+export type VisualStyleFacetKind = 'motion' | 'cover' | 'image';
+
+export interface VisualStylePalette {
+  bg: string;
+  ink: string;
+  muted: string;
+  accent: string;
+}
+
+export interface VisualStyleFonts {
+  display: string;
+  body: string;
+  mono?: string;
+}
+
+/** 三个生成表面的「视觉系统」提示词块；缺省表示该表面回退默认风格 */
+export type VisualStyleFacets = Partial<Record<VisualStyleFacetKind, string>>;
+
+export interface VisualStylePreview {
+  /** 静态 Motion Card HTML 片段（含内联 <style> + 同步 <script>，遵守 motion-card 契约） */
+  motionHtml?: string;
+  /** 封面示意图资产路径（renderer 通过 import 取得的 URL 字符串） */
+  coverImageAsset?: string;
+}
+
+export interface VisualStylePreset {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  /** 来源 html-anything skill，便于追溯 */
+  source: string;
+  palette: VisualStylePalette;
+  fonts: VisualStyleFonts;
+  facets: VisualStyleFacets;
+  preview: VisualStylePreview;
+}
+
+/** 内置默认风格 id；旧数据 / 未知 id 一律回退到它 */
+export const DEFAULT_STYLE_PRESET_ID = 'editorial-eink';
+
 export interface AISegment {
   id: string;
   title: string;
@@ -112,6 +153,8 @@ export interface AICard {
   renderMode?: AICardRenderMode;
   cardPrompt?: string;
   motionCard?: MotionCardPayload;
+  /** 单卡级风格覆盖；缺省继承项目 / 全局 / 内置默认 */
+  stylePresetId?: string;
 }
 
 export interface CoverCandidate {
@@ -250,6 +293,8 @@ export interface AISettings {
   defaultVideoModel: string | null;
   // —— 新增：提示词 → AI 绑定（全局层）——
   promptBindings: PromptBindingMap;
+  /** 全局默认风格预设 id；缺省视为 DEFAULT_STYLE_PRESET_ID */
+  defaultStylePresetId?: string;
   /**
    * 段落信息卡片（含信息图）生成并发数。
    * 控制 analyzeSrt 中分段卡片生成 worker 数；image 卡片的图像 Provider 调用
@@ -274,6 +319,7 @@ export interface AICardOverlayData {
   motionCard?: MotionCardPayload;
   sourceStartMs?: number;
   sourceEndMs?: number;
+  stylePresetId?: string;
 }
 
 export interface AICardTimelineDraft {
@@ -356,6 +402,7 @@ export function buildAICardOverlayData(card: AICard): AICardOverlayData {
     motionCard: card.motionCard,
     sourceStartMs: card.startMs,
     sourceEndMs: card.endMs,
+    stylePresetId: card.stylePresetId,
   };
 }
 

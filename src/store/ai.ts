@@ -13,6 +13,7 @@ import { loadGlobalSettingsFile, updateGlobalSettingsFile } from '../lib/global-
 import {
   DEFAULT_CARD_STYLE,
   DEFAULT_JIMENG_MODEL,
+  DEFAULT_STYLE_PRESET_ID,
   getDefaultTemplate,
   type AIAnalysisResult,
   type AICard,
@@ -166,7 +167,7 @@ function normalizeConcurrency(value: unknown): number {
   return n >= 1 ? n : 2;
 }
 
-function buildDefaultAISettings(): AISettings {
+export function buildDefaultAISettings(): AISettings {
   return {
     llmProviders: [],
     defaultProviderId: null,
@@ -198,6 +199,7 @@ function buildDefaultAISettings(): AISettings {
     defaultVideoModel: null,
     promptBindings: {},
     cardGenerationConcurrency: 2,
+    defaultStylePresetId: DEFAULT_STYLE_PRESET_ID,
   };
 }
 
@@ -232,6 +234,15 @@ export interface AIStore {
   // —— 提示词 × AI 绑定（项目级）——
   projectBindings: PromptBindingMap;
   currentProjectDir: string | null;
+  /**
+   * 项目级默认风格预设 id；undefined 表示继承全局默认。
+   * 解析优先级：单卡 → 项目（此值）→ 全局 → 内置默认（见 resolveStylePresetId）。
+   */
+  projectStylePresetId: string | undefined;
+  /** 打开项目时把 project.json 的 stylePresetId 注入 store（缺省为 undefined）。 */
+  loadProjectStylePresetId: (id: string | undefined) => void;
+  /** 写入/清除项目级默认风格，并通过 save-project-section 持久化到 project.json。 */
+  setProjectStylePresetId: (id: string | undefined) => Promise<void>;
   loadProjectBindings: (projectDir: string | null) => Promise<void>;
   /**
    * 写入/清除单个提示词在当前项目下的 AI 绑定。
@@ -317,6 +328,32 @@ export const useAIStore = create<AIStore>((set, get) => ({
   activeTab: 'cards',
   projectBindings: {},
   currentProjectDir: null,
+  projectStylePresetId: undefined,
+  loadProjectStylePresetId: (id) => {
+    set({ projectStylePresetId: id });
+  },
+  setProjectStylePresetId: async (id) => {
+    const projectDir = get().currentProjectDir;
+    set({ projectStylePresetId: id });
+    if (!projectDir) {
+      console.warn('setProjectStylePresetId: 无当前项目目录，仅更新内存状态');
+      return;
+    }
+    if (typeof window === 'undefined' || !window.electronAPI?.saveProjectSection) {
+      return;
+    }
+    try {
+      await window.electronAPI.saveProjectSection(
+        projectDir,
+        'stylePresetId',
+        // undefined 传给 JSON.stringify 会得到 undefined（非 "null"），故先归一为 null 再持久化
+        JSON.stringify(id ?? null),
+      );
+    } catch (error) {
+      console.error('保存项目级默认风格失败:', error);
+      throw error;
+    }
+  },
   userPromptEntries: { 'script-template': [] },
   userPromptsLoaded: { 'script-template': false },
   loadUserPrompts: async (category) => {
@@ -385,9 +422,9 @@ export const useAIStore = create<AIStore>((set, get) => ({
     }
   },
   loadProjectBindings: async (projectDir) => {
-    // 切换为无项目状态时，清空内存快照
+    // 切换为无项目状态时，清空内存快照（包含项目级风格预设，避免跨项目污染）
     if (!projectDir) {
-      set({ projectBindings: {}, currentProjectDir: null });
+      set({ projectBindings: {}, currentProjectDir: null, projectStylePresetId: undefined });
       return;
     }
     // 非 Electron 环境（如测试渲染环境）不做任何 IO，只更新 projectDir
@@ -814,6 +851,11 @@ export async function loadAISettings(): Promise<AISettings | null> {
           cardGenerationConcurrency: normalizeConcurrency(
             file.aiSettings.cardGenerationConcurrency,
           ),
+          defaultStylePresetId:
+            typeof file.aiSettings.defaultStylePresetId === 'string' &&
+            file.aiSettings.defaultStylePresetId.trim()
+              ? file.aiSettings.defaultStylePresetId
+              : DEFAULT_STYLE_PRESET_ID,
         };
         const providerMigrated = migrateToProviders(settings);
         const imageMigrated = migrateImageProviders(providerMigrated);
@@ -868,6 +910,10 @@ export async function loadAISettings(): Promise<AISettings | null> {
           defaultVideoModel: parsed.defaultVideoModel ?? null,
           promptBindings: parsed.promptBindings ?? {},
           cardGenerationConcurrency: normalizeConcurrency(parsed.cardGenerationConcurrency),
+          defaultStylePresetId:
+            typeof parsed.defaultStylePresetId === 'string' && parsed.defaultStylePresetId.trim()
+              ? parsed.defaultStylePresetId
+              : DEFAULT_STYLE_PRESET_ID,
         };
         const providerMigrated = migrateToProviders(raw);
         const settings = normalizeTTSSettings(migrateImageProviders(providerMigrated));
