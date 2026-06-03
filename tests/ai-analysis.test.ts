@@ -161,7 +161,7 @@ describe('buildSegmentPlanningPrompt', () => {
 });
 
 describe('buildSegmentCardPrompt', () => {
-  it('requires HyperFrames HTML output and exposes the GSAP timeline contract', () => {
+  it('requires Remotion TSX output and exposes the frame-driven contract', () => {
     const programContext = '节目摘要：节目总结\n节目关键词：AI、工作流\n当前段标题：AI 视频生产背景';
     const prompt = buildSegmentCardPrompt({
       programContext,
@@ -179,9 +179,12 @@ describe('buildSegmentCardPrompt', () => {
     expect(prompt).toContain('概括节目开场对 AI 视频生产现状的说明');
     expect(prompt).toContain('整体偏商业分析风');
     expect(prompt).toContain('这一张做成粒子聚合');
-    expect(prompt).toContain('motionCard.html');
-    expect(prompt).toContain('gsap.timeline');
-    expect(prompt).toContain('window.__lingjiMotionTimelines');
+    expect(prompt).toContain('motionCard.tsx');
+    expect(prompt).toContain('useCurrentFrame');
+    expect(prompt).toContain('Remotion');
+    // 旧引擎痕迹不得残留
+    expect(prompt).not.toContain('gsap.timeline');
+    expect(prompt).not.toContain('window.__lingjiMotionTimelines');
     // Web Card 痕迹不得残留
     expect(prompt).not.toContain('webCard.srcDoc');
     expect(prompt).not.toContain('web-card');

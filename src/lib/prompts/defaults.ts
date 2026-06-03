@@ -84,11 +84,11 @@ user: |-
 
   ===== Motion Card 通用技术约束（不可违反）=====
   - type 必须从 summary / data / insight / chapter / quote / motion 中选；renderMode="motion-card"。
-  - motionCard.html 必须是可直接插入卡片容器的 HTML 片段，包含内联 <style> 和同步 <script>，并用 gsap.timeline({ paused: true }) 构建动画。
-  - 布局必须使用百分比、CSS clamp、flex 或容器尺寸自适应，禁止硬编码只适配 1920×1080。
-  - 如需分步动画，使用 GSAP timeline 的 position 参数顺序编排；不要依赖运行时随机或异步逻辑。
-  - 禁止 import / export / async / await / useCurrentFrame / useVideoConfig / globalThis / require / fetch / setTimeout / setInterval / new Date 这类副作用 API；唯一允许的 window 用法是 window.__lingjiMotionTimelines = window.__lingjiMotionTimelines || []; window.__lingjiMotionTimelines.push(localTimeline)。
-  - 可用内联 <style>；不引入外部字体 / 网络资源；不输出 markdown 代码块；不写注释解释画面。
+  - motionCard.tsx 必须是单文件 Remotion 函数组件，使用 "export default" 导出；可从 'remotion' 引入 useCurrentFrame、useVideoConfig、interpolate、spring、Easing、AbsoluteFill、Sequence，从 'react' 引入所需 API。
+  - 动画必须由 useCurrentFrame() 帧驱动：用 interpolate(frame, [inStart, inEnd], [from, to], { extrapolateLeft:'clamp', extrapolateRight:'clamp' }) 或 spring 计算每帧样式；不要依赖运行时随机或异步逻辑。
+  - 布局必须使用百分比、CSS clamp、flex/grid 或容器尺寸自适应（用 useVideoConfig() 的 width/height），禁止硬编码只适配 1920×1080。
+  - 禁止 fetch / setTimeout / setInterval / Math.random / new Date / requestAnimationFrame 等非确定性或副作用 API；所有动画都必须是 frame 的纯函数，保证逐帧可复现。
+  - 内联 style 即可；不引入外部字体 / 网络资源；不输出 markdown 代码块；不写注释解释画面。
   - 内容忠于字幕，不编造数字与人名；画面里不要出现 Source / AI Generated / 节目水印之类小字。
   - 性能：最多 1 标题 + 1 副标题 / 注释 + 1 个数据可视化主元素 + 至多 6 个数据/列表项 + 1 层 hairline 装饰；禁止粒子雨 / blur 氛围光 / 大量 path / 逐帧随机 / CameraMotionBlur。
   - 可用运行时：{{sandboxReference}}
@@ -112,8 +112,8 @@ user: |-
 
   动画反禁忌（**违反任意一条都视为生成失败，必须重做**）：
   1. 禁止任何 opacity 在同一元素上出现 0→1→0 / 1→0→1 类反复；揭示后就保持。
-  2. 禁止使用 Math.sin / Math.cos / random / noise2D / noise3D 调制 opacity / scale / translate；只能用 gsap.from 或 gsap.to 的固定时段 tween。
-  3. 禁止 spring 类无限物理动画；用 GSAP power2.out、power3.out、expo.out 等确定性 easing。
+  2. 禁止使用 Math.random / noise2D / noise3D / 基于真实时间的 Math.sin/cos 调制 opacity / scale / translate；只能用 interpolate 在固定帧区间内做 tween（可配合 Easing.out(Easing.cubic) 等）。
+  3. 禁止无限循环的物理动画；spring 必须给定 durationInFrames 或仅用于一次性入场，配合 Easing 等确定性缓动。
   4. 禁止任何元素在不同帧间发生位置 / 尺寸的"瞬移"（即 interpolate 区间外不留出 clamp）。
   5. 禁止整卡级 scale / rotate / 摄影机抖动 / 翻页效果。
   6. 禁止循环抖动 / 持续呼吸缩放；唯一允许的"微动"是 hairline 长度从 0→100% 的一次性单调揭示。

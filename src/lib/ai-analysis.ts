@@ -426,7 +426,7 @@ function normalizeCard(
     };
   }
 
-  // motion 路径必须由 LLM 明确返回 HyperFrames HTML + GSAP。
+  // motion 路径必须由 LLM 明确返回 Remotion TSX 组件。
   const content =
     typeof candidate.content === 'string' || isDataContent(candidate.content)
       ? candidate.content
@@ -791,7 +791,7 @@ export function buildSegmentCardPrompt(
     // 同值的浓缩上下文，避免破坏存量模板，同时不再发送整篇全文。
     fullTranscript: programContext,
     sandboxReference:
-      'HyperFrames HTML + CSS + GSAP；输出 motionCard.html，片段内可使用 gsap.timeline({ paused: true }) 同步构建动画，并把本片段 timeline push 到 window.__lingjiMotionTimelines；禁止 React、JSX、import/export、async/await、setTimeout、Math.random。',
+      'Remotion 单文件 TSX 组件（export default）；从 "remotion" 引入 useCurrentFrame/useVideoConfig/interpolate/spring/Easing/AbsoluteFill/Sequence，输出到 motionCard.tsx；动画必须是 useCurrentFrame() 的纯函数；禁止 fetch/setTimeout/Math.random/new Date 等非确定性 API。',
   });
 }
 
@@ -1518,7 +1518,7 @@ export interface SubtitleCardDraftInput {
  * 面向"用户手选字幕 → 单张 Motion Card"的生成入口。
  *
  * 策略：复用 `cards.segment` 管线，把用户草稿组装成合成段落后喂入；
- * normalizeCard 会对返回的 motionCard.html 做 HyperFrames 片段校验，
+ * normalizeCard 会对返回的 motionCard.tsx 做 Remotion 组件校验，
  * 编译失败直接抛错让用户重新生成。
  */
 export async function generateSingleCardFromSubtitles(
@@ -1567,7 +1567,7 @@ export async function generateSingleCardFromSubtitles(
 
   const hint = draft.promptHint?.trim();
   const cardPromptLines = [
-    `只产出 1 张卡片，renderMode 必须为 "motion-card"，并在 motionCard.html 里给出可直接插入 HyperFrames composition 的 HTML + CSS + GSAP 片段。`,
+    `只产出 1 张卡片，renderMode 必须为 "motion-card"，并在 motionCard.tsx 里给出单文件 Remotion 函数组件（export default，帧驱动动画）。`,
     `卡片类型建议为 "${draft.type}"，可根据内容微调。`,
   ];
   if (hint) {

@@ -167,8 +167,8 @@ const LOCKED_CARDS_SEGMENT = `【系统契约 · 不可修改】
 只返回严格 JSON 对象，不要解释。
 必填：id, segmentId, type, title, content, startMs, endMs, displayDurationMs, displayMode, template, enabled, style。
 image：必须给 imageAspectRatio；禁止 motionCard 与 cardPrompt；renderMode 留空或 "legacy"。
-motion：必须给 cardPrompt、renderMode="motion-card"、motionCard.html。
-html：输出可直接插入卡片容器的 HTML + CSS + GSAP 片段；必须包含同步 <script> 并使用 gsap.timeline({ paused: true })；脚本必须把 timeline push 到 window.__lingjiMotionTimelines；禁止 import/export/async/await/React/JSX/require/fetch/setTimeout；不要 markdown 代码块。
+motion：必须给 cardPrompt、renderMode="motion-card"、motionCard.tsx。
+tsx：输出单文件 Remotion 函数组件并 export default；从 "remotion" 引入 useCurrentFrame/useVideoConfig/interpolate/spring/Easing/AbsoluteFill/Sequence；动画必须是 useCurrentFrame() 的纯函数；禁止 fetch/setTimeout/Math.random/new Date 等非确定性 API；不要 markdown 代码块。
 时间字段必须是毫秒数字。`;
 
 const LOCKED_SCRIPT_REVIEW = `【系统契约 · 不可修改】
@@ -228,7 +228,7 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
   'cards.segment': {
     kind: 'cards.segment',
     label: '段落信息卡片生成',
-    description: '围绕单个 segment 生成一张 Motion Card（HyperFrames HTML + GSAP 片段，需校验通过）',
+    description: '围绕单个 segment 生成一张 Motion Card（Remotion TSX 组件，需校验通过）',
     group: 'ai-analysis',
     variables: [
       { name: 'globalPrompt', description: '整期创作提示词' },
@@ -245,13 +245,13 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
       { name: 'currentCardSection', description: '当前卡片线索多行块（由调用方构造）' },
       { name: 'programContext', description: '节目级浓缩上下文（节目摘要、关键词、当前段在整期中的位置）' },
       { name: 'fullTranscript', description: '兼容旧模板：与 programContext 同值，不再注入完整全文，避免 token 爆炸' },
-      { name: 'sandboxReference', description: 'HyperFrames Motion 片段运行时约束（cards.segment 校验 motion-card 所需）' },
+      { name: 'sandboxReference', description: 'Remotion Motion 组件运行时约束（cards.segment 校验 motion-card 所需）' },
       { name: 'styleSystemBlock', description: '系统风格库注入的视觉系统块；由所选风格预设的对应 facet 决定' },
     ],
     lockedContract: {
       position: 'user-tail',
       content: LOCKED_CARDS_SEGMENT,
-      reason: '业务侧按此结构创建 AICard 并对 motionCard.html 做片段校验；修改会导致卡片无法渲染。',
+      reason: '业务侧按此结构创建 AICard 并对 motionCard.tsx 做 Remotion 组件校验；修改会导致卡片无法渲染。',
     },
   },
   'script.review': {
