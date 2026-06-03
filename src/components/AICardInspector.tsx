@@ -133,7 +133,8 @@ export function AICardInspector({
   };
 
   const motion = card.motionCard;
-  const hasCompiledMotion = Boolean(motion?.html);
+  const hasCompiledMotion = Boolean(motion?.tsx?.trim());
+  const needsRegeneration = Boolean(motion?.needsRegeneration);
   const previewCardPosition = getAICardOverlayPosition(displayMode, previewWidth, previewHeight);
   const previewFrameStyle =
     displayMode === 'fullscreen'
@@ -260,7 +261,11 @@ export function AICardInspector({
               <div className={styles.previewPlaceholder}>
                 <AppIcon name="eye" size={20} className={styles.previewIcon} />
                 <span className={styles.previewHint}>
-                  {hasCompiledMotion ? 'Motion 卡片已就绪' : '尚未生成 HyperFrames 动画'}
+                  {needsRegeneration
+                    ? '旧版卡片，需重新生成为 Remotion 卡片'
+                    : hasCompiledMotion
+                      ? 'Motion 卡片已就绪'
+                      : '尚未生成 Remotion 动画'}
                 </span>
                 <span className={styles.previewBadge}>
                   {displayMode === 'fullscreen' ? '全屏模式' : '画中画模式'}
