@@ -1,50 +1,42 @@
 import { describe, expect, it } from 'vitest';
 import { compileMotionSource } from '../src/lib/motion-compiler';
 
-const VALID_HYPERFRAMES_MOTION = `
-<div class="motion-card">
-  <style>.motion-card { width: 100%; height: 100%; }</style>
-  <div class="title">ok</div>
-  <script>
-    const root = document.currentScript.closest('.motion-card');
-    const local = gsap.timeline({ paused: true });
-    local.from(root.querySelector('.title'), { opacity: 0, y: 20, duration: 0.4 }, 0);
-    window.__lingjiMotionTimelines = window.__lingjiMotionTimelines || [];
-    window.__lingjiMotionTimelines.push(local);
-  </script>
-</div>`;
+const VALID_REMOTION_MOTION = `import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
+export default function MotionCard() {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: 'clamp' });
+  return <AbsoluteFill style={{ opacity }}>ok</AbsoluteFill>;
+}`;
 
 describe('motion-compiler', () => {
-  it('accepts HyperFrames HTML + CSS + GSAP fragments', () => {
-    const result = compileMotionSource(VALID_HYPERFRAMES_MOTION);
+  it('accepts a Remotion TSX component with a default export', () => {
+    const result = compileMotionSource(VALID_REMOTION_MOTION);
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.html).toContain('gsap.timeline');
-      expect(result.html).toContain('__lingjiMotionTimelines.push(local)');
+      expect(result.tsx).toContain('export default');
+      expect(result.tsx).toContain('useCurrentFrame');
     }
   });
 
-  it('strips markdown html fences before validating', () => {
-    const result = compileMotionSource(`\`\`\`html\n${VALID_HYPERFRAMES_MOTION}\n\`\`\``);
+  it('strips markdown tsx fences before validating', () => {
+    const result = compileMotionSource(`\`\`\`tsx\n${VALID_REMOTION_MOTION}\n\`\`\``);
 
     expect(result.success).toBe(true);
   });
 
-  it('rejects React component snippets', () => {
-    const result = compileMotionSource('const MotionComponent = () => React.createElement("div");');
+  it('rejects sources without a default export', () => {
+    const result = compileMotionSource('const MotionComponent = () => null;');
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error).toContain('Motion Card 必须包含同步 <script>');
+      expect(result.error).toContain('default export');
     }
   });
 
-  it('rejects module or async syntax so timelines stay synchronous', () => {
-    const moduleResult = compileMotionSource('import gsap from "gsap";');
-    const asyncResult = compileMotionSource(`${VALID_HYPERFRAMES_MOTION}\nasync function later() {}`);
+  it('rejects empty sources', () => {
+    const result = compileMotionSource('   ');
 
-    expect(moduleResult.success).toBe(false);
-    expect(asyncResult.success).toBe(false);
+    expect(result.success).toBe(false);
   });
 });

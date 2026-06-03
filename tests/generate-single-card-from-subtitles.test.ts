@@ -17,12 +17,12 @@ const entries: SrtEntry[] = [
   { index: 2, startMs: 1_500, endMs: 3_000, text: '第二条字幕，比较重要。' },
 ];
 
-const VALID_MOTION_HTML = `<div class="motion-card"><span>摘要卡</span><script>
-  const local = gsap.timeline({ paused: true });
-  local.from(document.currentScript.parentElement, { opacity: 0, duration: 0.4 }, 0);
-  window.__lingjiMotionTimelines = window.__lingjiMotionTimelines || [];
-  window.__lingjiMotionTimelines.push(local);
-</script></div>`;
+const VALID_MOTION_TSX = `import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
+export default function MotionCard() {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: 'clamp' });
+  return <AbsoluteFill style={{ opacity }}>摘要卡</AbsoluteFill>;
+}`;
 
 const motionCardResponse = {
   id: 'generated-card',
@@ -36,7 +36,7 @@ const motionCardResponse = {
   template: 'summary-default',
   enabled: true,
   renderMode: 'motion-card',
-  motionCard: { html: VALID_MOTION_HTML },
+  motionCard: { tsx: VALID_MOTION_TSX },
   style: {
     primaryColor: '#79c4ff',
     backgroundColor: '#151922',
@@ -68,8 +68,8 @@ describe('generateSingleCardFromSubtitles', () => {
     expect(card.startMs).toBe(500);
     expect(card.endMs).toBe(3_000);
     expect(card.displayDurationMs).toBe(2_500);
-    expect(card.motionCard?.html).toContain('gsap.timeline');
-    expect(card.motionCard?.html).toContain('__lingjiMotionTimelines.push(local)');
+    expect(card.motionCard?.tsx).toContain('export default');
+    expect(card.motionCard?.tsx).toContain('useCurrentFrame');
     expect(modelCaller).toHaveBeenCalledTimes(1);
     const systemPrompt = modelCaller.mock.calls[0]?.[1] ?? '';
     expect(systemPrompt).toContain('突出核心数字');
@@ -110,10 +110,10 @@ describe('generateSingleCardFromSubtitles', () => {
     ).rejects.toThrow('时间范围无效');
   });
 
-  it('throws a "请重新生成" error when motion html does not compile', async () => {
+  it('throws a "请重新生成" error when motion tsx does not compile', async () => {
     const modelCaller = vi.fn<typeof generateStructuredData>().mockResolvedValue({
       ...motionCardResponse,
-      motionCard: { html: 'garbage that cannot compile' },
+      motionCard: { tsx: 'garbage that has no default export' },
     });
 
     await expect(

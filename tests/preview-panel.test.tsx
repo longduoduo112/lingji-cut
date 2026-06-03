@@ -107,6 +107,7 @@ describe('PreviewPanel', () => {
     expect(html).toContain('播放');
     expect(html).toContain('00:15');
     expect(html).toContain('01:30');
-    expect(html).toContain('data-size="1920x1080"');
+    // Remotion player 已挂载（取代旧 hyperframes-player 的 data-size 属性）
+    expect(html).toContain('__remotion-player');
   });
 });
