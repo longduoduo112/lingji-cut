@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createPersistedAIState,
   parsePersistedAIState,
@@ -323,6 +323,11 @@ export function AIPanel({
     [editingCandidate],
   );
 
+  // 同步重入锁：防止分析进行中再次触发（如反复点击头部刷新按钮）导致并发多条分析任务、
+  // 底部进度条出现多个「内容卡片分析」。设为 ref 而非依赖 isAnalyzing 状态，避免 setAnalyzing
+  // 异步生效前的竞态窗口。
+  const analyzeInFlightRef = useRef(false);
+
   const handleAnalyze = useCallback(async () => {
     const settings = await loadAISettings();
     const settingsIssue = getAISettingsIssue(settings);
@@ -345,6 +350,10 @@ export function AIPanel({
       setAnalysisError('请先导入 SRT 字幕文件');
       return;
     }
+
+    // 已有分析在跑则忽略本次触发（此处到进入 try 之间无 await，置位是原子的）。
+    if (analyzeInFlightRef.current) return;
+    analyzeInFlightRef.current = true;
 
     setAnalysisError(null);
     setAnalyzing(true);
@@ -421,6 +430,7 @@ export function AIPanel({
       // 停止心跳并解除 analyze-progress 订阅，避免泄漏到下一次分析。
       progressBridge.dispose();
       setAnalyzing(false);
+      analyzeInFlightRef.current = false;
     }
   }, [
     analysisResult,
@@ -867,7 +877,9 @@ export function AIPanel({
           <Button.Icon
             variant="ghost"
             className={styles.iconButton}
+            data-ai-analyze-trigger="header"
             onClick={() => void handleAnalyze()}
+            disabled={analyzeButtonDisabled}
             aria-label={analysisResult ? '重新分析' : '分析内容'}
             title={analysisResult ? '重新分析' : '分析内容'}
           >

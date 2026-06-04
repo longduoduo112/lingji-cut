@@ -203,6 +203,27 @@ describe('AIPanel', () => {
     expect(html).toContain('卡片');
   });
 
+  it('disables the header analyze trigger while analyzing to prevent duplicate runs', () => {
+    mockModules.aiStoreState.isAnalyzing = true;
+
+    const html = renderToStaticMarkup(<AIPanel compact={false} />);
+
+    // 用 disabled="" 属性而非子串 'disabled'：className 含 Tailwind 的 disabled: 工具类会污染匹配。
+    const m = html.match(/<button([^>]*)data-ai-analyze-trigger="header"([^>]*)>/);
+    expect(m).not.toBeNull();
+    expect(`${m![1]}${m![2]}`).toContain('disabled="');
+  });
+
+  it('keeps the header analyze trigger enabled when idle', () => {
+    mockModules.aiStoreState.isAnalyzing = false;
+
+    const html = renderToStaticMarkup(<AIPanel compact={false} />);
+
+    const m = html.match(/<button([^>]*)data-ai-analyze-trigger="header"([^>]*)>/);
+    expect(m).not.toBeNull();
+    expect(`${m![1]}${m![2]}`).not.toContain('disabled="');
+  });
+
   it('renders failed segment retry entries from analysisResult.cardErrors', () => {
     mockModules.aiStoreState.analysisResult = {
       ...mockModules.buildAnalysisResult(),
