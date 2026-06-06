@@ -468,7 +468,7 @@ export function PromptsConfigTab() {
     typeof aiSettings?.cardGenerationConcurrency === 'number' &&
     Number.isFinite(aiSettings.cardGenerationConcurrency)
       ? Math.max(1, Math.floor(aiSettings.cardGenerationConcurrency))
-      : 2;
+      : 4;
   const handleCardConcurrencyChange = useCallback(
     async (next: number) => {
       if (!aiSettings) return;
@@ -924,7 +924,7 @@ export function PromptsConfigTab() {
               {active.kind === 'cards.segment' ? (
                 <Field
                   label="段落卡片生成并发数"
-                  hint="同时并发生成多少个段落的卡片；信息图（image 卡）的图像 Provider 调用嵌套在 worker 内，因此该值也决定信息图并行度。必须 ≥ 1，默认 2。"
+                  hint="同时并发生成多少个段落的卡片；信息图（image 卡）的图像 Provider 调用嵌套在 worker 内，因此该值也决定信息图并行度。必须 ≥ 1，默认 4。云端模型（如 DeepSeek）可适当调高以提速；若频繁出现 429/限流再下调。"
                 >
                   <NumberField
                     value={cardConcurrencyValue}

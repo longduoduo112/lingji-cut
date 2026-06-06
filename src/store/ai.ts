@@ -205,6 +205,29 @@ export function buildDefaultAISettings(): AISettings {
 
 export type AITab = 'cards' | 'cover';
 
+/** 单个分段骨架占位（增量分析期间的瞬态 UI 状态）。 */
+export interface IncrementalSkeleton {
+  segmentId: string;
+  title: string;
+  status: 'pending' | 'failed';
+}
+
+/**
+ * 增量分析瞬态 slice：仅渲染层使用，不持久化到 project.json。
+ * 规划完成时 active=true，每个分段先以 skeleton 占位，真实卡片到达后替换其骨架。
+ */
+export interface IncrementalAnalysisState {
+  active: boolean;
+  skeletons: IncrementalSkeleton[];
+  cards: AICard[];
+}
+
+export const DEFAULT_INCREMENTAL_ANALYSIS: IncrementalAnalysisState = {
+  active: false,
+  skeletons: [],
+  cards: [],
+};
+
 export interface AIStore {
   analysisResult: AIAnalysisResult | null;
   isAnalyzing: boolean;
@@ -315,7 +338,25 @@ export interface AIStore {
   workflow: WorkflowState;
   setWorkflow: (updates: Partial<WorkflowState>) => void;
   resetWorkflow: () => void;
+  // —— 增量分析（瞬态，不持久化）——
+  incrementalAnalysis: IncrementalAnalysisState;
+  /** 规划完成：进入 active，按计划顺序铺出 pending 骨架，清空已到达卡片。 */
+  beginIncrementalAnalysis: (
+    planned: Array<{ segmentId: string; title: string }>,
+  ) => void;
+  /** 某分段真实卡片到达：插入/替换 cards（按计划顺序排序），并移除其骨架。 */
+  upsertAnalyzedCard: (card: AICard) => void;
+  /** 某分段分析失败：把其骨架标记为 failed（保留骨架，不新增卡片）。 */
+  markAnalyzedCardFailed: (segmentId: string) => void;
+  /** 结束增量分析：重置为默认。 */
+  endIncrementalAnalysis: () => void;
 }
+
+/**
+ * 增量分析内部排序基准：beginIncrementalAnalysis 时按计划顺序记录的 segmentId 序列。
+ * 用于 upsertAnalyzedCard 把 cards 始终维持在计划顺序（即便乱序到达），与持久化无关。
+ */
+let incrementalPlannedOrder: string[] = [];
 
 export const useAIStore = create<AIStore>((set, get) => ({
   analysisResult: null,
@@ -811,6 +852,62 @@ export const useAIStore = create<AIStore>((set, get) => ({
       workflow: { ...state.workflow, ...updates },
     })),
   resetWorkflow: () => set({ workflow: { ...DEFAULT_WORKFLOW } }),
+  incrementalAnalysis: { ...DEFAULT_INCREMENTAL_ANALYSIS },
+  beginIncrementalAnalysis: (planned) => {
+    incrementalPlannedOrder = planned.map((p) => p.segmentId);
+    set({
+      incrementalAnalysis: {
+        active: true,
+        skeletons: planned.map((p) => ({
+          segmentId: p.segmentId,
+          title: p.title,
+          status: 'pending' as const,
+        })),
+        cards: [],
+      },
+    });
+  },
+  upsertAnalyzedCard: (card) =>
+    set((state) => {
+      const prev = state.incrementalAnalysis;
+      // 插入/替换 cards：按 segmentId 去重，再按计划顺序排序（乱序到达也稳定）
+      const withoutSame = prev.cards.filter((c) => c.segmentId !== card.segmentId);
+      const nextCards = [...withoutSame, card].sort((a, b) => {
+        const ia = incrementalPlannedOrder.indexOf(a.segmentId);
+        const ib = incrementalPlannedOrder.indexOf(b.segmentId);
+        // 计划外的 segmentId（理论上不应出现）排到末尾，保持稳定
+        const ra = ia === -1 ? Number.MAX_SAFE_INTEGER : ia;
+        const rb = ib === -1 ? Number.MAX_SAFE_INTEGER : ib;
+        return ra - rb;
+      });
+      // 该分段已由真实卡片代表，移除其骨架
+      const nextSkeletons = prev.skeletons.filter(
+        (s) => s.segmentId !== card.segmentId,
+      );
+      return {
+        incrementalAnalysis: {
+          ...prev,
+          cards: nextCards,
+          skeletons: nextSkeletons,
+        },
+      };
+    }),
+  markAnalyzedCardFailed: (segmentId) =>
+    set((state) => {
+      const prev = state.incrementalAnalysis;
+      return {
+        incrementalAnalysis: {
+          ...prev,
+          skeletons: prev.skeletons.map((s) =>
+            s.segmentId === segmentId ? { ...s, status: 'failed' as const } : s,
+          ),
+        },
+      };
+    }),
+  endIncrementalAnalysis: () => {
+    incrementalPlannedOrder = [];
+    set({ incrementalAnalysis: { ...DEFAULT_INCREMENTAL_ANALYSIS } });
+  },
 }));
 
 export async function loadAISettings(): Promise<AISettings | null> {

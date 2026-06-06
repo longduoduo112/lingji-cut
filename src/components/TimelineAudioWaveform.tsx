@@ -7,6 +7,8 @@ interface TimelineAudioWaveformProps {
   durationMs: number;
   trackWidth: number;
   trackHeight: number;
+  deferLoading?: boolean;
+  loadDelayMs?: number;
 }
 
 const waveformPeakCache = new Map<string, Promise<number[]>>();
@@ -93,6 +95,29 @@ function sampleWaveformPeaks(peaks: number[], targetLength: number): number[] {
   });
 }
 
+function scheduleWaveformLoad(callback: () => void, delayMs: number): () => void {
+  let idleId: number | null = null;
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number;
+    cancelIdleCallback?: (id: number) => void;
+  };
+
+  const timeoutId = window.setTimeout(() => {
+    if (idleWindow.requestIdleCallback) {
+      idleId = idleWindow.requestIdleCallback(callback, { timeout: 2_000 });
+      return;
+    }
+    callback();
+  }, Math.max(0, delayMs));
+
+  return () => {
+    window.clearTimeout(timeoutId);
+    if (idleId !== null) {
+      idleWindow.cancelIdleCallback?.(idleId);
+    }
+  };
+}
+
 /**
  * 按"源音频局部区间"采样绘制波形。
  * - sourceDurationMs：源音频总时长
@@ -108,6 +133,8 @@ export function TimelineAudioClipWaveform({
   width,
   height,
   inline = true,
+  deferLoading = false,
+  loadDelayMs = 600,
 }: {
   audioPath: string;
   sourceDurationMs: number;
@@ -116,34 +143,39 @@ export function TimelineAudioClipWaveform({
   width: number;
   height: number;
   inline?: boolean;
+  deferLoading?: boolean;
+  loadDelayMs?: number;
 }) {
   const [peaks, setPeaks] = useState<number[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!audioPath || typeof window === 'undefined' || typeof document === 'undefined') {
+    if (!audioPath || typeof window === 'undefined' || typeof document === 'undefined' || deferLoading) {
       setPeaks(null);
       return;
     }
 
-    void loadWaveformPeaks(audioPath, sourceDurationMs)
-      .then((nextPeaks) => {
-        if (!cancelled) {
-          setPeaks(nextPeaks);
-        }
-      })
-      .catch((error) => {
-        console.error('加载音频波形失败:', error);
-        if (!cancelled) {
-          setPeaks([]);
-        }
-      });
+    const cancelScheduledLoad = scheduleWaveformLoad(() => {
+      void loadWaveformPeaks(audioPath, sourceDurationMs)
+        .then((nextPeaks) => {
+          if (!cancelled) {
+            setPeaks(nextPeaks);
+          }
+        })
+        .catch((error) => {
+          console.error('加载音频波形失败:', error);
+          if (!cancelled) {
+            setPeaks([]);
+          }
+        });
+    }, loadDelayMs);
 
     return () => {
       cancelled = true;
+      cancelScheduledLoad();
     };
-  }, [audioPath, sourceDurationMs]);
+  }, [audioPath, sourceDurationMs, deferLoading, loadDelayMs]);
 
   const barCount = Math.min(600, Math.max(16, Math.floor(width / 2.5)));
   const clipPeaks = useMemo(() => {
@@ -212,34 +244,39 @@ export function TimelineAudioWaveform({
   durationMs,
   trackWidth,
   trackHeight,
+  deferLoading = false,
+  loadDelayMs = 600,
 }: TimelineAudioWaveformProps) {
   const [peaks, setPeaks] = useState<number[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!audioPath || typeof window === 'undefined' || typeof document === 'undefined') {
+    if (!audioPath || typeof window === 'undefined' || typeof document === 'undefined' || deferLoading) {
       setPeaks(null);
       return;
     }
 
-    void loadWaveformPeaks(audioPath, durationMs)
-      .then((nextPeaks) => {
-        if (!cancelled) {
-          setPeaks(nextPeaks);
-        }
-      })
-      .catch((error) => {
-        console.error('加载音频波形失败:', error);
-        if (!cancelled) {
-          setPeaks([]);
-        }
-      });
+    const cancelScheduledLoad = scheduleWaveformLoad(() => {
+      void loadWaveformPeaks(audioPath, durationMs)
+        .then((nextPeaks) => {
+          if (!cancelled) {
+            setPeaks(nextPeaks);
+          }
+        })
+        .catch((error) => {
+          console.error('加载音频波形失败:', error);
+          if (!cancelled) {
+            setPeaks([]);
+          }
+        });
+    }, loadDelayMs);
 
     return () => {
       cancelled = true;
+      cancelScheduledLoad();
     };
-  }, [audioPath, durationMs]);
+  }, [audioPath, durationMs, deferLoading, loadDelayMs]);
 
   const barCount = Math.min(2_400, Math.max(48, Math.floor(trackWidth / 3)));
   const sampledPeaks = useMemo(

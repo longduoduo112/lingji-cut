@@ -20,7 +20,7 @@ import {
   type AIAnalysisResult,
   type CoverCandidate,
 } from '../types/ai';
-import { AICardList, type AICardPlacement } from './AICardList';
+import { AICardList, type AICardPlacement, type AICardSkeleton } from './AICardList';
 import { AppIcon } from './AppIcon';
 import { AICoverPanel } from './AICoverPanel';
 import { CoverEditorModal } from './CoverEditorModal';
@@ -66,6 +66,8 @@ const TAB_META: Record<AITabKey, { label: string; shortLabel: string }> = {
   cover: { label: '封面', shortLabel: '封面' },
 };
 const SUB_TABS: AITabKey[] = ['cards', 'cover'];
+// 稳定空引用：非增量阶段传给 AICardList 的 skeletons，避免每次渲染新建数组。
+const NO_SKELETONS: AICardSkeleton[] = [];
 
 export function AIPanel({
   compact,
@@ -88,6 +90,7 @@ export function AIPanel({
   analysisError,
   coverCandidates,
   isGeneratingCovers,
+  incrementalAnalysis,
   activeTab: storeActiveTab,
   setAnalysisResult,
   setAnalyzing,
@@ -385,6 +388,49 @@ export function AIPanel({
       },
     });
 
+    // 增量呈现：planning 完成→铺骨架；每张卡片完成→填充内容区并自动落轨。
+    // 卡片失败沿用既有 analyze-progress(card.status==='failed') 把骨架标记为失败态。
+    const oldCardSourceIds = analysisResult?.cards.map((card) => card.id) ?? [];
+    let clearedOldCards = false;
+    const unsubscribePlanning = window.electronAPI.onAnalyzePlanningDone(
+      (planning) => {
+        // 重分析：planning 成功后先移除旧 AI 卡，再按新分段增量重建，避免新旧重叠。
+        if (!clearedOldCards) {
+          clearedOldCards = true;
+          if (oldCardSourceIds.length > 0) {
+            useTimelineStore
+              .getState()
+              .removeAICardOverlaysBySourceIds(oldCardSourceIds);
+          }
+        }
+        useAIStore.getState().beginIncrementalAnalysis(
+          planning.segments.map((segment) => ({
+            segmentId: segment.id,
+            title: segment.title,
+          })),
+        );
+      },
+    );
+    const unsubscribeCardDone = window.electronAPI.onAnalyzeCardCompleted(
+      ({ card }) => {
+        useAIStore.getState().upsertAnalyzedCard(card);
+        // 默认「生成好一条就进入轨道一条」：enabled 卡片即时落轨；
+        // coalesceHistory 把整轮增量落轨合并为一次可撤销操作。
+        if (card.enabled) {
+          useTimelineStore
+            .getState()
+            .appendAICardToTimeline(buildAICardTimelineDraft(card), {
+              coalesceHistory: true,
+            });
+        }
+      },
+    );
+    const unsubscribeFailed = window.electronAPI.onAnalyzeProgress((progress) => {
+      if (progress.card?.status === 'failed' && progress.card.segmentId) {
+        useAIStore.getState().markAnalyzedCardFailed(progress.card.segmentId);
+      }
+    });
+
     try {
       const projectDir = getProjectDir();
       const result = (await window.electronAPI.analyzeSrt({
@@ -427,6 +473,12 @@ export function AIPanel({
       setAnalysisError(errorMessage);
       useTaskProgressStore.getState().failTask(analyzeTaskId, errorMessage);
     } finally {
+      // 解除增量订阅，避免泄漏到下一次分析。
+      unsubscribePlanning();
+      unsubscribeCardDone();
+      unsubscribeFailed();
+      // 清理瞬态骨架；已落轨的真实卡片按约定保留（取消/报错也保留已生成成果）。
+      useAIStore.getState().endIncrementalAnalysis();
       // 停止心跳并解除 analyze-progress 订阅，避免泄漏到下一次分析。
       progressBridge.dispose();
       setAnalyzing(false);
@@ -817,7 +869,17 @@ export function AIPanel({
   const analyzeButtonDisabled = !hasSrtEntries || isAnalyzing;
   const hasGeneratedCards = (analysisResult?.cards.length ?? 0) > 0;
   const isCardListEmpty = Boolean(analysisResult && !hasGeneratedCards);
-  const showCardGenerationState = !analysisResult || !hasGeneratedCards;
+  // 增量呈现进行中：内容区改用 incrementalAnalysis（骨架 + 已填充真实卡），
+  // 替代「等整轮结束才一次性出现」。结束后回落到 analysisResult.cards。
+  const showingIncremental = incrementalAnalysis.active;
+  const displayCards = showingIncremental
+    ? incrementalAnalysis.cards
+    : analysisResult?.cards ?? [];
+  const displaySkeletons = showingIncremental
+    ? incrementalAnalysis.skeletons
+    : NO_SKELETONS;
+  const showCardGenerationState =
+    (!analysisResult || !hasGeneratedCards) && !showingIncremental;
   const allCardsSelected = hasGeneratedCards && enabledCount === (analysisResult?.cards.length ?? 0);
   const analysisHeadline = analysisResult ? '正在重新分析内容卡片' : '正在拆解字幕与生成卡片';
   const analysisDescription = analysisResult
@@ -1067,7 +1129,7 @@ export function AIPanel({
               </section>
             ) : null}
 
-            {hasGeneratedCards ? (
+            {hasGeneratedCards || showingIncremental ? (
               <section className={styles.cardsSection}>
                 <ActionBar
                   className={styles.actionBar}
@@ -1144,7 +1206,8 @@ export function AIPanel({
 
                   <div className={joinClassNames(styles.workspaceContent, isAnalyzing ? styles.workspaceContentDimmed : '')}>
                     <AICardList
-                      cards={analysisResult?.cards ?? []}
+                      cards={displayCards}
+                      skeletons={displaySkeletons}
                       placements={cardPlacements}
                       onToggleEnabled={handleToggleEnabled}
                       onDeleteCard={(cardId) => handleDeleteCards([cardId])}

@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { stripCodeFences, validateCardTsx } from '../src/remotion/compile-card';
+import { hasRenderableJsx, stripCodeFences, validateCardTsx } from '../src/remotion/compile-card';
+
+describe('hasRenderableJsx', () => {
+  it('returns true when the source contains a JSX tag', () => {
+    expect(hasRenderableJsx('export default () => <AbsoluteFill>hi</AbsoluteFill>;')).toBe(true);
+    expect(hasRenderableJsx('return <div className="x" />;')).toBe(true);
+  });
+
+  it('returns false for a stubbed / null-returning component (would render black)', () => {
+    expect(hasRenderableJsx('export default function X(){ const f = 1; /* ... */ }')).toBe(false);
+    expect(hasRenderableJsx('export default () => null;')).toBe(false);
+  });
+});
 
 describe('validateCardTsx', () => {
   it('rejects empty source', () => {

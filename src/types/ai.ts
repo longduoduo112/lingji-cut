@@ -202,12 +202,18 @@ export const LMSTUDIO_DEFAULT_BASE_URL = 'http://localhost:1234/v1';
 export interface LLMProvider {
   id: string;
   name: string;
-  type: 'openai_compatible' | 'anthropic' | 'gemini' | 'lmstudio' | 'claude_code_acp';
+  type: 'openai_compatible' | 'anthropic' | 'minimax' | 'gemini' | 'lmstudio' | 'claude_code_acp';
   baseUrl: string;
   apiKey: string;
   models: string[];
   /** 是否启用模型思考模式；缺省视为 true */
   enableThinking?: boolean;
+  /**
+   * 思考深度（thinking budget，单位 token）。仅 type='minimax'（Anthropic 兼容端点）使用：
+   * 映射到 thinking.budget_tokens，越小越快、越大思考越深。缺省走内置默认（1024）。
+   * enableThinking=false 时忽略本字段（直接 thinking.type='disabled'）。
+   */
+  thinkingBudgetTokens?: number;
 }
 
 export type TTSProviderType = 'minimax' | 'xiaomi_mimo' | 'custom_openai_audio';

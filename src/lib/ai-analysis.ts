@@ -108,6 +108,10 @@ interface AnalyzeSrtOptions {
   /** 独立的 cover.regeneration LLM 调用完成时回调，prompts 已遵循 COVER_REGENERATION 视觉系统。
    * 失败时不调用；调用方应使用 onPlanningDone 的 coverPrompts 作为兜底或放弃封面生成。 */
   onCoverPromptsReady?: (prompts: string[]) => void;
+  /** 单卡生成成功时回调（卡片流式回吐）。每张成功生成的卡片落入 cardSlots[index] 后恰好调用一次。
+   * 失败卡片不调用（失败已通过 onProgress 的 card.status==='failed' 暴露）。
+   * index 为 planning 顺序中的 segment 下标。 */
+  onCardGenerated?: (card: AICard, index: number) => void;
 }
 
 interface RegenerateCardOptions {
@@ -812,6 +816,29 @@ export function buildPlainTranscriptRange(
     .join('\n');
 }
 
+// 逐句字幕节拍列表，供 cards.segment 提示词的 {{segmentCues}}：让模型把每个焦点元素锚到"讲出它的那一句"。
+// 选取规则必须与渲染期 computeCardCues 完全一致（startMs 落在 [startMs, endMs) 内、按时间升序），
+// 这样列表里的索引 k 才与运行时注入卡片组件的 cues 数组一一对应（cues[k] = 第 k 句口播的相对起始帧）。
+export function buildSegmentCuesBlock(
+  entries: SrtEntry[],
+  startMs: number,
+  endMs: number,
+  maxTextLen = 48,
+): string {
+  const lines = entries
+    .filter((entry) => entry.startMs >= startMs && entry.startMs < endMs)
+    .sort((a, b) => a.startMs - b.startMs)
+    .map((entry, i) => {
+      const sec = ((entry.startMs - startMs) / 1000).toFixed(1);
+      const text = entry.text.trim().replace(/\s+/g, ' ');
+      const clipped = text.length > maxTextLen ? `${text.slice(0, maxTextLen)}…` : text;
+      return `  [${i}] +${sec}s ${clipped}`;
+    });
+  return lines.length > 0
+    ? lines.join('\n')
+    : '  （本段无字幕句，cues 为空数组，按兜底均匀铺满）';
+}
+
 // 节目级浓缩上下文：只给定位用，不复述全文
 function buildProgramContext(params: {
   programSummary?: string;
@@ -889,6 +916,8 @@ export function buildSegmentCardPrompt(
     keywords?: string[];
     visualType?: AISegmentVisualType;
     stylePresetId?: string;
+    /** 本段逐句字幕节拍块（[k] +秒数 文本；索引与运行时 cues 对齐），注入 {{segmentCues}}。 */
+    segmentCues?: string;
   },
   template?: PromptTemplate,
 ): string {
@@ -902,6 +931,7 @@ export function buildSegmentCardPrompt(
     keywords = [],
     visualType,
     stylePresetId,
+    segmentCues,
   } = params;
   const tpl = template ?? getBuiltinPromptTemplate('cards.segment');
 
@@ -932,6 +962,7 @@ export function buildSegmentCardPrompt(
     segmentStartMs: segment.startMs,
     segmentEndMs: segment.endMs,
     segmentTranscriptExcerpt: truncatePromptValue(segment.transcriptExcerpt ?? '', 260) || '无',
+    segmentCues: segmentCues?.trim() ? segmentCues : '  （无逐句字幕节拍可用，按兜底均匀铺满）',
     cardPrompt: truncatePromptValue(cardPrompt ?? '', 240) || '无',
     currentCardSection,
     programContext,
@@ -1233,6 +1264,7 @@ export async function generateCardForSegment(
           programSummary: planning.summary,
           keywords: planning.keywords,
           visualType,
+          segmentCues: buildSegmentCuesBlock(entries, segment.startMs, segment.endMs),
         },
         cardTemplate,
       ),
@@ -1336,6 +1368,7 @@ export async function analyzeSrt(
     telemetry,
     onPlanningDone,
     onCoverPromptsReady,
+    onCardGenerated,
   } = options;
 
   // 批量分析路径没有单卡层（卡片尚未生成），按 项目 → 全局 → 内置默认 解析。
@@ -1535,6 +1568,12 @@ export async function analyzeSrt(
           visualType,
           status: 'done',
         }));
+        // 单卡流式回吐：仅成功路径调用一次，传入最终落入 cardSlots[i] 的同一卡片对象。
+        try {
+          onCardGenerated?.(card, i);
+        } catch {
+          // 回调出错不影响后续卡片生成
+        }
       } catch (error) {
         failed += 1;
         cardErrors.push({

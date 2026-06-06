@@ -130,6 +130,10 @@ export function Editor({
   const [exportProgress, setExportProgress] = useState(0);
   const [outputPath, setOutputPath] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exportSuccess, setExportSuccess] = useState<{
+    outputPath: string;
+    elapsedMs: number;
+  } | null>(null);
   const [missingScriptDialogOpen, setMissingScriptDialogOpen] = useState(false);
   const [regeneratePodcastDialogOpen, setRegeneratePodcastDialogOpen] = useState(false);
   const [pendingRegenerateScript, setPendingRegenerateScript] = useState<string | null>(null);
@@ -668,7 +672,8 @@ export function Editor({
     setExportProgress(0);
     setExportError(null);
 
-    const exportTaskId = `export-video-${Date.now()}`;
+    const exportStartedAt = Date.now();
+    const exportTaskId = `export-video-${exportStartedAt}`;
     useTaskProgressStore.getState().startTask({
       id: exportTaskId,
       category: 'export',
@@ -690,15 +695,19 @@ export function Editor({
         srtEntries: useTimelineStore.getState().srtEntries,
       });
       setExportProgress(1);
+      const elapsedMs = Date.now() - exportStartedAt;
       useTaskProgressStore.getState().completeTask(exportTaskId, {
         label: '在 Finder 中显示',
         handler: () => window.electronAPI.showItemInFolder(savePath),
       });
+      setExportSuccess({ outputPath: savePath, elapsedMs });
     } catch (error) {
       console.error('导出失败:', error);
       const errMsg = '导出失败，请查看控制台日志后重试。';
       setExportError(errMsg);
       useTaskProgressStore.getState().failTask(exportTaskId, errMsg);
+    } finally {
+      setIsExporting(false);
     }
   }, [timeline]);
 
@@ -934,6 +943,7 @@ export function Editor({
       >
         <Timeline
           currentTimeMs={currentTimeMs}
+          isPlaying={isPlaying}
           onSeek={handleSeek}
           onSeekStart={handleSeekStart}
           onSeekEnd={handleSeekEnd}
@@ -1043,8 +1053,48 @@ export function Editor({
         showCancel={false}
         onConfirm={() => setMissingScriptDialogOpen(false)}
       />
+      <ConfirmDialog
+        open={Boolean(exportSuccess)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setExportSuccess(null);
+          }
+        }}
+        title="导出完成"
+        description={
+          exportSuccess
+            ? `视频已导出到 ${getFileNameFromPath(exportSuccess.outputPath)}，总耗时 ${formatExportDuration(exportSuccess.elapsedMs)}。`
+            : undefined
+        }
+        confirmText="在 Finder 中显示"
+        cancelText="完成"
+        onConfirm={() => {
+          if (exportSuccess) {
+            void window.electronAPI.showItemInFolder(exportSuccess.outputPath);
+          }
+          setExportSuccess(null);
+        }}
+        onCancel={() => setExportSuccess(null)}
+      />
     </div>
   );
+}
+
+/**
+ * 把导出耗时（毫秒）格式化为「X 分 Y 秒」/「Y.S 秒」，用于导出成功弹窗展示效率。
+ */
+function formatExportDuration(elapsedMs: number): string {
+  const safeMs = Math.max(0, elapsedMs);
+  const totalSeconds = safeMs / 1000;
+  if (totalSeconds < 60) {
+    return `${totalSeconds.toFixed(1)} 秒`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  if (seconds === 0) {
+    return `${minutes} 分`;
+  }
+  return `${minutes} 分 ${seconds} 秒`;
 }
 
 function mapProjectMetadata(metadata: ProjectMetadata): ProjectOverviewMeta {

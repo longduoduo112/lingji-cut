@@ -1,5 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { buildRenderPlan } from '../src/remotion/timeline-to-sequences';
+import { buildRenderPlan, computeCardCues } from '../src/remotion/timeline-to-sequences';
+
+describe('computeCardCues', () => {
+  const srt = [
+    { index: 1, startMs: 500, endMs: 1000, text: '段前一句' },
+    { index: 2, startMs: 1000, endMs: 1900, text: '第一句' },
+    { index: 3, startMs: 2000, endMs: 3400, text: '第二句' },
+    { index: 4, startMs: 3500, endMs: 4900, text: '第三句' },
+    { index: 5, startMs: 6000, endMs: 7000, text: '段后一句' },
+  ];
+
+  it('returns each in-window sentence start as a frame relative to the card start, in order', () => {
+    // 卡片窗口 [1000, 5000)，fps=30 → 相对帧 = msToFrames(e.startMs) - msToFrames(1000)
+    expect(computeCardCues(srt, 1000, 4000, 30)).toEqual([0, 30, 75]);
+  });
+
+  it('excludes sentences that start before or after the card window', () => {
+    const cues = computeCardCues(srt, 1000, 4000, 30);
+    expect(cues).not.toContain(-15); // 段前一句(500ms) 不计入
+    expect(cues.length).toBe(3); // 6000ms 的段后一句也排除
+  });
+
+  it('returns an empty array when no sentence starts within the window', () => {
+    expect(computeCardCues(srt, 4900, 1000, 30)).toEqual([]);
+  });
+});
 import {
   createDefaultTimeline,
   DEFAULT_VISUAL_TRACK_ID,

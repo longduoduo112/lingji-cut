@@ -227,6 +227,9 @@ export interface ElectronAPI {
   onAnalyzeCoverPromptsReady: (
     callback: (payload: { prompts: string[] }) => void,
   ) => () => void;
+  onAnalyzeCardCompleted: (
+    callback: (payload: { card: AICard; index: number }) => void,
+  ) => () => void;
   regenerateAICard: (args: {
     entries: SrtEntry[];
     card: AICard;

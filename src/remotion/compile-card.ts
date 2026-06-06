@@ -8,6 +8,15 @@ export function stripCodeFences(src: string): string {
     .trim();
 }
 
+/**
+ * 判断卡片源码是否真的会渲染出画面（含 JSX 标签）。
+ * 用于预览侧兜底：旧工程里若存了只搭骨架 / return null 的不完整组件，
+ * 它能通过 esbuild 编译但渲染为空白（黑屏），这里识别后回退到占位卡片而非全黑。
+ */
+export function hasRenderableJsx(src: string): boolean {
+  return /<[A-Za-z][^>]*\/?>/.test(stripCodeFences(src));
+}
+
 export interface CardValidation {
   ok: boolean;
   error?: string;

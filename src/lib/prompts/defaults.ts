@@ -65,10 +65,15 @@ user: |-
 `;
 
 const CARDS_SEGMENT = `name: cards.segment
-description: 段落 Motion Card 生成提示词（电子杂志 × 电子墨水 · 深色变体 · Bento Grid 版式；motion-only）
-version: 10
+description: 段落 Motion Card 生成提示词（电子杂志 × 电子墨水 · 深色变体 · 单一焦点 · 逐句同步 · TSX-only 输出）
+version: 15
 user: |-
-  任务：只为当前 segment 生成 **1 张 Motion Card**（renderMode="motion-card"）。本提示词不再处理 image 段落，image 段在上游直接走 card.image 链路，不会进入这里。
+  任务：为当前 segment 生成 **1 个 Remotion Motion Card 组件**。只输出**一个 \`\`\`tsx 代码块**（单文件 React 函数组件，export default），不要输出 JSON、不要任何解释文字、不要在代码块外写内容。卡片的标题 / 时间 / 类型等元信息由系统从 segment 合成，你只需专注把内容做成漂亮的逐帧动画组件。本提示词不处理 image 段落，image 段在上游直接走 card.image 链路。
+
+  ===== 创作理念（专业播客解说视频 · 必须贯彻）=====
+  - 这是跟着口播走的解说画面，不是塞满信息的仪表盘。**单一焦点**：每张卡只表达一个核心，任一时刻屏幕上只有一个视觉焦点。
+  - **逐拍构建**：内容随口播推进一拍一拍地出现，**讲到哪一点、哪一点才亮**（跟随字幕时间，见下方"节奏契约"）；可略微提前，但绝不在内容讲完很久之后才出现。
+  - **大量留白、字大字少**：宁可省略也不塞满；信息少而精，比堆满更专业。
 
   上下文：
   - 全局提示：{{globalPrompt}}
@@ -77,38 +82,62 @@ user: |-
   - segment：{{segmentId}}｜{{segmentTitle}}｜{{segmentStartMs}}-{{segmentEndMs}}ms
   - 摘要：{{segmentSummary}}
   - 摘录：{{segmentTranscriptExcerpt}}
+  - 逐句字幕节拍（本段口播按时间顺序，索引 k 与运行时 cues 数组一一对应，用于把每个焦点元素锚到讲出它的那一句）：
+  {{segmentCues}}
   - 单卡提示：{{cardPrompt}}
   {{currentCardSection}}
 
   时间轴：startMs/endMs/displayDurationMs 必须围绕当前段核心表达；不提前覆盖铺垫、转场或相邻段。
 
   ===== Motion Card 通用技术约束（不可违反）=====
-  - type 必须从 summary / data / insight / chapter / quote / motion 中选；renderMode="motion-card"。
-  - motionCard.tsx 必须是单文件 Remotion 函数组件，使用 "export default" 导出；可从 'remotion' 引入 useCurrentFrame、useVideoConfig、interpolate、spring、Easing、AbsoluteFill、Sequence，从 'react' 引入所需 API。
+  - 输出必须是单文件 Remotion 函数组件，使用 "export default" 导出，**组件签名固定为 \`export default function Card({ cues = [] })\`**；可从 'remotion' 引入 useCurrentFrame、useVideoConfig、interpolate、spring、Easing、AbsoluteFill、Sequence，从 'react' 引入所需 API。
+  - **cues**：宿主注入的逐句字幕节拍 —— 一个 number[]，按时间顺序给出本段**每句口播的相对起始帧**（相对卡片 frame 0）。用它来"逐句揭示"内容（见节奏契约）。cues 可能为空数组，组件必须能在空 cues 下正常工作。
+  - 组件**必须完整可运行**：函数体里必须有 return 返回真实 JSX（至少一个 <AbsoluteFill> 根节点）。严禁只写变量/常量骨架后用 “// ... build out the rest” “// TODO” “…” 之类注释收尾，严禁返回 null / 空；不完整的组件会渲染黑屏，视为生成失败。
   - 动画必须由 useCurrentFrame() 帧驱动：用 interpolate(frame, [inStart, inEnd], [from, to], { extrapolateLeft:'clamp', extrapolateRight:'clamp' }) 或 spring 计算每帧样式；不要依赖运行时随机或异步逻辑。
   - 布局必须使用百分比、CSS clamp、flex/grid 或容器尺寸自适应（用 useVideoConfig() 的 width/height），禁止硬编码只适配 1920×1080。
   - 禁止 fetch / setTimeout / setInterval / Math.random / new Date / requestAnimationFrame 等非确定性或副作用 API；所有动画都必须是 frame 的纯函数，保证逐帧可复现。
   - 内联 style 即可；不引入外部字体 / 网络资源；不输出 markdown 代码块；不写注释解释画面。
   - 内容忠于字幕，不编造数字与人名；画面里不要出现 Source / AI Generated / 节目水印之类小字。
-  - 性能：最多 1 标题 + 1 副标题 / 注释 + 1 个数据可视化主元素 + 至多 6 个数据/列表项 + 1 层 hairline 装饰；禁止粒子雨 / blur 氛围光 / 大量 path / 逐帧随机 / CameraMotionBlur。
+  - 信息密度（单一焦点，硬上限）：整张卡只能是以下二选一 —— ① 1 个主标题 + 1 个主数据/主视觉（一个 hero）；或 ② 1 个标题 + **至多 3 个递进要点**。**禁止并列堆叠**（不要标题 + 副标题 + 数据图 + 列表全都同时上）。最多 1 层 hairline 装饰；禁止粒子雨 / blur 氛围光 / 大量 path / 逐帧随机 / CameraMotionBlur。
   - 可用运行时：{{sandboxReference}}
 
-  ===== 字幕驱动动画契约（六类卡片通用，必须严格执行）=====
-  入场窗（永远存在）：
-  - 入场基准窗 = [0, min(18, durationInFrames * 0.25)] 帧。
-  - serif 主标题以 translateY(H*0.04) + opacity 0→1 入场；mono meta / hairline 跟随其后 4-8 帧入场。
-  - 入场结束后**不要再触发任何 opacity 0↔1 的闪烁**，已可见的元素必须保持稳定。
+  ===== 节奏契约：跟随口播逐句揭示（铁律，违反即重做，这是本卡最重要的规则）=====
+  核心：画面内容必须**跟着口播一句一句出现**——每个焦点元素在它的内容**被讲到的那一刻**揭示，可以略微提前，**绝不允许讲完很久之后才出现**。
 
-  内容分步（核心）—— **step = tile**：
-  - Bento Grid 下，**每个 tile 整体作为一个 step**；tile 是版式里的一个网格单元（grid 区域），不是单个文字行。
-  - 把卡片所有 tile 按"主→次"或"上→下、左→右"的视觉阅读顺序依次记作 step[0..N-1]。
-  - 当 subtitles.length >= N：step[i]（即 tile[i]）的揭示窗 = [subtitles[i].relativeStartFrame, subtitles[i].relativeStartFrame + 12]，揭示用 translateY(H*0.025) + opacity 0→1，禁止 scale 大于 1.04，禁止 rotate，禁止 blur 入场。
-  - 当 subtitles.length < N：把 durationInFrames 等分成 N 个 beat，step[i] 揭示窗 = [入场窗末 + beatLen * i, 入场窗末 + beatLen * i + 12]。
-  - 已揭示的 tile 必须保持 opacity:1 与最终 translate 状态直到卡片末尾；**绝对禁止在揭示后再让它消失或再次入场**。
-  - tile **内部子元素**（如 kicker / title / lead 之类）在同一 tile 的揭示窗内 4-8 帧错峰入场即可，不要再单独占用 subtitle step；同一 tile 内子元素之间错峰**不得超过 12 帧**。
+  把"出现的焦点元素"按讲述顺序记为 step[0..N-1]（N = 焦点元素个数，1~4 个）。上面"上下文"里的**逐句字幕节拍列表**是本段口播逐句列表，每行形如 \`[k] +秒数 文本\`；**索引 k 与运行时注入组件的 cues 数组一一对应**——即代码里 \`cues[k]\` 就是第 k 句口播的相对起始帧。请用它把每个元素锚到"内容被讲到"的那一句。
+
+  设 D = useVideoConfig().durationInFrames，M = cues.length，entranceEnd = Math.min(18, D*0.12)。揭示规则：
+  - **语义对齐（核心做法）**：对每个 step[i]，先在上文逐句字幕节拍列表里找到**首次讲出该元素内容**的那一句，记其索引 k_i；揭示起点 revealStart_i = cues[k_i]。
+    · 例：柱状图标注"硕士 28842"，而列表有 \`[2] +8.1s 硕士28842人，博士2403人…\`，则该柱子锚到 cues[2]，在第 2 句被讲到时才长出来；严禁让它拖到段尾才出现。
+  - **可提前、不可迟到**：revealStart_i 允许比 cues[k_i] **早至多 12 帧**（≈0.4s 预备出现），但**绝不允许晚于 cues[k_i] 超过 8 帧**（≈0.27s）。宁可早一点，不可"口播都讲完了画面才出来"。
+  - **入场不空屏**：step[0] 固定在 [0, entranceEnd] 入场（serif 主标题，translateY(H*0.04)+opacity 0→1），保证开头不空白；其余 step 按上面语义锚定。
+  - **严格顺序**：k_0 ≤ k_1 ≤ … ≤ k_{N-1}，各 revealStart 随 i **单调不减**，必须与口播顺序一致，禁止乱序——这一条直接决定动画跟不跟得上口播。
+  - **兜底**：当逐句字幕节拍列表为空、或句子数 M 少于焦点数 N、或某元素在口播里实在找不到对应句时，退回均匀铺满 —— contentSpan = D*0.80 - entranceEnd，revealStart_i = entranceEnd + contentSpan*(i/(N-1))。
+  - 所有 revealStart 统一 clamp：Math.max(entranceEnd, Math.min(D-12, revealStart_i))；揭示窗 = [revealStart_i, revealStart_i+12]，用 translateY(H*0.025)+opacity 0→1；禁止 scale>1.04 / rotate / blur 入场。
+  - **照此模式实现，把 cueIndexForStep 换成你的语义映射，不要回退成"按比例平均铺开"**：
+    \`\`\`
+    const D = useVideoConfig().durationInFrames;
+    const entranceEnd = Math.min(18, D * 0.12);
+    const M = cues.length;
+    // 关键：cueIndexForStep[i] = 第 i 个焦点元素的内容在逐句字幕节拍列表里被讲到的那一句的索引
+    const cueIndexForStep = [0, /* 例如 */ 2, 5];
+    const LEAD = 10; // 提前帧数，≤12
+    const revealAt = (i, N) => {
+      if (i <= 0) return 0; // 入场
+      const k = cueIndexForStep[i];
+      const r = (M > 0 && k != null && k < M)
+        ? cues[k] - LEAD
+        : entranceEnd + (D * 0.8 - entranceEnd) * (i / (N - 1)); // 兜底
+      return Math.max(entranceEnd, Math.min(D - 12, r));
+    };
+    \`\`\`
+  - **铁律（违反任意一条即重做）**：① 每个焦点元素的揭示帧必须由"它内容对应的那句 cues[k]"算出，**严禁硬编码固定帧窗 [0,18][25,37]…，严禁把 N 拍按比例平均摊到整段 cues 上（idx=round(i*(M-1)/(N-1)) 之类）**——那会让画面与口播脱节，正是要消除的 bug；② 任何元素都**不得在其内容讲完 8 帧以后才出现**（可提前、不可迟到）；③ revealStart 必须随 i 单调不减，跟随口播顺序。
+  - 若 N==1（单 hero 卡）：hero 在 [0, entranceEnd] 入场后保持即可，无需后续拍。
+  - 已揭示的元素必须保持 opacity:1 与最终 translate 状态直到卡片末尾；**绝对禁止在揭示后再让它消失或再次入场**。
+  - 同一元素内部的小构件（kicker / 单位 / 注释）可在该元素揭示窗内 4-8 帧错峰，错峰**不得超过 12 帧**，不另占一拍。
 
   退场窗（可选）：
-  - 仅当 durationInFrames > 90 时启用，窗 = [durationInFrames - 14, durationInFrames]，整卡 opacity 1→0.0 单调下降，不允许任何元素反向运动。
+  - 仅当 D > 90 时启用，窗 = [D - 14, D]，整卡 opacity 1→0.0 单调下降，不允许任何元素反向运动。
 
   动画反禁忌（**违反任意一条都视为生成失败，必须重做**）：
   1. 禁止任何 opacity 在同一元素上出现 0→1→0 / 1→0→1 类反复；揭示后就保持。
@@ -118,13 +147,13 @@ user: |-
   5. 禁止整卡级 scale / rotate / 摄影机抖动 / 翻页效果。
   6. 禁止循环抖动 / 持续呼吸缩放；唯一允许的"微动"是 hairline 长度从 0→100% 的一次性单调揭示。
 
-  布局反禁忌（杜绝文字遮挡）：
-  - 顶层容器**必须使用 display:'grid'**（不再是 flex column），通过 gridTemplateColumns / gridTemplateRows 描述结构；gap: H * 0.035（≈20px @ H=580），padding: H * 0.08 上下 / W * 0.07 左右；不要把多个元素摞到同一坐标。
-  - tile **本身禁止任何 background / border / borderRadius / boxShadow / filter**；Bento 的"块感"只允许靠 ① gap 留白 ② tile 之间一条 1px hairline 分隔线（rgba(236,231,218,0.18)）实现。
-  - hairline 分隔线如需绝对定位，必须严格落在 gap 中央（gap 内居中、长度不超出 tile 边缘 H * 0.04）；不允许任何 hairline 压在 tile 内的文字 / 图表上。
-  - 任何使用 position:'absolute' 的子元素必须显式给出 left/right/top/bottom 四角中的至少 2 个，并保证矩形不与其它绝对定位元素相交。
-  - 单个 tile 内文字行 fontSize 之和 + gap 之和必须 ≤ 该 tile 的高度 - 2 * tilePaddingY；如果内容溢出，缩短文案、不要缩字号到不可读。
-  - 数据可视化区域（图 / 表）与文字区域必须放在**不同 tile**，或用一行 hairline / 一个明确 gap 隔开；图表不允许压在文字之上。
+  布局（单一焦点 · 大留白 · 杜绝遮挡）：
+  - 版式以**居中或竖向堆叠**为主（flex column / 简单 grid 均可），围绕唯一焦点组织；**不要追求填满画面的 Bento 仪表盘**。
+  - **大留白是硬要求**：顶层 padding 上下 ≥ H * 0.12、左右 ≥ W * 0.10；元素之间留足空白，画面大部分应是空的，让眼睛聚焦在当前这一拍。
+  - 容器与元素**禁止任何 background / border / borderRadius / boxShadow / filter**；分隔只允许靠 ① 留白 ② 一条 1px hairline（rgba(236,231,218,0.18)）。
+  - 任何 position:'absolute' 的子元素必须显式给出 left/right/top/bottom 四角中至少 2 个，并保证不与其它绝对定位元素相交；hairline 不得压在文字 / 图表上。
+  - 文字行 fontSize 之和 + 间距之和必须 ≤ 可用高度 - 2 * paddingY；内容放不下就**缩短文案**，不要缩字号到不可读、更不要硬塞。
+  - 数据可视化（图 / 表）与文字必须用明确留白或一条 hairline 隔开，绝不相互重叠。
   - 中文字符不要给 letterSpacing < 0 的负字距；西文标号才允许 -0.01em ~ -0.02em。
 
   {{styleSystemBlock}}

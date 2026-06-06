@@ -485,6 +485,72 @@ describe('analyzeSrt', () => {
     expect(result.segments).toHaveLength(2);
   });
 
+  it('invokes onCardGenerated once per successfully generated card with (card, index) matching the final result', async () => {
+    const planningCaller = vi.fn<typeof generateStructuredData>().mockResolvedValue({
+      segments: [baseSegment, secondSegment],
+      coverPrompts: ['封面提示词'],
+      summary: '节目总结',
+      keywords: ['AI', '播客'],
+      globalPrompt: '整体偏商业分析风',
+    });
+    const motionCaller = vi
+      .fn<typeof generateMotionCardSource>()
+      .mockResolvedValue(VALID_MOTION_TSX);
+    const generated: { card: AICard; index: number }[] = [];
+
+    const result = await analyzeSrt(baseEntries, settings, {
+      generateStructuredData: planningCaller,
+      generateMotionSource: motionCaller,
+      globalPrompt: '整体偏商业分析风',
+      onCardGenerated: (card, index) => {
+        generated.push({ card, index });
+      },
+    });
+
+    // 恰好每张成功卡片回调一次
+    expect(generated).toHaveLength(2);
+    // index 为 planning 顺序下标；两段都成功 → 0 与 1
+    expect(generated.map((g) => g.index).sort()).toEqual([0, 1]);
+    // 回吐的卡片对象应与最终 result.cards 中对应槽位是同一引用
+    const bySegment = new Map(generated.map((g) => [g.card.segmentId, g.card]));
+    expect(bySegment.get('seg-1')).toBe(result.cards.find((c) => c.segmentId === 'seg-1'));
+    expect(bySegment.get('seg-2')).toBe(result.cards.find((c) => c.segmentId === 'seg-2'));
+  });
+
+  it('does not invoke onCardGenerated for failed cards (only successful ones)', async () => {
+    const planningCaller = vi.fn<typeof generateStructuredData>().mockResolvedValue({
+      segments: [baseSegment, secondSegment],
+      coverPrompts: ['封面提示词'],
+      summary: '节目总结',
+      keywords: ['AI', '播客'],
+      globalPrompt: '整体偏商业分析风',
+    });
+    const motionCaller = vi.fn<typeof generateMotionCardSource>();
+    motionCaller.mockImplementation(async (_settings, _system, _user, _binding, opts) => {
+      const label = opts?.label;
+      if (typeof label === 'string' && label.includes('seg-1')) {
+        throw new Error('LLM Motion 源码请求 空闲超时');
+      }
+      return VALID_MOTION_TSX;
+    });
+    const generated: { card: AICard; index: number }[] = [];
+
+    const result = await analyzeSrt(baseEntries, settings, {
+      generateStructuredData: planningCaller,
+      generateMotionSource: motionCaller,
+      globalPrompt: '整体偏商业分析风',
+      onCardGenerated: (card, index) => {
+        generated.push({ card, index });
+      },
+    });
+
+    // seg-1 失败、seg-2 成功 → 仅回调一次，且只针对成功段
+    expect(generated).toHaveLength(1);
+    expect(generated[0]?.card.segmentId).toBe('seg-2');
+    expect(generated[0]?.card).toBe(result.cards.find((c) => c.segmentId === 'seg-2'));
+    expect(result.cardErrors).toHaveLength(1);
+  });
+
   it('generates one card per split segment when planning returns an overlong segment', async () => {
     const longEntries = makeLongEntries();
     const planningCaller = vi.fn<typeof generateStructuredData>().mockResolvedValue({

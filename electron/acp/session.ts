@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { acpLog, nowMs } from './acp-log';
 import type { AcpClient } from './client';
 import type {
   AcpEvent,
@@ -57,12 +58,29 @@ export class SessionManager extends EventEmitter {
     });
 
     this.client.on('disconnected', () => {
+      this.log('warn', 'client 报告 disconnected，待处理权限请求将被取消', {
+        pendingPermissions: this.pendingPermissions.size,
+        sessionId: this.sessionId,
+        status: this.status,
+      });
       this.setStatus('disconnected');
       // 拒绝所有待处理的权限请求
       for (const [, pending] of this.pendingPermissions) {
         pending.resolve({ outcome: { outcome: 'cancelled' } });
       }
       this.pendingPermissions.clear();
+    });
+  }
+
+  /** 统一日志入口，自动带上 agentType 上下文以区分 editor / headless-llm 会话。 */
+  private log(
+    level: 'info' | 'warn' | 'error',
+    message: string,
+    details?: Record<string, unknown>,
+  ): void {
+    acpLog(level, 'acp-session', message, {
+      agentType: this.options.agentType ?? 'unknown',
+      ...details,
     });
   }
 
@@ -112,36 +130,57 @@ export class SessionManager extends EventEmitter {
   ): Promise<void> {
     this.projectDir = projectDir;
     this.setStatus('connecting');
+    const connectStartedAt = nowMs();
+    this.log('info', 'connect 开始', {
+      projectDir,
+      spawnCommand,
+      spawnArgs,
+      permissionPolicy: this.permissionPolicy,
+      permissionRequestBehavior: this.options.permissionRequestBehavior,
+      resumeSessionId: sessionId ?? null,
+    });
 
     // 注册 runtime handlers（仅保留 elicitation 和权限请求）
     this.registerRuntimeHandlers();
 
     // spawn agent 进程
+    this.log('info', 'connect: 开始 spawn agent');
     await this.client.spawn(spawnCommand, spawnArgs, projectDir, env);
+    this.log('info', 'connect: spawn 完成，发送 initialize', { spawnMs: nowMs() - connectStartedAt });
 
     // initialize（protocolVersion 必须为数字）
     this.initializeResult = (await this.client.sendRequest('initialize', {
       protocolVersion: 1,
       clientCapabilities: this.options.clientCapabilities ?? DEFAULT_CLIENT_CAPABILITIES,
     })) as InitializeResult;
+    this.log('info', 'connect: initialize 完成', {
+      elapsedMs: nowMs() - connectStartedAt,
+      agentName: this.initializeResult?.agentInfo?.name,
+      authMethods: (this.initializeResult as { authMethods?: unknown[] })?.authMethods?.length ?? 0,
+    });
 
     let sessionResult: NewSessionResult;
 
     if (sessionId) {
       try {
+        this.log('info', 'connect: 尝试 session/load 恢复会话', { sessionId });
         sessionResult = (await this.client.sendRequest('session/load', {
           sessionId,
           cwd: projectDir,
           mcpServers: [],
         })) as NewSessionResult;
-      } catch {
+      } catch (err) {
         // 指定会话恢复失败，回退为新会话
+        this.log('warn', 'connect: session/load 失败，回退 session/new', {
+          error: err instanceof Error ? err.message : String(err),
+        });
         sessionResult = (await this.client.sendRequest('session/new', {
           cwd: projectDir,
           mcpServers: [],
         })) as NewSessionResult;
       }
     } else {
+      this.log('info', 'connect: 发送 session/new');
       sessionResult = (await this.client.sendRequest('session/new', {
         cwd: projectDir,
         mcpServers: [],
@@ -158,6 +197,13 @@ export class SessionManager extends EventEmitter {
     }
 
     this.setStatus('connected');
+    this.log('info', 'connect 完成，会话就绪', {
+      sessionId: this.sessionId,
+      totalMs: nowMs() - connectStartedAt,
+      availableModels: Array.isArray(sessionResult.models?.availableModels)
+        ? sessionResult.models?.availableModels?.length
+        : undefined,
+    });
 
     // 从 session 结果和 initialize 结果中提取 capabilities
     const capabilities = {
@@ -175,10 +221,22 @@ export class SessionManager extends EventEmitter {
   }
 
   async sendPrompt(contents: PromptInputBlock[] | unknown[]): Promise<void> {
-    if (!this.sessionId) throw new Error('No active session');
+    if (!this.sessionId) {
+      this.log('error', 'sendPrompt 时无活动会话', { status: this.status });
+      throw new Error('No active session');
+    }
     this.setStatus('prompting');
     // 将 resource 等非标准 block 转换为 ACP 协议支持的 text block
     const prompt = await this.normalizePromptBlocks(contents as unknown[]);
+    const promptStartedAt = nowMs();
+    const promptChars = JSON.stringify(prompt).length;
+    // 注意：session/prompt 用 timeout=0（无超时），turn 结束前会一直阻塞。
+    // 若 agent 失联且不发 turn_complete/error，这里会永久挂起 —— 是已知的静默卡死点。
+    this.log('warn', 'sendPrompt: 发送 session/prompt（无超时上限，等待 turn 结束）', {
+      sessionId: this.sessionId,
+      blocks: Array.isArray(prompt) ? prompt.length : 0,
+      promptChars,
+    });
     let stopReason = 'end_turn';
     let usage: { used: number; size: number } | undefined;
     try {
@@ -190,8 +248,17 @@ export class SessionManager extends EventEmitter {
       const res = result as { stopReason?: string; usage?: { used: number; size: number } } | undefined;
       stopReason = res?.stopReason ?? 'end_turn';
       usage = res?.usage;
+      this.log('info', 'sendPrompt: session/prompt 返回', {
+        stopReason,
+        usage,
+        elapsedMs: nowMs() - promptStartedAt,
+      });
     } catch (err) {
       stopReason = 'error';
+      this.log('error', 'sendPrompt: session/prompt 失败', {
+        error: err instanceof Error ? err.message : String(err),
+        elapsedMs: nowMs() - promptStartedAt,
+      });
       this.emit('event', {
         type: 'error' as const,
         message: err instanceof Error ? err.message : 'Prompt request failed',
@@ -208,7 +275,14 @@ export class SessionManager extends EventEmitter {
   }
 
   async cancelTurn(): Promise<void> {
-    if (!this.sessionId) return;
+    if (!this.sessionId) {
+      this.log('info', 'cancelTurn: 无活动会话，跳过');
+      return;
+    }
+    this.log('warn', 'cancelTurn: 发送 session/cancel', {
+      sessionId: this.sessionId,
+      pendingPermissions: this.pendingPermissions.size,
+    });
     this.client.sendNotification('session/cancel', { sessionId: this.sessionId });
     // 取消所有待处理的权限请求
     for (const [, pending] of this.pendingPermissions) {
@@ -333,10 +407,22 @@ export class SessionManager extends EventEmitter {
         sessionId: string;
       };
 
+      const toolTitle = (toolCall as { title?: string } | undefined)?.title;
+      this.log('info', '收到 session/request_permission', {
+        behavior: this.options.permissionRequestBehavior,
+        policy: this.permissionPolicy,
+        toolTitle,
+        optionKinds: options.map((o) => o.kind),
+      });
+
       if (this.options.permissionRequestBehavior === 'reject') {
         const rejectOption =
           options.find((o) => o.kind === 'reject_always') ??
           options.find((o) => o.kind === 'reject_once');
+        this.log('warn', '权限请求按 reject 策略自动拒绝', {
+          toolTitle,
+          picked: rejectOption?.kind ?? 'cancelled',
+        });
         if (rejectOption) {
           return { outcome: { outcome: 'selected', optionId: rejectOption.optionId } };
         }
@@ -346,10 +432,13 @@ export class SessionManager extends EventEmitter {
       // auto_approve 策略：直接放行，不弹 UI
       const autoResponse = this.autoResolvePermission(options);
       if (autoResponse) {
+        this.log('info', '权限请求按 auto_approve 自动放行', { toolTitle });
         return autoResponse;
       }
 
       const seq = this.permissionSeq++;
+      // 交互模式：等待用户在 UI 上点选，期间该请求会一直 pending（潜在卡点）
+      this.log('warn', '权限请求进入等待用户响应（交互模式，pending）', { toolTitle, seq });
 
       // 通知前端显示权限请求 UI
       this.emit('event', {

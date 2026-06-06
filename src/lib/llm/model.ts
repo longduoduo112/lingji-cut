@@ -1,8 +1,44 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatOpenAI } from '@langchain/openai';
 import { LMSTUDIO_DEFAULT_BASE_URL, type AISettings, type LLMProvider } from '../../types/ai';
 import { ClaudeCodeAcpChatModel } from './claude-code-acp-model';
+
+/** MiniMax Anthropic 兼容端点默认地址（SDK 会在其后拼 /v1/messages）。 */
+export const MINIMAX_ANTHROPIC_DEFAULT_BASE_URL = 'https://api.minimaxi.com/anthropic';
+/** Anthropic 扩展思考的最小 budget_tokens（小于此值接口会报错）。 */
+const MINIMAX_MIN_THINKING_BUDGET = 1024;
+/** 正文 token 预算：thinking 之外留给真正回答（TSX 卡片）的空间，过小会截断成黑屏。 */
+const MINIMAX_CONTENT_TOKENS = 8192;
+
+export type MiniMaxThinkingConfig =
+  | { type: 'disabled' }
+  | { type: 'enabled'; budget_tokens: number };
+
+/**
+ * 由 enableThinking + 思考深度解析出 MiniMax(Anthropic) 的 thinking 配置。
+ * 关闭 → disabled；开启 → enabled 且 budget_tokens 至少 1024（Anthropic 下限）。
+ */
+export function resolveMiniMaxThinking(
+  enableThinking: boolean,
+  budgetTokens?: number,
+): MiniMaxThinkingConfig {
+  if (enableThinking === false) {
+    return { type: 'disabled' };
+  }
+  const requested =
+    typeof budgetTokens === 'number' && Number.isFinite(budgetTokens) && budgetTokens > 0
+      ? Math.floor(budgetTokens)
+      : MINIMAX_MIN_THINKING_BUDGET;
+  return { type: 'enabled', budget_tokens: Math.max(MINIMAX_MIN_THINKING_BUDGET, requested) };
+}
+
+/** max_tokens 必须严格大于 thinking.budget_tokens，并为正文留足空间。 */
+export function resolveMiniMaxMaxTokens(thinking: MiniMaxThinkingConfig): number {
+  const budget = thinking.type === 'enabled' ? thinking.budget_tokens : 0;
+  return budget + MINIMAX_CONTENT_TOKENS;
+}
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, '');
@@ -59,6 +95,38 @@ function createGeminiChatModel(
   });
 }
 
+/**
+ * MiniMax 专用适配：走 MiniMax 的 Anthropic 兼容端点（/anthropic → /v1/messages），
+ * 这是 MiniMax 唯一能真正控制思考的路径——OpenAI 兼容端点会忽略 enable_thinking。
+ * thinking 开关 + 思考深度(budget_tokens) 映射到 Anthropic 的 thinking 配置。
+ */
+function createMiniMaxChatModel(
+  provider: LLMProvider,
+  model: string,
+  options?: { enableThinking?: boolean },
+): BaseChatModel {
+  const enableThinking = resolveEnableThinking(provider, options);
+  const thinking = resolveMiniMaxThinking(enableThinking, provider.thinkingBudgetTokens);
+  const maxTokens = resolveMiniMaxMaxTokens(thinking);
+  const baseUrl = normalizeBaseUrl(provider.baseUrl?.trim() || MINIMAX_ANTHROPIC_DEFAULT_BASE_URL);
+
+  return new ChatAnthropic({
+    apiKey: provider.apiKey,
+    model,
+    anthropicApiUrl: baseUrl,
+    maxTokens,
+    // Anthropic 扩展思考开启时要求 temperature=1；关闭思考时用低温更稳。
+    temperature: thinking.type === 'enabled' ? 1 : 0.3,
+    thinking,
+    // MiniMax 的 Anthropic 端点非流式响应 content 为 null，会让 ChatAnthropic 在
+    // anthropicResponseToChatMessages 里读 null.length 崩溃（连接测试 invoke() 即触发）。
+    // 强制 streaming：invoke() 也走流式聚合路径，与真实生成（model.stream）一致。
+    streaming: true,
+    // 主进程为 Node，此处保险允许在类浏览器环境（渲染进程）下实例化。
+    clientOptions: { dangerouslyAllowBrowser: true },
+  }) as unknown as BaseChatModel;
+}
+
 export function createChatModelFromProvider(
   provider: LLMProvider,
   model: string,
@@ -72,6 +140,10 @@ export function createChatModelFromProvider(
 
   if (provider.type === 'gemini') {
     return createGeminiChatModel(provider, model, options);
+  }
+
+  if (provider.type === 'minimax') {
+    return createMiniMaxChatModel(provider, model, options);
   }
 
   const enableThinking = resolveEnableThinking(provider, options);

@@ -2,6 +2,7 @@ import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import type { AISettings, LLMProvider } from '../../types/ai';
 import type { ResolvedBinding } from './binding-resolver';
 import {
+  extractMotionCardSource,
   extractReasoningContent,
   extractTextContent,
   parseLLMJsonResponse,
@@ -41,9 +42,11 @@ const STRUCTURED_IDLE_TIMEOUT_MS = 120_000;
 const STRUCTURED_THINKING_IDLE_TIMEOUT_MS = 240_000;
 // 总硬上限，仅作失控保护（流真的不结束时兜底）
 const STRUCTURED_HARD_TIMEOUT_MS = 30 * 60_000;
-const STRUCTURED_MAX_RETRIES = 1;
+const STRUCTURED_MAX_RETRIES = 2;
 const STRUCTURED_RETRY_HINT =
   '\n\n【重要】上一次返回的不是合法 JSON 对象。请严格只输出一个完整的 JSON 对象，不要包裹 markdown 代码块、不要追加任何解释文字、不要省略闭合花括号。';
+const MOTION_SOURCE_RETRY_HINT =
+  '\n\n【重要】上一次没有给出可用的 Remotion 组件。请只输出一个 ```tsx 代码块，块内是 export default 的单文件 Remotion 函数组件，不要任何解释文字。';
 
 export interface StructuredDataOptions {
   // 可选：调用方可指定标签，用于错误信息定位（如 "cards.segment#3/12"）
@@ -146,18 +149,43 @@ async function streamCollectWithIdleTimeout(
   return fullText;
 }
 
-export async function generateStructuredData(
+/**
+ * 流式调用 + 失败重试的通用核心。`parse` 把整段回复解析成业务结果；解析抛错即触发
+ * 重试（附加 retryHint）。`bindJsonObject` 控制是否用 response_format=json_object 约束模型
+ * —— 结构化 JSON 输出需要它，而自由 TSX 代码生成必须关闭它以保留模型自由度。
+ */
+async function streamWithRetry<T>(
   settings: AISettings,
   systemPrompt: string,
   userMessage: string,
-  binding?: ResolvedBinding,
-  options: StructuredDataOptions = {},
-): Promise<Record<string, unknown>> {
+  binding: ResolvedBinding | undefined,
+  config: {
+    parse: (content: string) => T | Promise<T>;
+    /** 解析成功后的二次校验；抛错与解析失败一样触发重试（附加 retryHint）。 */
+    validate?: (result: T) => void | Promise<void>;
+    retryHint: string;
+    bindJsonObject: boolean;
+    label: string;
+    telemetryLabel: string;
+    failureMessage: string;
+    options: StructuredDataOptions;
+  },
+): Promise<T> {
+  const {
+    parse,
+    validate,
+    retryHint,
+    bindJsonObject,
+    label,
+    telemetryLabel,
+    failureMessage,
+    options,
+  } = config;
   const chatModel = pickModel(settings, binding) as ReturnType<typeof createChatModel> &
     BindableModel &
     StreamableModel;
   const model: StreamableModel =
-    typeof chatModel.bind === 'function'
+    bindJsonObject && typeof chatModel.bind === 'function'
       ? chatModel.bind({ response_format: { type: 'json_object' } })
       : chatModel;
 
@@ -167,15 +195,12 @@ export async function generateStructuredData(
       ? STRUCTURED_THINKING_IDLE_TIMEOUT_MS
       : STRUCTURED_IDLE_TIMEOUT_MS);
   const hardTimeoutMs = options.hardTimeoutMs ?? STRUCTURED_HARD_TIMEOUT_MS;
-  const label = `LLM 结构化输出请求${options.label ? `（${options.label}）` : ''}`;
-  const telemetryLabel = options.label ?? 'structured';
   const thinking = isThinkingBinding(binding);
   const tel = options.telemetry;
 
   let lastError: unknown;
   for (let attempt = 0; attempt <= STRUCTURED_MAX_RETRIES; attempt++) {
-    const promptForAttempt =
-      attempt === 0 ? systemPrompt : `${systemPrompt}${STRUCTURED_RETRY_HINT}`;
+    const promptForAttempt = attempt === 0 ? systemPrompt : `${systemPrompt}${retryHint}`;
     const callStart = Date.now();
     tel?.emit('llm.start', {
       label: telemetryLabel,
@@ -200,7 +225,9 @@ export async function generateStructuredData(
         },
       );
       const content = assertNonEmptyContent(fullText, 'LLM 返回空内容');
-      const parsed = parseStructuredOutput(content);
+      const parsed = await parse(content);
+      // 解析成功后的运行时校验（如 Motion Card 冒烟渲染）；抛错走重试。
+      if (validate) await validate(parsed);
       tel?.emit('llm.end', {
         label: telemetryLabel,
         attempt,
@@ -225,7 +252,55 @@ export async function generateStructuredData(
       if (attempt >= STRUCTURED_MAX_RETRIES) break;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error('LLM 结构化输出失败');
+  throw lastError instanceof Error ? lastError : new Error(failureMessage);
+}
+
+export async function generateStructuredData(
+  settings: AISettings,
+  systemPrompt: string,
+  userMessage: string,
+  binding?: ResolvedBinding,
+  options: StructuredDataOptions = {},
+): Promise<Record<string, unknown>> {
+  return streamWithRetry(settings, systemPrompt, userMessage, binding, {
+    parse: parseStructuredOutput,
+    retryHint: STRUCTURED_RETRY_HINT,
+    bindJsonObject: true,
+    label: `LLM 结构化输出请求${options.label ? `（${options.label}）` : ''}`,
+    telemetryLabel: options.label ?? 'structured',
+    failureMessage: 'LLM 结构化输出失败',
+    options,
+  });
+}
+
+/**
+ * 生成 Motion Card 的 Remotion TSX 源码。与结构化 JSON 输出不同，这里**不**绑定
+ * response_format=json_object —— 模型以自由文本（建议 ```tsx 代码块）输出组件，由
+ * extractMotionCardSource 抽取源码。这样规避了"把整段 TSX 塞进 JSON 字符串再转义"的
+ * 高失败率路径，对中小模型也更友好。
+ */
+export interface MotionCardSourceOptions extends StructuredDataOptions {
+  /** 可选：抽取出 TSX 后的运行时校验（如生成期冒烟渲染）；抛错触发重试。 */
+  validate?: (tsx: string) => void | Promise<void>;
+}
+
+export async function generateMotionCardSource(
+  settings: AISettings,
+  systemPrompt: string,
+  userMessage: string,
+  binding?: ResolvedBinding,
+  options: MotionCardSourceOptions = {},
+): Promise<string> {
+  return streamWithRetry(settings, systemPrompt, userMessage, binding, {
+    parse: extractMotionCardSource,
+    validate: options.validate,
+    retryHint: MOTION_SOURCE_RETRY_HINT,
+    bindJsonObject: false,
+    label: `LLM Motion 源码请求${options.label ? `（${options.label}）` : ''}`,
+    telemetryLabel: options.label ?? 'motion-source',
+    failureMessage: 'LLM Motion 源码生成失败',
+    options,
+  });
 }
 
 export async function generateText(

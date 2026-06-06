@@ -32,11 +32,15 @@ const PROVIDER_TYPE_OPTIONS: SelectOption[] = [
   { value: 'openai_compatible', label: 'OpenAI Compatible' },
   { value: 'lmstudio', label: 'LM Studio (本地)' },
   { value: 'anthropic', label: 'Anthropic' },
+  { value: 'minimax', label: 'MiniMax (Anthropic 端点)' },
   { value: 'gemini', label: 'Google Gemini' },
   { value: 'claude_code_acp', label: 'Claude Code ACP' },
 ];
 
 const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
+const MINIMAX_ANTHROPIC_DEFAULT_BASE_URL = 'https://api.minimaxi.com/anthropic';
+/** MiniMax 思考深度默认值（token），与 model.ts 下限保持一致 */
+const MINIMAX_DEFAULT_THINKING_BUDGET = 1024;
 
 /** 空白 Provider 表单 */
 function emptyProvider(): LLMProvider {
@@ -256,6 +260,9 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
                   if (nextType === 'lmstudio' && !next.baseUrl.trim()) {
                     next.baseUrl = LMSTUDIO_DEFAULT_BASE_URL;
                   }
+                  if (nextType === 'minimax' && !next.baseUrl.trim()) {
+                    next.baseUrl = MINIMAX_ANTHROPIC_DEFAULT_BASE_URL;
+                  }
                   if (nextType === 'claude_code_acp') {
                     next.baseUrl = '';
                     next.apiKey = '';
@@ -286,7 +293,9 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
                     ? `留空使用 Google 官方端点（${GEMINI_DEFAULT_BASE_URL}）`
                     : form.type === 'lmstudio'
                       ? `LM Studio 默认本地端点为 ${LMSTUDIO_DEFAULT_BASE_URL}`
-                      : undefined
+                      : form.type === 'minimax'
+                        ? `MiniMax Anthropic 兼容端点，留空用默认（${MINIMAX_ANTHROPIC_DEFAULT_BASE_URL}）`
+                        : undefined
                 }
               >
                 <Input
@@ -300,7 +309,9 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
                       ? GEMINI_DEFAULT_BASE_URL
                       : form.type === 'lmstudio'
                         ? LMSTUDIO_DEFAULT_BASE_URL
-                        : 'https://api.openai.com/v1'
+                        : form.type === 'minimax'
+                          ? MINIMAX_ANTHROPIC_DEFAULT_BASE_URL
+                          : 'https://api.openai.com/v1'
                   }
                   size="sm"
                   aria-invalid={Boolean(errors.baseUrl)}
@@ -490,12 +501,33 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
               hint={
                 form.type === 'gemini'
                   ? '关闭后会向 Gemini 传入 thinkingConfig.thinkingBudget=0'
-                  : '关闭后会向兼容 OpenAI 的接口追加 enable_thinking=false'
+                  : form.type === 'minimax'
+                    ? '关闭后走 MiniMax Anthropic 端点的 thinking.type=disabled（真正不思考、更快）'
+                    : '关闭后会向兼容 OpenAI 的接口追加 enable_thinking=false（注意：MiniMax 的 OpenAI 端点会忽略该参数）'
               }
             >
               <Switch
                 checked={form.enableThinking ?? true}
                 onChange={(checked) => set('enableThinking', checked)}
+              />
+            </Field>
+          ) : null}
+
+          {form.type === 'minimax' && (form.enableThinking ?? true) ? (
+            <Field
+              label="思考深度（budget tokens）"
+              hint="开启思考时，模型最多用于推理的 token 预算；越小越快，越大思考越深。最小 1024。"
+            >
+              <Input
+                variant="number"
+                min={1024}
+                step={512}
+                value={String(form.thinkingBudgetTokens ?? MINIMAX_DEFAULT_THINKING_BUDGET)}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  set('thinkingBudgetTokens', Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined);
+                }}
+                size="sm"
               />
             </Field>
           ) : null}

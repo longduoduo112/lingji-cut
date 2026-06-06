@@ -164,12 +164,10 @@ const LOCKED_COVER_REGENERATION = `【系统契约 · 不可修改】
 - coverPrompts: 数组，且只能包含 1 条字符串`;
 
 const LOCKED_CARDS_SEGMENT = `【系统契约 · 不可修改】
-只返回严格 JSON 对象，不要解释。
-必填：id, segmentId, type, title, content, startMs, endMs, displayDurationMs, displayMode, template, enabled, style。
-image：必须给 imageAspectRatio；禁止 motionCard 与 cardPrompt；renderMode 留空或 "legacy"。
-motion：必须给 cardPrompt、renderMode="motion-card"、motionCard.tsx。
-tsx：输出单文件 Remotion 函数组件并 export default；从 "remotion" 引入 useCurrentFrame/useVideoConfig/interpolate/spring/Easing/AbsoluteFill/Sequence；动画必须是 useCurrentFrame() 的纯函数；禁止 fetch/setTimeout/Math.random/new Date 等非确定性 API；不要 markdown 代码块。
-时间字段必须是毫秒数字。`;
+只输出**一个 \`\`\`tsx 代码块**，块内是单文件 Remotion 函数组件并 export default；代码块之外不要写任何文字、解释或 JSON。
+组件从 "remotion" 引入 useCurrentFrame/useVideoConfig/interpolate/spring/Easing/AbsoluteFill/Sequence，从 "react" 引入所需 API；动画必须是 useCurrentFrame() 的纯函数；禁止 fetch/setTimeout/setInterval/Math.random/new Date/requestAnimationFrame 等非确定性或副作用 API。
+组件必须完整：函数体内必须 return 真实 JSX（至少一个 <AbsoluteFill> 根节点），严禁用 “// ... build out the rest”/“// TODO”/“…” 等注释收尾或 return null，否则渲染黑屏视为失败。
+卡片的标题 / 时间 / 类型 / 样式等元信息由系统从 segment 合成，不需要、也不要在代码里或代码外输出这些字段。`;
 
 const LOCKED_SCRIPT_REVIEW = `【系统契约 · 不可修改】
 请以严格 JSON 格式返回审查结果，且只返回 JSON：
@@ -240,6 +238,7 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
       { name: 'segmentStartMs', description: 'segment 起始毫秒' },
       { name: 'segmentEndMs', description: 'segment 结束毫秒' },
       { name: 'segmentTranscriptExcerpt', description: 'segment 原始摘录' },
+      { name: 'segmentCues', description: '本段逐句字幕节拍列表（[k] +秒数 文本；索引 k 与运行时 cues 数组对齐），供模型把焦点元素锚到讲出它的那一句' },
       { name: 'segmentVisualType', description: '上游判定的卡片形式：motion 或 image' },
       { name: 'cardPrompt', description: '单卡追加提示词' },
       { name: 'currentCardSection', description: '当前卡片线索多行块（由调用方构造）' },

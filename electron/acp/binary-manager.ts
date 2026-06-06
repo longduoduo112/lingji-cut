@@ -4,12 +4,14 @@ import fs from 'node:fs/promises';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { acpLog } from './acp-log';
 
 const execFileAsync = promisify(execFile);
 
 const AGENT_NPM_PACKAGE = '@agentclientprotocol/claude-agent-acp';
 const AGENT_BIN_NAME = 'claude-agent-acp';
 const NPM_OFFICIAL_REGISTRY = 'https://registry.npmjs.org';
+const LOG_SCOPE = 'acp-binary';
 
 export class BinaryManager {
   private cachePath: string;
@@ -171,12 +173,16 @@ export class BinaryManager {
    */
   getSpawnCommand(_version: string): { command: string; args: string[] } {
     const resolved = this.whichSync(AGENT_BIN_NAME);
-    if (resolved) return { command: resolved, args: [] };
+    if (resolved) {
+      acpLog('info', LOG_SCOPE, 'getSpawnCommand: 命中 PATH (which)', { command: resolved });
+      return { command: resolved, args: [] };
+    }
 
     const scanned = this.findBinaryInNodeVersions(AGENT_BIN_NAME);
     if (scanned) {
       // 将该版本 bin 目录加入 PATH，方便子进程内部再次 spawn 同目录工具
       this.prependToPathIfMissing(path.dirname(scanned));
+      acpLog('info', LOG_SCOPE, 'getSpawnCommand: 命中 nvm/fnm/volta 版本目录', { command: scanned });
       return { command: scanned, args: [] };
     }
 
@@ -185,9 +191,14 @@ export class BinaryManager {
       AGENT_BIN_NAME,
     );
     if (userPrefixCandidate) {
+      acpLog('info', LOG_SCOPE, 'getSpawnCommand: 命中用户本地 npm prefix', { command: userPrefixCandidate });
       return { command: userPrefixCandidate, args: [] };
     }
 
+    acpLog('error', LOG_SCOPE, 'getSpawnCommand: 未找到二进制，回退裸名（极可能 ENOENT）', {
+      binName: AGENT_BIN_NAME,
+      triedUserPrefix: `${this.userNpmPrefix}/bin`,
+    });
     console.warn(
       `[ACP] 未找到 ${AGENT_BIN_NAME} 二进制；spawn 将依赖 PATH 解析，可能触发 ENOENT。` +
         ` 已尝试路径：which、nvm/fnm/volta 全部版本、${this.userNpmPrefix}/bin`,

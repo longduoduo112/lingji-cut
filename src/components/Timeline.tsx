@@ -50,6 +50,7 @@ import type { ManualCardKind } from '../lib/manual-card-types';
 
 interface TimelineProps {
   currentTimeMs: number;
+  isPlaying?: boolean;
   onSeek: (ms: number) => void;
   /** 播放头拖动开始（mousedown）。用于「拖动时暂停、松手续播」。 */
   onSeekStart?: () => void;
@@ -101,6 +102,7 @@ type TimelineContextTarget =
 
 export function Timeline({
   currentTimeMs,
+  isPlaying = false,
   onSeek,
   onSeekStart,
   onSeekEnd,
@@ -1300,6 +1302,7 @@ export function Timeline({
                     durationMs={podcastDurationMs}
                     trackWidth={podcastWidth}
                     trackHeight={audioTrackHeight}
+                    deferLoading={isPlaying}
                   />
                 </div>
               );
@@ -1650,6 +1653,7 @@ export function Timeline({
                           isDragging={Boolean(activeDragForOverlay)}
                           computeSnapForTrim={computeSnapForTrim}
                           onTrackHoverChange={setHoverTrackId}
+                          deferWaveformLoading={isPlaying}
                           onContextMenu={(event) => {
                             handleOverlayContextMenu(overlay.id, overlay.trackId, event.clientX);
                           }}

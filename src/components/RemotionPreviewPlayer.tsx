@@ -1,8 +1,11 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Player, type PlayerRef } from '@remotion/player';
 import { MainComposition } from '../remotion/MainComposition';
 import { buildRenderPlan } from '../remotion/timeline-to-sequences';
 import { collectMotionCards } from '../remotion/collect-cards';
+import { hydrateAICardAssetPaths } from '../hyperframes/assets';
+import { shouldRefreshPreviewForExternalTime, shouldResyncPreviewSeek } from '../lib/playback';
+import { getPreviewAudioSources, preloadPreviewAudioSources } from '../remotion/preview-audio-preload';
 import type { SrtEntry, TimelineData } from '../types';
 
 export interface RemotionPreviewHandle {
@@ -18,31 +21,48 @@ export interface RemotionPreviewHandle {
 interface RemotionPreviewPlayerProps {
   timeline: TimelineData;
   srtEntries: SrtEntry[];
-  /** 预览用 toFileSrc 处理绝对路径，projectDir 暂不参与路径改写，保留以兼容调用方。 */
+  /** 用于把媒体卡（image / video）相对 projectDir 的 assetPath 解析为绝对路径供预览加载。 */
   projectDir?: string | null;
   currentTimeMs: number;
+  isPlaying: boolean;
   onTimeUpdate: (timeMs: number) => void;
   onPlay: () => void;
   onPause: () => void;
   onEnded: () => void;
 }
 
-export const RemotionPreviewPlayer = forwardRef<RemotionPreviewHandle, RemotionPreviewPlayerProps>(
+const RemotionPreviewPlayerInner = forwardRef<RemotionPreviewHandle, RemotionPreviewPlayerProps>(
   function RemotionPreviewPlayer(
-    { timeline, srtEntries, currentTimeMs, onTimeUpdate, onPlay, onPause, onEnded },
+    { timeline, srtEntries, projectDir, currentTimeMs, isPlaying, onTimeUpdate, onPlay, onPause, onEnded },
     ref,
   ) {
     const player = useRef<PlayerRef>(null);
+    // 媒体卡（image / video）的 assetPath 相对 projectDir 存储；预览没有 bundle public 目录，
+    // 需先解析为绝对路径，AICardOverlay 才能用 file:// 加载图片 / 视频。
+    const renderTimeline = useMemo(
+      () => hydrateAICardAssetPaths(timeline, projectDir ?? null),
+      [timeline, projectDir],
+    );
     const plan = useMemo(
-      () => buildRenderPlan(timeline, srtEntries, timeline.fps ?? 30),
-      [timeline, srtEntries],
+      () => buildRenderPlan(renderTimeline, srtEntries, renderTimeline.fps ?? 30),
+      [renderTimeline, srtEntries],
     );
     const fps = plan.fps;
     const suppressSeek = useRef(false);
 
     // 预览前把 motion 卡片 TSX 编译为可执行 JS（主进程 esbuild），供 CardHost 求值。
     const [compiledCards, setCompiledCards] = useState<Record<string, string>>({});
-    const cardSources = useMemo(() => collectMotionCards(timeline), [timeline]);
+    const previewAudioSources = useMemo(() => getPreviewAudioSources(plan.audio), [plan.audio]);
+    const previewAudioSourcesKey = previewAudioSources.join('\0');
+    const inputProps = useMemo(
+      () => ({ timeline: renderTimeline, srtEntries, compiledCards }),
+      [renderTimeline, srtEntries, compiledCards],
+    );
+    const playerStyle = useMemo(
+      () => ({ width: '100%', height: '100%', background: 'var(--color-preview-bg)' }),
+      [],
+    );
+    const cardSources = useMemo(() => collectMotionCards(renderTimeline), [renderTimeline]);
     useEffect(() => {
       let cancelled = false;
       if (cardSources.length === 0) {
@@ -58,6 +78,8 @@ export const RemotionPreviewPlayer = forwardRef<RemotionPreviewHandle, RemotionP
         cancelled = true;
       };
     }, [cardSources]);
+
+    useEffect(() => preloadPreviewAudioSources(previewAudioSources), [previewAudioSourcesKey]);
 
     useImperativeHandle(ref, () => ({
       play: () => player.current?.play(),
@@ -96,24 +118,63 @@ export const RemotionPreviewPlayer = forwardRef<RemotionPreviewHandle, RemotionP
       const p = player.current;
       if (!p || suppressSeek.current) return;
       const target = Math.round((Math.max(0, currentTimeMs) / 1000) * fps);
-      if (Math.abs(p.getCurrentFrame() - target) > Math.ceil(fps * 0.25)) {
+      // 播放中不依据「自己回传的、已滞后的」时间 seek 自己，否则渲染卡顿时会被拽回去
+      // 重放一小段音频；外部跳转走命令式 seekToMs，不依赖这里。
+      if (
+        shouldResyncPreviewSeek({
+          isPlaying: !!p.isPlaying(),
+          playbackIntentPlaying: isPlaying,
+          currentFrame: p.getCurrentFrame(),
+          targetFrame: target,
+          thresholdFrames: Math.ceil(fps * 0.25),
+        })
+      ) {
         p.seekTo(target);
       }
-    }, [currentTimeMs, fps]);
+    }, [currentTimeMs, fps, isPlaying]);
 
     return (
       <Player
         ref={player}
         component={MainComposition}
-        inputProps={{ timeline, srtEntries, compiledCards }}
+        inputProps={inputProps}
         durationInFrames={plan.durationFrames}
         compositionWidth={plan.width}
         compositionHeight={plan.height}
         fps={fps}
-        style={{ width: '100%', height: '100%', background: 'var(--color-preview-bg)' }}
+        style={playerStyle}
         controls={false}
         acknowledgeRemotionLicense
       />
     );
   },
+);
+
+function areRemotionPreviewPlayerPropsEqual(
+  previous: RemotionPreviewPlayerProps,
+  next: RemotionPreviewPlayerProps,
+): boolean {
+  if (
+    previous.timeline !== next.timeline ||
+    previous.srtEntries !== next.srtEntries ||
+    previous.projectDir !== next.projectDir ||
+    previous.onTimeUpdate !== next.onTimeUpdate ||
+    previous.onPlay !== next.onPlay ||
+    previous.onPause !== next.onPause ||
+    previous.onEnded !== next.onEnded
+  ) {
+    return false;
+  }
+
+  return !shouldRefreshPreviewForExternalTime({
+    previousIsPlaying: previous.isPlaying,
+    nextIsPlaying: next.isPlaying,
+    previousTimeMs: previous.currentTimeMs,
+    nextTimeMs: next.currentTimeMs,
+  });
+}
+
+export const RemotionPreviewPlayer = memo(
+  RemotionPreviewPlayerInner,
+  areRemotionPreviewPlayerPropsEqual,
 );

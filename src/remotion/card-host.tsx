@@ -47,7 +47,16 @@ class CardErrorBoundary extends Component<{ children: ReactNode }, { failed: boo
   }
 }
 
-export function CardHost({ overlayId, compiledJs }: { overlayId: string; compiledJs: string }) {
+export function CardHost({
+  overlayId,
+  compiledJs,
+  cues,
+}: {
+  overlayId: string;
+  compiledJs: string;
+  /** 逐句字幕节拍（相对卡片 frame 0 的起始帧）；作为 cues prop 注入卡片组件。 */
+  cues?: number[];
+}) {
   const Comp = useMemo(() => {
     try {
       return evalCardComponent(compiledJs);
@@ -67,7 +76,7 @@ export function CardHost({ overlayId, compiledJs }: { overlayId: string; compile
 
   return (
     <CardErrorBoundary>
-      <Comp />
+      <Comp cues={cues ?? []} />
     </CardErrorBoundary>
   );
 }

@@ -1,6 +1,6 @@
 import { AnimatePresence, m } from 'framer-motion';
 import { useState } from 'react';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, RotateCcw } from 'lucide-react';
 import { toFileSrc } from '../lib/utils';
 import { useAIStore } from '../store/ai';
 import type { AICard, AICardType, MediaCardContent } from '../types/ai';
@@ -19,6 +19,13 @@ export interface AICardPlacement {
   trackLabel: string;
 }
 
+/** 分段卡片的占位骨架：规划完成后、真实卡片生成前/失败时展示 */
+export interface AICardSkeleton {
+  segmentId: string;
+  title: string;
+  status: 'pending' | 'failed';
+}
+
 interface AICardListProps {
   cards: AICard[];
   placements?: Record<string, AICardPlacement>;
@@ -27,6 +34,10 @@ interface AICardListProps {
   onEditCard: (cardId: string) => void;
   /** 转换为 image/video 后立即聚焦该卡片到 Inspector；可选 */
   onSelect?: (cardId: string) => void;
+  /** 增量分析占位骨架；已有同 segmentId 真实卡片的会被去重过滤 */
+  skeletons?: AICardSkeleton[];
+  /** 点击失败骨架的重试控件时回调；不传则不渲染重试按钮 */
+  onRetrySkeleton?: (segmentId: string) => void;
 }
 
 function getPreviewText(content: AICard['content']): string {
@@ -79,12 +90,22 @@ export function AICardList({
   onToggleEnabled,
   onEditCard,
   onSelect,
+  skeletons,
+  onRetrySkeleton,
 }: AICardListProps) {
   // selector 订阅 currentProjectDir 变更；?? getState() 兼容 SSR
   const currentProjectDir =
     useAIStore((s) => s.currentProjectDir) ?? useAIStore.getState().currentProjectDir;
   const convertCardToMedia = useAIStore((s) => s.convertCardToMedia);
   const [openMenuCardId, setOpenMenuCardId] = useState<string | null>(null);
+
+  // 去重：已有同 segmentId 真实卡片的骨架被过滤掉（防御性，集成方一般不会传重叠的）。
+  const cardSegmentIds = new Set(
+    cards.map((card) => card.segmentId).filter((id): id is string => Boolean(id)),
+  );
+  const visibleSkeletons = (skeletons ?? []).filter(
+    (skeleton) => !cardSegmentIds.has(skeleton.segmentId),
+  );
 
   const handleConvert = async (
     cardId: string,
@@ -215,6 +236,61 @@ export function AICardList({
               <p className={styles.body} data-ai-card-copy="true">
                 {getPreviewText(card.content)}
               </p>
+            </m.article>
+          );
+        })}
+
+        {visibleSkeletons.map((skeleton) => {
+          const isFailed = skeleton.status === 'failed';
+          return (
+            <m.article
+              key={`skeleton-${skeleton.segmentId}`}
+              layoutId={`ai-card-skeleton-${skeleton.segmentId}`}
+              className={`${styles.card} ${styles.skeleton}`}
+              data-ai-card-skeleton="true"
+              data-skeleton-status={skeleton.status}
+              data-segment-id={skeleton.segmentId}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 12 }}
+              transition={springs.smooth}
+            >
+              <div className={styles.skeletonHead}>
+                <span className={styles.skeletonDot} aria-hidden="true" />
+                {skeleton.title ? (
+                  <span className={styles.skeletonTitle}>{skeleton.title}</span>
+                ) : (
+                  <span className={styles.skeletonTitle} aria-hidden="true" />
+                )}
+                {isFailed ? (
+                  onRetrySkeleton ? (
+                    <button
+                      type="button"
+                      className={styles.skeletonRetry}
+                      onClick={() => onRetrySkeleton(skeleton.segmentId)}
+                      aria-label={`重试生成 ${skeleton.title || skeleton.segmentId}`}
+                    >
+                      <RotateCcw size={12} aria-hidden="true" />
+                      重试
+                    </button>
+                  ) : null
+                ) : (
+                  <span className={styles.skeletonLabel} aria-live="polite">
+                    生成中…
+                  </span>
+                )}
+              </div>
+
+              {isFailed ? (
+                <p className={styles.skeletonHint} data-ai-card-skeleton-hint="failed">
+                  生成失败
+                </p>
+              ) : (
+                <div className={styles.skeletonBars} aria-hidden="true">
+                  <span className={styles.skeletonBar} />
+                  <span className={`${styles.skeletonBar} ${styles.skeletonBarShort}`} />
+                </div>
+              )}
             </m.article>
           );
         })}

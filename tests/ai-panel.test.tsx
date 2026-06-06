@@ -80,6 +80,15 @@ const mockModules = vi.hoisted(() => {
       analysisError: null as string | null,
       coverCandidates: [],
       isGeneratingCovers: false,
+      incrementalAnalysis: {
+        active: false,
+        skeletons: [] as Array<{
+          segmentId: string;
+          title: string;
+          status: 'pending' | 'failed';
+        }>,
+        cards: [] as ReturnType<typeof buildAnalysisResult>['cards'],
+      },
       activeTab: 'cards' as const,
       setAnalysisResult: () => undefined,
       setAnalyzing: () => undefined,

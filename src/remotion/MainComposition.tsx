@@ -1,4 +1,5 @@
 import { AbsoluteFill, Sequence } from 'remotion';
+import { memo, useMemo } from 'react';
 import type { SrtEntry, TimelineData } from '../types';
 import { buildRenderPlan } from './timeline-to-sequences';
 import { VideoOverlay } from './overlays/VideoOverlay';
@@ -17,22 +18,35 @@ export type MainCompositionProps = {
   compiledCards?: Record<string, string>;
 };
 
-export function MainComposition({ timeline, srtEntries, compiledCards }: MainCompositionProps) {
-  const plan = buildRenderPlan(timeline, srtEntries, timeline.fps ?? 30);
-  return (
-    <AbsoluteFill style={{ backgroundColor: '#04060a' }}>
-      {plan.audio.map((a) => (
+export const MainComposition = memo(function MainComposition({
+  timeline,
+  srtEntries,
+  compiledCards,
+}: MainCompositionProps) {
+  const plan = useMemo(
+    () => buildRenderPlan(timeline, srtEntries, timeline.fps ?? 30),
+    [timeline, srtEntries],
+  );
+  const subtitleHighlights = timeline.subtitleHighlights ?? [];
+  const audioSequences = useMemo(
+    () =>
+      plan.audio.map((a) => (
         <Sequence key={a.id} from={a.startFrame} durationInFrames={a.durationFrames}>
           <AudioOverlay clip={a} fps={plan.fps} />
         </Sequence>
-      ))}
-      {plan.visual.map((c) => (
+      )),
+    [plan.audio, plan.fps],
+  );
+  const visualSequences = useMemo(
+    () =>
+      plan.visual.map((c) => (
         <Sequence key={c.id} from={c.startFrame} durationInFrames={c.durationFrames}>
           {c.kind === 'ai-card' ? (
             <AICardOverlay
               overlay={c.overlay}
               zIndex={c.zIndex}
               compiledJs={compiledCards?.[c.overlay.id]}
+              cues={c.cues}
             />
           ) : c.kind === 'text' ? (
             <TextOverlay overlay={c.overlay} zIndex={c.zIndex} durationFrames={c.durationFrames} />
@@ -42,12 +56,24 @@ export function MainComposition({ timeline, srtEntries, compiledCards }: MainCom
             <ImageOverlay overlay={c.overlay} zIndex={c.zIndex} />
           )}
         </Sequence>
-      ))}
-      {plan.subtitles.map((s) => (
+      )),
+    [compiledCards, plan.visual],
+  );
+  const subtitleSequences = useMemo(
+    () =>
+      plan.subtitles.map((s) => (
         <Sequence key={`sub-${s.index}`} from={s.startFrame} durationInFrames={s.durationFrames}>
-          <SubtitleLayer cue={s} style={timeline.subtitle} highlights={timeline.subtitleHighlights ?? []} />
+          <SubtitleLayer cue={s} style={timeline.subtitle} highlights={subtitleHighlights} />
         </Sequence>
-      ))}
+      )),
+    [plan.subtitles, subtitleHighlights, timeline.subtitle],
+  );
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: '#04060a' }}>
+      {audioSequences}
+      {visualSequences}
+      {subtitleSequences}
     </AbsoluteFill>
   );
-}
+});

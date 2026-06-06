@@ -337,6 +337,7 @@ function PreviewPanelComponent({
             srtEntries={srtEntries}
             projectDir={projectDir}
             currentTimeMs={currentTimeMs}
+            isPlaying={isPlaying}
             onTimeUpdate={onPreviewTimeUpdate}
             onPlay={onPreviewPlay}
             onPause={onPreviewPause}

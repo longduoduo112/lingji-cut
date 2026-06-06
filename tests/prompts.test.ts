@@ -118,9 +118,10 @@ describe('renderUserPromptWithLock', () => {
         sandboxReference: '沙箱 API 示例',
       },
     );
-    // 卡片生成链路已收敛到 Motion Card：契约段必须提及 motionCard / renderMode
-    expect(cards).toContain('motionCard');
-    expect(cards).toContain('renderMode');
+    // 卡片生成链路已收敛到 Motion Card（TSX-only 输出）：契约段必须要求 tsx 代码块 + export default
+    expect(cards).toContain('tsx');
+    expect(cards).toContain('export default');
+    expect(cards).toContain('useCurrentFrame');
     expect(cards).not.toContain('webCard');
   });
 });

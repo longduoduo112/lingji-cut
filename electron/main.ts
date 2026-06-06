@@ -19,6 +19,7 @@ import {
   type SubtitleCardDraftInput,
 } from '../src/lib/ai-analysis';
 import { resolveStylePresetId } from '../src/lib/card-style';
+import { assertCardRenders } from './remotion/smoke-render';
 import type { ExportConfig } from '../src/lib/export-settings';
 import { generateCoverCandidates } from '../src/lib/cover-generation';
 import { resolvePromptBinding } from '../src/lib/llm/binding-resolver';
@@ -730,6 +731,7 @@ ipcMain.handle(
         coverTemplate,
         projectBindings: args.projectBindings ?? null,
         generateCardImage,
+        validateMotionSource: assertCardRenders,
         onProgress: (progress) => {
           mainWindow?.webContents.send('analyze-progress', progress);
         },
@@ -751,6 +753,10 @@ ipcMain.handle(
         // Track C 收到此事件后才发起 generate-cover-images。
         onCoverPromptsReady: (prompts) => {
           mainWindow?.webContents.send('analyze-cover-prompts-ready', { prompts });
+        },
+        // 单卡生成成功即流式回吐给 renderer（卡片逐张落地），无需等待整批完成。
+        onCardGenerated: (card, index) => {
+          mainWindow?.webContents.send('analyze-card-completed', { card, index });
         },
       });
       writeAppLog(
@@ -828,6 +834,7 @@ ipcMain.handle(
         cardTemplate,
         imageTemplate,
         projectBindings: args.projectBindings ?? null,
+        validateMotionSource: assertCardRenders,
       });
     } catch (error) {
       writeAppLog(
@@ -901,6 +908,7 @@ ipcMain.handle(
           cardTemplate,
           imageTemplate,
           projectBindings: args.projectBindings ?? null,
+          validateMotionSource: assertCardRenders,
           segmentIndex: args.segmentIndex,
           totalSegments: args.totalSegments,
           prevSegment: args.prevSegment,
@@ -991,6 +999,7 @@ ipcMain.handle(
         cardTemplate,
         imageTemplate,
         projectBindings: args.projectBindings ?? null,
+        validateMotionSource: assertCardRenders,
       });
     } catch (error) {
       writeAppLog(

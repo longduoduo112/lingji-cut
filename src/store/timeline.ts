@@ -74,6 +74,10 @@ export interface TimelineStore {
   removeTrack: (id: string) => void;
   addOverlay: (overlay: OverlayDraft) => string;
   addAICardsToTimeline: (cards: AICardTimelineDraft[]) => void;
+  appendAICardToTimeline: (
+    card: AICardTimelineDraft,
+    options?: { coalesceHistory?: boolean },
+  ) => void;
   removeAICardOverlaysBySourceIds: (sourceCardIds: string[]) => void;
   copyOverlay: (id: string) => boolean;
   cutOverlay: (id: string) => boolean;
@@ -90,6 +94,11 @@ export interface TimelineStore {
 
 const PROJECT_DIR_KEY = 'podcast-editor-project-dir';
 const MAX_TIMELINE_HISTORY = 40;
+// 标记上一次提交是否为「合并历史」的 AI 卡片增量 append。
+// 用于让一轮分析里连续的 appendAICardToTimeline({ coalesceHistory: true })
+// 折叠成单一撤销点：第一张推一次历史快照，后续张不再推。
+// 任意普通提交（buildCommittedTimelineState）都会把它清零，于是下一轮重新建点。
+let lastCommitWasCoalescedAICardAppend = false;
 let currentSaveStatus: SaveStatus = 'idle';
 const saveStatusListeners = new Set<(status: SaveStatus) => void>();
 
@@ -247,6 +256,9 @@ function buildCommittedTimelineState(
 ) {
   const assetSource = options?.assetSource ?? state.assets;
 
+  // 任意普通提交都结束当前的 coalesce 运行：下一次合并 append 会重新建立撤销点。
+  lastCommitWasCoalescedAICardAppend = false;
+
   return {
     historyPast: pushHistorySnapshot(state.historyPast, state.timeline),
     historyFuture: [],
@@ -321,6 +333,79 @@ function resolveOverlayInsert(
     overlay: { ...draft, trackId: newTrack.id },
     createdTrack: newTrack,
   };
+}
+
+/**
+ * 把单张 AI 卡片草稿应用到一组工作中的 tracks / overlays 上。
+ *
+ * 这是 addAICardsToTimeline（批量）与 appendAICardToTimeline（单张增量）共用的
+ * 唯一插入逻辑：保证轨道选择、按 sourceCardId 去重 / 复用、默认位置计算完全一致，
+ * 避免两条链路出现行为漂移。直接原地修改传入的 tracks / overlays 数组。
+ */
+function applyAICardDraftToTimeline(
+  state: Pick<TimelineStore, 'timeline'>,
+  tracks: TimelineTrack[],
+  overlays: OverlayItem[],
+  card: AICardTimelineDraft,
+): void {
+  const existingAITrack = tracks.find((track) => track.id === DEFAULT_AI_CARDS_TRACK_ID);
+  const trackId = existingAITrack?.id ?? DEFAULT_AI_CARDS_TRACK_ID;
+  if (!existingAITrack) {
+    tracks.push(createVisualTrack(2, 2));
+  }
+
+  const nextDefaultPosition = getAICardOverlayPosition(
+    card.aiCardData.displayMode,
+    state.timeline.width,
+    state.timeline.height,
+  );
+
+  const existingOverlayIndex = overlays.findIndex(
+    (overlay) =>
+      overlay.overlayType === 'ai-card' &&
+      overlay.aiCardData?.sourceCardId === card.sourceCardId,
+  );
+
+  if (existingOverlayIndex >= 0) {
+    const existingOverlay = overlays[existingOverlayIndex];
+    const shouldResetPosition =
+      existingOverlay.aiCardData?.displayMode !== card.aiCardData.displayMode ||
+      (card.aiCardData.displayMode === 'pip' &&
+        isFullscreenAICardPosition(
+          existingOverlay.position,
+          state.timeline.width,
+          state.timeline.height,
+        ));
+    overlays[existingOverlayIndex] = {
+      ...existingOverlay,
+      type: 'image',
+      assetPath: '',
+      startMs: card.startMs,
+      durationMs: card.durationMs,
+      position: shouldResetPosition ? nextDefaultPosition : existingOverlay.position,
+      overlayType: 'ai-card',
+      aiCardData: {
+        ...card.aiCardData,
+        sourceCardId: card.sourceCardId,
+      },
+    };
+    return;
+  }
+
+  overlays.push({
+    id: `${card.sourceCardId}-${uuid()}`,
+    type: 'image',
+    assetPath: '',
+    trackId,
+    startMs: card.startMs,
+    durationMs: card.durationMs,
+    position: nextDefaultPosition,
+    overlayType: 'ai-card',
+    aiCardData: {
+      ...card.aiCardData,
+      sourceCardId: card.sourceCardId,
+    },
+  });
 }
 
 function emitSaveStatus(status: SaveStatus): void {
@@ -730,73 +815,58 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
   },
   addAICardsToTimeline: (cards) =>
     set((state) => {
-      const existingAITrack = state.timeline.tracks.find(
-        (track) => track.id === DEFAULT_AI_CARDS_TRACK_ID,
-      );
-      const trackId = existingAITrack?.id ?? DEFAULT_AI_CARDS_TRACK_ID;
-      const tracks = existingAITrack
-        ? state.timeline.tracks
-        : [...state.timeline.tracks, createVisualTrack(2, 2)];
+      const tracks = [...state.timeline.tracks];
       const overlays = [...state.timeline.overlays];
 
       for (const card of cards) {
-        const existingOverlayIndex = overlays.findIndex(
-          (overlay) =>
-            overlay.overlayType === 'ai-card' &&
-            overlay.aiCardData?.sourceCardId === card.sourceCardId,
-        );
-        const nextDefaultPosition = getAICardOverlayPosition(
-          card.aiCardData.displayMode,
-          state.timeline.width,
-          state.timeline.height,
-        );
-
-        if (existingOverlayIndex >= 0) {
-          const existingOverlay = overlays[existingOverlayIndex];
-          const shouldResetPosition =
-            existingOverlay.aiCardData?.displayMode !== card.aiCardData.displayMode ||
-            (card.aiCardData.displayMode === 'pip' &&
-              isFullscreenAICardPosition(
-                existingOverlay.position,
-                state.timeline.width,
-                state.timeline.height,
-              ));
-          overlays[existingOverlayIndex] = {
-            ...existingOverlay,
-            type: 'image',
-            assetPath: '',
-            startMs: card.startMs,
-            durationMs: card.durationMs,
-            position: shouldResetPosition ? nextDefaultPosition : existingOverlay.position,
-            overlayType: 'ai-card',
-            aiCardData: {
-              ...card.aiCardData,
-              sourceCardId: card.sourceCardId,
-            },
-          };
-          continue;
-        }
-
-        overlays.push({
-          id: `${card.sourceCardId}-${uuid()}`,
-          type: 'image',
-          assetPath: '',
-          trackId,
-          startMs: card.startMs,
-          durationMs: card.durationMs,
-          position: nextDefaultPosition,
-          overlayType: 'ai-card',
-          aiCardData: {
-            ...card.aiCardData,
-            sourceCardId: card.sourceCardId,
-          },
-        });
+        applyAICardDraftToTimeline(state, tracks, overlays, card);
       }
       const nextTimeline = normalizeTimeline({
         ...state.timeline,
         tracks,
         overlays,
       });
+
+      return buildCommittedTimelineState(state, nextTimeline);
+    }),
+  appendAICardToTimeline: (card, options) =>
+    set((state) => {
+      const tracks = [...state.timeline.tracks];
+      const overlays = [...state.timeline.overlays];
+
+      applyAICardDraftToTimeline(state, tracks, overlays, card);
+
+      const nextTimeline = normalizeTimeline({
+        ...state.timeline,
+        tracks,
+        overlays,
+      });
+
+      // 历史合并：一次分析运行里连续的增量 append 不应在 undo 栈塞入几十条记录。
+      // 第一张（运行内首次 coalesce）正常推入一次历史快照，建立单一撤销点；
+      // 后续张保留 historyPast 原样（不再叠加），从而整轮折叠成一条撤销记录。
+      // 无论是否合并，timeline 都即时更新，每张卡片都立即可见。
+      if (options?.coalesceHistory) {
+        const isContinuation = lastCommitWasCoalescedAICardAppend;
+        lastCommitWasCoalescedAICardAppend = true;
+
+        if (isContinuation) {
+          return {
+            historyPast: state.historyPast,
+            historyFuture: [],
+            canUndo: state.historyPast.length > 0,
+            canRedo: false,
+            timeline: nextTimeline,
+            assets: syncAssetsWithTimeline(state.assets, nextTimeline),
+          };
+        }
+
+        // 运行内首张：复用标准提交（会推入历史快照），但 buildCommittedTimelineState
+        // 会把标记清零，这里重新置位以衔接后续张。
+        const committed = buildCommittedTimelineState(state, nextTimeline);
+        lastCommitWasCoalescedAICardAppend = true;
+        return committed;
+      }
 
       return buildCommittedTimelineState(state, nextTimeline);
     }),

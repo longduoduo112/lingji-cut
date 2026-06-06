@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { generateSingleCardFromSubtitles } from '../src/lib/ai-analysis';
 import type { SrtEntry } from '../src/types';
 import type { AISettings } from '../src/types/ai';
-import { generateStructuredData } from '../src/lib/llm';
+import { generateMotionCardSource } from '../src/lib/llm';
 
 const settings: AISettings = {
   llmBaseUrl: 'https://api.openai.com/v1',
@@ -24,31 +24,11 @@ export default function MotionCard() {
   return <AbsoluteFill style={{ opacity }}>摘要卡</AbsoluteFill>;
 }`;
 
-const motionCardResponse = {
-  id: 'generated-card',
-  type: 'summary',
-  title: '摘要卡',
-  content: '重点内容',
-  startMs: 500,
-  endMs: 2_500,
-  displayDurationMs: 2_000,
-  displayMode: 'fullscreen',
-  template: 'summary-default',
-  enabled: true,
-  renderMode: 'motion-card',
-  motionCard: { tsx: VALID_MOTION_TSX },
-  style: {
-    primaryColor: '#79c4ff',
-    backgroundColor: '#151922',
-    fontSize: 48,
-  },
-};
-
 describe('generateSingleCardFromSubtitles', () => {
   it('returns a single compiled motion-card and forces timing from draft', async () => {
-    const modelCaller = vi
-      .fn<typeof generateStructuredData>()
-      .mockResolvedValue(motionCardResponse);
+    const motionCaller = vi
+      .fn<typeof generateMotionCardSource>()
+      .mockResolvedValue(`\`\`\`tsx\n${VALID_MOTION_TSX}\n\`\`\``);
 
     const card = await generateSingleCardFromSubtitles(
       entries,
@@ -61,7 +41,7 @@ describe('generateSingleCardFromSubtitles', () => {
         promptHint: '突出核心数字',
       },
       settings,
-      { generateStructuredData: modelCaller },
+      { generateMotionSource: motionCaller },
     );
 
     expect(card.renderMode).toBe('motion-card');
@@ -70,8 +50,8 @@ describe('generateSingleCardFromSubtitles', () => {
     expect(card.displayDurationMs).toBe(2_500);
     expect(card.motionCard?.tsx).toContain('export default');
     expect(card.motionCard?.tsx).toContain('useCurrentFrame');
-    expect(modelCaller).toHaveBeenCalledTimes(1);
-    const systemPrompt = modelCaller.mock.calls[0]?.[1] ?? '';
+    expect(motionCaller).toHaveBeenCalledTimes(1);
+    const systemPrompt = motionCaller.mock.calls[0]?.[1] ?? '';
     expect(systemPrompt).toContain('突出核心数字');
     expect(systemPrompt).toContain('motion-card');
   });
@@ -88,7 +68,7 @@ describe('generateSingleCardFromSubtitles', () => {
           type: 'summary',
         },
         settings,
-        { generateStructuredData: vi.fn() },
+        { generateMotionSource: vi.fn() },
       ),
     ).rejects.toThrow('字幕内容为空');
   });
@@ -105,16 +85,15 @@ describe('generateSingleCardFromSubtitles', () => {
           type: 'summary',
         },
         settings,
-        { generateStructuredData: vi.fn() },
+        { generateMotionSource: vi.fn() },
       ),
     ).rejects.toThrow('时间范围无效');
   });
 
-  it('throws a "请重新生成" error when motion tsx does not compile', async () => {
-    const modelCaller = vi.fn<typeof generateStructuredData>().mockResolvedValue({
-      ...motionCardResponse,
-      motionCard: { tsx: 'garbage that has no default export' },
-    });
+  it('throws a "请重新生成" error when motion tsx has no default export', async () => {
+    const motionCaller = vi
+      .fn<typeof generateMotionCardSource>()
+      .mockResolvedValue('const Card = 42;');
 
     await expect(
       generateSingleCardFromSubtitles(
@@ -127,18 +106,15 @@ describe('generateSingleCardFromSubtitles', () => {
           type: 'insight',
         },
         settings,
-        { generateStructuredData: modelCaller },
+        { generateMotionSource: motionCaller },
       ),
     ).rejects.toThrow(/请重新生成/);
   });
 
-  it('rejects missing motionCard html instead of generating fallback motion', async () => {
-    const modelCaller = vi.fn<typeof generateStructuredData>().mockResolvedValue({
-      ...motionCardResponse,
-      title: '真实流程测试卡',
-      content: '缺少源码时必须失败。',
-      motionCard: undefined,
-    });
+  it('propagates the motion-source error when the model returns no usable component', async () => {
+    const motionCaller = vi
+      .fn<typeof generateMotionCardSource>()
+      .mockRejectedValue(new Error('LLM 未返回 motionCard.tsx；请重新生成'));
 
     await expect(
       generateSingleCardFromSubtitles(
@@ -151,7 +127,7 @@ describe('generateSingleCardFromSubtitles', () => {
           type: 'insight',
         },
         settings,
-        { generateStructuredData: modelCaller },
+        { generateMotionSource: motionCaller },
       ),
     ).rejects.toThrow(/motionCard/);
   });
@@ -169,7 +145,7 @@ describe('generateSingleCardFromSubtitles', () => {
           type: 'nonsense',
         },
         settings,
-        { generateStructuredData: vi.fn() },
+        { generateMotionSource: vi.fn() },
       ),
     ).rejects.toThrow('卡片类型无效');
   });

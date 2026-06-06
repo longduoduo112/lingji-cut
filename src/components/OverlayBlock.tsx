@@ -30,6 +30,8 @@ interface OverlayBlockProps {
   isDragging?: boolean;
   /** 可选的 trim snap 计算函数(Task 13 会注入) */
   computeSnapForTrim?: (candidateMs: number, overlayId: string) => number;
+  /** 播放中延迟加载波形，避免 WebAudio 解码抢占预览播放线程。 */
+  deferWaveformLoading?: boolean;
   /**
    * Timeline 层的 drag 拦截入口。返回 true 表示外层已接管整个拖拽生命周期，
    * OverlayBlock 将跳过内部的 move-drag 逻辑（trim / select 仍保留）。
@@ -55,6 +57,7 @@ export function OverlayBlock({
   dragPreviewDeltaY,
   isDragging = false,
   computeSnapForTrim,
+  deferWaveformLoading = false,
   onBeginOverlayDrag,
   getTrackDragZones,
   onTrackHoverChange,
@@ -370,6 +373,7 @@ export function OverlayBlock({
             visibleDurationMs={overlay.durationMs}
             width={audioWaveformWidth}
             height={audioWaveformHeight}
+            deferLoading={deferWaveformLoading}
           />
         </div>
       ) : null}

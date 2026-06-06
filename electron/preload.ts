@@ -60,6 +60,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('analyze-cover-prompts-ready', handler);
     return () => ipcRenderer.removeListener('analyze-cover-prompts-ready', handler);
   },
+  onAnalyzeCardCompleted: (
+    callback: (payload: { card: AICard; index: number }) => void,
+  ) => {
+    const handler = (_event: unknown, payload: { card: AICard; index: number }) =>
+      callback(payload);
+    ipcRenderer.on('analyze-card-completed', handler);
+    return () => ipcRenderer.removeListener('analyze-card-completed', handler);
+  },
   regenerateAICard: (args: {
     entries: SrtEntry[];
     card: AICard;

@@ -13,6 +13,55 @@ export function shouldUpdatePlaybackTime(
 }
 
 /**
+ * 预览播放器是否应当根据外部时间（currentTimeMs）把播放头 seek 到目标帧。
+ *
+ * 背景：预览 Player 既向外上报自己的时间（frameupdate → currentTimeMs），又把
+ * currentTimeMs 当作 seek 目标回灌。播放期间 currentTimeMs 是「被 250ms 节流过、
+ * 滞后于真实播放头」的回声；一旦某次渲染卡顿使回声滞后超过容差，旧逻辑会把 Player
+ * 往回 seek，导致每隔几秒重放约 0.25s 音频。
+ *
+ * 因此：**播放中一律不依据回声 seek**（外部跳转走命令式 seekToMs）；只有暂停态
+ * （外部跳转 / 换音频后 remount 重新对齐）且漂移超过容差时才 seek。
+ */
+export function shouldResyncPreviewSeek(params: {
+  /** Player 实例的瞬时播放状态。 */
+  isPlaying: boolean;
+  /** 父级 UI/用户意图中的播放状态；未传时回退到 Player 瞬时状态。 */
+  playbackIntentPlaying?: boolean;
+  currentFrame: number;
+  targetFrame: number;
+  thresholdFrames: number;
+}): boolean {
+  if (params.playbackIntentPlaying ?? params.isPlaying) {
+    return false;
+  }
+  return Math.abs(params.currentFrame - params.targetFrame) > params.thresholdFrames;
+}
+
+/**
+ * 外部 currentTimeMs 变化是否需要刷新 RemotionPreviewPlayer。
+ *
+ * 播放中 currentTimeMs 是 Player 自己通过 frameupdate 上报后的 UI 回声，
+ * 它只用于时间标签 / 时间线播放头，不应该反过来刷新 Player 子树。
+ */
+export function shouldRefreshPreviewForExternalTime(params: {
+  previousIsPlaying: boolean;
+  nextIsPlaying: boolean;
+  previousTimeMs: number;
+  nextTimeMs: number;
+}): boolean {
+  if (params.previousIsPlaying !== params.nextIsPlaying) {
+    return true;
+  }
+
+  if (params.previousTimeMs === params.nextTimeMs) {
+    return false;
+  }
+
+  return !params.previousIsPlaying && !params.nextIsPlaying;
+}
+
+/**
  * 拖动播放头时的播放状态机。
  *
  * 背景：`@hyperframes/player` 的 `seek()` 会把内部时钟停掉并置 `_paused = true`，
