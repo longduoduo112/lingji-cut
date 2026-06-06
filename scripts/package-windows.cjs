@@ -124,22 +124,35 @@ async function copyDirectory(sourcePath, targetPath) {
   await fsp.cp(sourcePath, targetPath, { recursive: true });
 }
 
+function isWindowsNpm(command, platform = process.platform) {
+  return platform === 'win32' && command === 'npm';
+}
+
 function resolveSpawnCommand(command, platform = process.platform) {
   // Windows 上 npm 是 npm.cmd，直接 spawn('npm') 会 ENOENT。
-  if (platform === 'win32' && command === 'npm') {
+  if (isWindowsNpm(command, platform)) {
     return 'npm.cmd';
   }
   return command;
 }
 
+function resolveSpawnOptions(command, options = {}, platform = process.platform) {
+  // Node 在 win32 下 spawn .cmd / .bat 需要 shell:true，否则 EINVAL（CVE-2024-27980 修复）。
+  const base = { cwd: rootDir, stdio: 'inherit' };
+  if (isWindowsNpm(command, platform)) {
+    base.shell = true;
+  }
+  return { ...base, ...options };
+}
+
 async function runCommand(command, args, options = {}) {
   const { spawn } = require('node:child_process');
   await new Promise((resolve, reject) => {
-    const child = spawn(resolveSpawnCommand(command), args, {
-      cwd: rootDir,
-      stdio: 'inherit',
-      ...options,
-    });
+    const child = spawn(
+      resolveSpawnCommand(command),
+      args,
+      resolveSpawnOptions(command, options),
+    );
     child.on('error', reject);
     child.on('exit', (code) => {
       if (code === 0) {
@@ -383,5 +396,6 @@ module.exports = {
   normalizePackageArch,
   resolvePackageArch,
   resolveSpawnCommand,
+  resolveSpawnOptions,
   windowsFfmpegPackages,
 };

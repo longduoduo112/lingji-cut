@@ -7,6 +7,7 @@ const {
   normalizePackageArch,
   resolvePackageArch,
   resolveSpawnCommand,
+  resolveSpawnOptions,
   windowsFfmpegPackages,
 } = require('../scripts/package-windows.cjs');
 
@@ -45,6 +46,19 @@ describe('package windows helpers', () => {
     expect(resolveSpawnCommand('npm', 'linux')).toBe('npm');
     // 非 npm 命令在任何平台都保持原样（Windows 上 tar 是真实 exe）。
     expect(resolveSpawnCommand('tar', 'win32')).toBe('tar');
+  });
+
+  it('spawns Windows npm.cmd with shell:true so Node does not throw EINVAL', () => {
+    // Node spawn .cmd 需要 shell:true（CVE-2024-27980 之后）。
+    expect(resolveSpawnOptions('npm', {}, 'win32')).toMatchObject({ shell: true });
+    // 非 Windows 或非 npm 不应启用 shell（避免参数转义风险）。
+    expect(resolveSpawnOptions('npm', {}, 'darwin').shell).toBeUndefined();
+    expect(resolveSpawnOptions('tar', {}, 'win32').shell).toBeUndefined();
+    // 调用方传入的 options 仍可覆盖默认值。
+    expect(resolveSpawnOptions('npm', { cwd: '/custom' }, 'win32')).toMatchObject({
+      cwd: '/custom',
+      shell: true,
+    });
   });
 
   it('builds win32 packager options with Windows icon and asar unpack rules', () => {
