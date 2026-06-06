@@ -6,6 +6,7 @@ const {
   createIcoFromPng,
   normalizePackageArch,
   resolvePackageArch,
+  resolveSpawnCommand,
   windowsFfmpegPackages,
 } = require('../scripts/package-windows.cjs');
 
@@ -36,6 +37,14 @@ describe('package windows helpers', () => {
       version: '4.1.0',
     });
     expect(windowsFfmpegPackages.arm64).toBeUndefined();
+  });
+
+  it('resolves npm to npm.cmd on Windows so spawn does not ENOENT', () => {
+    expect(resolveSpawnCommand('npm', 'win32')).toBe('npm.cmd');
+    expect(resolveSpawnCommand('npm', 'darwin')).toBe('npm');
+    expect(resolveSpawnCommand('npm', 'linux')).toBe('npm');
+    // 非 npm 命令在任何平台都保持原样（Windows 上 tar 是真实 exe）。
+    expect(resolveSpawnCommand('tar', 'win32')).toBe('tar');
   });
 
   it('builds win32 packager options with Windows icon and asar unpack rules', () => {

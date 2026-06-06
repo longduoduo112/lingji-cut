@@ -124,10 +124,18 @@ async function copyDirectory(sourcePath, targetPath) {
   await fsp.cp(sourcePath, targetPath, { recursive: true });
 }
 
+function resolveSpawnCommand(command, platform = process.platform) {
+  // Windows 上 npm 是 npm.cmd，直接 spawn('npm') 会 ENOENT。
+  if (platform === 'win32' && command === 'npm') {
+    return 'npm.cmd';
+  }
+  return command;
+}
+
 async function runCommand(command, args, options = {}) {
   const { spawn } = require('node:child_process');
   await new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawn(resolveSpawnCommand(command), args, {
       cwd: rootDir,
       stdio: 'inherit',
       ...options,
@@ -374,5 +382,6 @@ module.exports = {
   ensureWindowsFfmpegVendor,
   normalizePackageArch,
   resolvePackageArch,
+  resolveSpawnCommand,
   windowsFfmpegPackages,
 };
