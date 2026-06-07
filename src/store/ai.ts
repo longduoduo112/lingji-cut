@@ -15,6 +15,7 @@ import {
   DEFAULT_JIMENG_MODEL,
   DEFAULT_STYLE_PRESET_ID,
   getDefaultTemplate,
+  buildAICardTimelineDraft,
   type AIAnalysisResult,
   type AICard,
   type AICardDisplayMode,
@@ -35,7 +36,9 @@ import type {
 } from '../lib/prompts/types';
 import { SCRIPT_TEMPLATE_SEEDS } from '../lib/prompts/script-template-defaults';
 import type { SaveStatus } from './timeline';
-import { getCurrentProjectDir } from './timeline';
+import { getCurrentProjectDir, useTimelineStore } from './timeline';
+import { getAISettingsIssue } from '../lib/ai-settings';
+import { planMotionConversion, mergeMotionConversionResult } from '../lib/ai-card-conversion';
 
 export type WorkflowStep =
   | 'idle'
@@ -325,6 +328,13 @@ export interface AIStore {
     cardId: string,
     mediaType: 'image' | 'video',
   ) => Promise<AICard | null>;
+  /**
+   * 把 image/video 卡转换为 motion 动画卡：调 LLM 生成 Remotion TSX，
+   * 保留 cardId / segmentId / 时间区间 / displayMode / enabled。
+   * 有背景段走 regenerateAICard，手动卡走 generateCardFromSubtitles。
+   * 卡片不存在、已是 motion、AI 未配置或生成失败时返回 null。
+   */
+  convertCardToMotion: (cardId: string) => Promise<AICard | null>;
   cancelCardMediaGeneration: (cardId: string) => Promise<void>;
   deleteCard: (cardId: string) => Promise<void>;
   setCoverCandidates: (candidates: CoverCandidate[]) => void;
@@ -599,6 +609,97 @@ export const useAIStore = create<AIStore>((set, get) => ({
       };
     });
     return newCard;
+  },
+  convertCardToMotion: async (cardId) => {
+    const state = get();
+    const result = state.analysisResult;
+    const card = result?.cards.find((c) => c.id === cardId);
+    if (!card || !result) return null;
+
+    const plan = planMotionConversion(card, result);
+    if (plan.kind === 'noop') return null;
+
+    const settings = await loadAISettings();
+    const issue = getAISettingsIssue(settings);
+    if (issue || !settings) {
+      get().setAnalysisError(issue ?? '请先完成 AI 配置');
+      return null;
+    }
+
+    const taskId = `convert-card-motion-${card.id}-${Date.now()}`;
+    const taskProgress = useTaskProgressStore.getState();
+    taskProgress.startTask({
+      id: taskId,
+      category: 'ai-analyze',
+      label: `转为动画卡：${card.title}`,
+      mode: 'indeterminate',
+      progress: 0,
+      phase: '生成 Motion 卡片',
+      level: 2,
+      canCancel: false,
+    });
+
+    try {
+      const timeline = useTimelineStore.getState();
+      const projectBindings = get().projectBindings;
+      const projectDir = getCurrentProjectDir() || undefined;
+      const globalPrompt = result.globalPrompt?.trim() || undefined;
+
+      let generated: AICard;
+      if (plan.kind === 'segment') {
+        generated = await window.electronAPI.regenerateAICard({
+          entries: timeline.srtEntries,
+          card,
+          segment: plan.segment,
+          settings,
+          globalPrompt,
+          cardPrompt: card.cardPrompt,
+          programSummary: result.summary,
+          keywords: result.keywords,
+          projectDir,
+          projectBindings,
+        });
+      } else {
+        generated = await window.electronAPI.generateCardFromSubtitles({
+          entries: timeline.srtEntries,
+          draft: plan.draft,
+          settings,
+          globalPrompt,
+          programSummary: result.summary,
+          keywords: result.keywords,
+          projectDir,
+          projectBindings,
+        });
+      }
+
+      const merged = mergeMotionConversionResult(card, generated);
+
+      set((s) => {
+        if (!s.analysisResult) return {};
+        return {
+          analysisResult: {
+            ...s.analysisResult,
+            cards: s.analysisResult.cards.map((c) => (c.id === cardId ? merged : c)),
+          },
+        };
+      });
+      get().setAnalysisError(null);
+
+      const placed = timeline.timeline.overlays.some(
+        (o) => o.overlayType === 'ai-card' && o.aiCardData?.sourceCardId === cardId,
+      );
+      if (placed) {
+        timeline.addAICardsToTimeline([buildAICardTimelineDraft(merged)]);
+      }
+
+      taskProgress.completeTask(taskId);
+      return merged;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '转换为动画卡失败';
+      get().setAnalysisError(message);
+      taskProgress.failTask(taskId, message);
+      return null;
+    }
   },
   regenerateCardMedia: async (cardId, overrides) => {
     const state = get();
