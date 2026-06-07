@@ -97,7 +97,9 @@ export function AICardList({
   const currentProjectDir =
     useAIStore((s) => s.currentProjectDir) ?? useAIStore.getState().currentProjectDir;
   const convertCardToMedia = useAIStore((s) => s.convertCardToMedia);
+  const convertCardToMotion = useAIStore((s) => s.convertCardToMotion);
   const [openMenuCardId, setOpenMenuCardId] = useState<string | null>(null);
+  const [convertingCardId, setConvertingCardId] = useState<string | null>(null);
 
   // 去重：已有同 segmentId 真实卡片的骨架被过滤掉（防御性，集成方一般不会传重叠的）。
   const cardSegmentIds = new Set(
@@ -114,6 +116,18 @@ export function AICardList({
     const next = await convertCardToMedia(cardId, mediaType);
     if (next) {
       onSelect?.(next.id);
+    }
+  };
+
+  const handleConvertToMotion = async (cardId: string): Promise<void> => {
+    setConvertingCardId(cardId);
+    try {
+      const next = await convertCardToMotion(cardId);
+      if (next) {
+        onSelect?.(next.id);
+      }
+    } finally {
+      setConvertingCardId(null);
     }
   };
 
@@ -227,6 +241,14 @@ export function AICardList({
                         }}
                       >
                         转为视频卡
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={!isMedia || convertingCardId === card.id}
+                        onSelect={() => {
+                          void handleConvertToMotion(card.id);
+                        }}
+                      >
+                        转为动画卡
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

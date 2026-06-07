@@ -23,6 +23,7 @@ vi.mock('../src/store/ai', () => {
   let state: Record<string, unknown> = {
     currentProjectDir: null,
     convertCardToMedia: async () => null,
+    convertCardToMotion: async () => null,
   };
   const useAIStore = ((selector?: (s: typeof state) => unknown) =>
     selector ? selector(state) : state) as unknown as {
@@ -376,5 +377,30 @@ describe('AICardList', () => {
 
     expect(html).toContain('生成失败');
     expect(html).not.toContain('aria-label="重试生成 失败段"');
+  });
+
+  it('image 卡渲染启用的「转为动画卡」项', () => {
+    const card: AICard = {
+      id: 'c1', segmentId: 's1', type: 'image', title: '图卡',
+      content: { mediaType: 'image', assetPath: null, aspectRatio: '16:9', prompt: 'p', providerId: null, model: null, generationStatus: 'idle' },
+      startMs: 0, endMs: 1000, displayDurationMs: 1000, displayMode: 'fullscreen',
+      template: 'image', enabled: true, style: {} as never, renderMode: 'legacy',
+    };
+    const tree = AICardList({ cards: [card], onToggleEnabled: () => {}, onDeleteCard: () => {}, onEditCard: () => {} }) as ReactElement;
+    const item = findElement(tree, (el) => typeof el.props?.children === 'string' && (el.props.children as string).includes('转为动画卡'));
+    expect(item).not.toBeNull();
+    expect(item!.props.disabled).toBe(false);
+  });
+
+  it('motion 卡的「转为动画卡」项被禁用', () => {
+    const card: AICard = {
+      id: 'c2', segmentId: 's2', type: 'motion', title: '动卡', content: 'x',
+      startMs: 0, endMs: 1000, displayDurationMs: 1000, displayMode: 'fullscreen',
+      template: 'motion', enabled: true, style: {} as never, renderMode: 'motion-card',
+    };
+    const tree = AICardList({ cards: [card], onToggleEnabled: () => {}, onDeleteCard: () => {}, onEditCard: () => {} }) as ReactElement;
+    const item = findElement(tree, (el) => typeof el.props?.children === 'string' && (el.props.children as string).includes('转为动画卡'));
+    expect(item).not.toBeNull();
+    expect(item!.props.disabled).toBe(true);
   });
 });
