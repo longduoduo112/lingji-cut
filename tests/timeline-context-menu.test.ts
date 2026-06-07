@@ -54,6 +54,14 @@ describe('getTimelineContextMenuItems', () => {
         shortcut: '',
         disabled: true,
       },
+      {
+        key: 'convert-to-motion',
+        label: '转为动画卡',
+        icon: 'sparkles',
+        shortcut: '',
+        separatorBefore: true,
+        disabled: true,
+      },
     ]);
   });
 
@@ -131,5 +139,36 @@ describe('timeline-context-menu — insert media card', () => {
     expect(insertItem?.disabled).toBe(true);
     const insertVideo = items.find((i) => i.key === 'insert-video-card');
     expect(insertVideo?.disabled).toBe(true);
+  });
+
+  it('overlay 且可转换 motion 时，追加启用的「转为动画卡」项', () => {
+    const items = getTimelineContextMenuItems({
+      target: 'overlay',
+      canPaste: false,
+      convertibleToMotion: true,
+    });
+    const convert = items.find((i) => i.key === 'convert-to-motion');
+    expect(convert).toEqual({
+      key: 'convert-to-motion',
+      label: '转为动画卡',
+      icon: 'sparkles',
+      shortcut: '',
+      separatorBefore: true,
+      disabled: false,
+    });
+  });
+
+  it('overlay 不可转换时，「转为动画卡」存在但禁用', () => {
+    const items = getTimelineContextMenuItems({
+      target: 'overlay',
+      canPaste: false,
+      convertibleToMotion: false,
+    });
+    expect(items.find((i) => i.key === 'convert-to-motion')?.disabled).toBe(true);
+  });
+
+  it('track 目标不含「转为动画卡」', () => {
+    const items = getTimelineContextMenuItems({ target: 'track', canPaste: true });
+    expect(items.some((i) => i.key === 'convert-to-motion')).toBe(false);
   });
 });

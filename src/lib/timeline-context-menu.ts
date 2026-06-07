@@ -7,7 +7,8 @@ export type TimelineContextMenuActionKey =
   | 'paste'
   | 'delete'
   | 'insert-image-card'
-  | 'insert-video-card';
+  | 'insert-video-card'
+  | 'convert-to-motion';
 
 export interface TimelineContextMenuItem {
   key: TimelineContextMenuActionKey;
@@ -22,6 +23,8 @@ export interface TimelineContextMenuItem {
 interface TimelineContextMenuOptions {
   target: TimelineContextMenuTarget;
   canPaste: boolean;
+  /** 仅 overlay 目标：源卡为 image/video 时为 true，决定「转为动画卡」是否启用。 */
+  convertibleToMotion?: boolean;
 }
 
 export function getTimelineContextMenuItems(
@@ -30,7 +33,7 @@ export function getTimelineContextMenuItems(
   const disableSourceActions = options.target === 'track';
   const isTrack = options.target === 'track';
 
-  return [
+  const items: TimelineContextMenuItem[] = [
     {
       key: 'copy',
       label: '复制',
@@ -77,4 +80,17 @@ export function getTimelineContextMenuItems(
       disabled: !isTrack,
     },
   ];
+
+  if (options.target === 'overlay') {
+    items.push({
+      key: 'convert-to-motion',
+      label: '转为动画卡',
+      icon: 'sparkles',
+      shortcut: '',
+      separatorBefore: true,
+      disabled: !options.convertibleToMotion,
+    });
+  }
+
+  return items;
 }
