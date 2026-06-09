@@ -29,7 +29,6 @@ import {
   type GenerateCardImageArgs,
   type GenerateCardVideoArgs,
 } from './card-media-handlers';
-import { prepareTimelineForHyperframes, type HyperframesAssetDescriptor } from '../src/hyperframes/assets';
 import { subtitleJsonToSRT } from '../src/lib/minimax-tts';
 import { buildEstimatedSrtTextFromText } from '../src/lib/srt-resegment';
 import { runTTSProvider } from './tts-provider-runner';
@@ -70,9 +69,7 @@ import {
   resolveGsapPath,
 } from './runtime-binaries';
 import { compileCards } from './remotion/compile-card-node';
-import { getRemotionBundle } from './remotion/bundle';
-import { renderRemotionVideo } from './remotion/render';
-import { collectMotionCards } from '../src/remotion/collect-cards';
+import { renderVideoHeadless, type RenderVideoArgs } from './remotion/render-video-headless';
 import { registerAgentIpc } from './acp/ipc';
 import { HeadlessAcpProvider, type HeadlessAcpProviderEvent } from './acp/headless-provider';
 import { registerConversationIpc } from './conversations/ipc';
@@ -464,53 +461,6 @@ function createWindow() {
   writeAppLog('info', 'app', '主窗口已创建');
 }
 
-async function materializeRenderAssets(
-  publicDir: string,
-  assets: HyperframesAssetDescriptor[],
-): Promise<void> {
-  await Promise.all(
-    assets.map(async (asset) => {
-      const targetPath = path.join(publicDir, asset.publicPath);
-      await fs.mkdir(path.dirname(targetPath), { recursive: true });
-
-      try {
-        await fs.link(asset.sourcePath, targetPath);
-      } catch {
-        await fs.copyFile(asset.sourcePath, targetPath);
-      }
-    }),
-  );
-}
-
-/**
- * 从 timeline 反推项目目录：podcast-audio.mp3 / podcast-subtitles.srt 都
- * 位于 projectDir 根，用 audioPath 的 dirname 即得（项目硬约定）。
- * 用于把 ai-card MediaCardContent 的相对路径解析为绝对，再做 public 映射。
- */
-function inferProjectDirFromTimeline(timeline: TimelineData): string | null {
-  const audio = timeline.podcast?.audioPath;
-  if (audio && path.isAbsolute(audio)) return path.dirname(audio);
-  const srt = timeline.podcast?.srtPath;
-  if (srt && path.isAbsolute(srt)) return path.dirname(srt);
-  return null;
-}
-
-async function createRenderPublicDir(
-  timeline: TimelineData,
-): Promise<{ timeline: TimelineData; publicDir: string }> {
-  const projectDir = inferProjectDirFromTimeline(timeline);
-  const { timeline: renderTimeline, assets } = prepareTimelineForHyperframes(
-    timeline,
-    projectDir,
-  );
-  const publicDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lingjijianying-public-'));
-  await materializeRenderAssets(publicDir, assets);
-
-  return {
-    timeline: renderTimeline,
-    publicDir,
-  };
-}
 
 async function getDirectorySizeBytes(directoryPath: string): Promise<number> {
   const entries = await fs.readdir(directoryPath, { withFileTypes: true });
@@ -2370,98 +2320,11 @@ ipcMain.handle('refresh-recent-projects', async () => {
   return projects;
 });
 
-ipcMain.handle(
-  'render-video',
-  async (
-    _event,
-    args: {
-      timeline: string;
-      outputPath: string;
-      exportConfig: ExportConfig;
-      // Renderer 侧 store 中切分后的字幕；若未提供则回退到磁盘原始 SRT。
-      // 磁盘 .srt 文件始终保持 MiniMax 原始输出（不写回），所以若只靠主进程重解析
-      // 就会忽略用户的字幕重切分结果，与预览播放器不一致。
-      srtEntries?: SrtEntry[];
-    },
-  ) => {
-    const isDev = !app.isPackaged;
-    const renderLogPrefix = '[render-video]';
-    const renderStartedAt = Date.now();
-    const timestamp = () => `${((Date.now() - renderStartedAt) / 1000).toFixed(2)}s`;
-
-    const timelineData = JSON.parse(args.timeline) as TimelineData;
-    const srtEntries =
-      args.srtEntries && args.srtEntries.length > 0
-        ? args.srtEntries
-        : timelineData.podcast.srtPath
-          ? parseSrt(await fs.readFile(timelineData.podcast.srtPath, 'utf-8'))
-          : [];
-
-    const cpuCount = os.cpus().length;
-    const explicitConcurrency = Math.max(1, Math.floor(cpuCount / 2));
-
-    if (isDev) {
-      console.log(`${renderLogPrefix} 开始导出`, {
-        outputPath: args.outputPath,
-        resolution: args.exportConfig.resolution,
-        quality: args.exportConfig.quality,
-        cpuCount,
-        explicitConcurrency,
-        platform: process.platform,
-        arch: process.arch,
-      });
-    }
-
-    const projectPrepStart = Date.now();
-    // materialize 资源到临时 publicDir，并把 timeline 内绝对素材路径改写为 assets/... 相对路径。
-    const { timeline: renderTimeline, publicDir } = await createRenderPublicDir(timelineData);
-    // 编译 motion 卡片 TSX → CJS，随 inputProps 传入 Remotion，由 CardHost 在无头 Chrome 内求值。
-    const cardSources = collectMotionCards(renderTimeline);
-    const compiledCards = await compileCards(cardSources);
-    const remotionEntry = path.join(app.getAppPath(), 'src', 'remotion', 'index.ts');
-
-    if (isDev) {
-      console.log(
-        `${renderLogPrefix} 资源准备完成 耗时=${(
-          (Date.now() - projectPrepStart) / 1000
-        ).toFixed(2)}s cards=${cardSources.length} @${timestamp()}`,
-      );
-    }
-
-    try {
-      const renderStart = Date.now();
-      mainWindow?.webContents.send('render-progress', 0.05);
-      const serveUrl = await getRemotionBundle(remotionEntry, publicDir);
-      await renderRemotionVideo({
-        serveUrl,
-        outputPath: args.outputPath,
-        timeline: renderTimeline,
-        srtEntries,
-        compiledCards,
-        quality: args.exportConfig.quality === 'quality' ? 'high' : 'standard',
-        concurrency: explicitConcurrency,
-        onProgress: (ratio) =>
-          mainWindow?.webContents.send('render-progress', Math.max(0.05, Math.min(0.98, ratio))),
-      });
-      mainWindow?.webContents.send('render-progress', 1);
-
-      if (isDev) {
-        console.log(
-          `${renderLogPrefix} remotion render 完成 总耗时=${((Date.now() - renderStart) / 1000).toFixed(2)}s`,
-        );
-      }
-
-      return { outputPath: args.outputPath };
-    } catch (err) {
-      if (isDev) {
-        console.error(`${renderLogPrefix} 导出失败 @${timestamp()}`, err);
-      }
-      throw err;
-    } finally {
-      await fs.rm(publicDir, { recursive: true, force: true });
-    }
-  },
-);
+ipcMain.handle('render-video', async (_event, args: RenderVideoArgs) => {
+  return renderVideoHeadless(args, {
+    onProgress: (f) => mainWindow?.webContents.send('render-progress', f),
+  });
+});
 
 ipcMain.handle('save-cover-edit', async (_event, args) => {
   return saveCoverEdit(args);

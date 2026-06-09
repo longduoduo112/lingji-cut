@@ -10,6 +10,7 @@ import {
   runCoverImagesHeadless,
   runCoversHeadless,
 } from './runs/cover-run';
+import { runExportHeadless } from './runs/export-run';
 
 const PROJECT_UPDATED_CHANNEL = 'pipeline:project-updated';
 
@@ -17,6 +18,8 @@ export interface GenerationRunCtx {
   projectPath: string;
   userDataPath: string;
   handle: TaskHandle;
+  /** 由 config.extraInput 解析出的额外入参（多数 run 忽略） */
+  params?: Record<string, unknown>;
 }
 
 export interface GenerationToolConfig {
@@ -26,6 +29,8 @@ export interface GenerationToolConfig {
   kind: PipelineTaskKind;
   /** 任务完成后写回的 project 节，用于 UI 刷新信号 */
   sections: string[];
+  /** 追加到 inputSchema 的可选入参；解析后作为 ctx.params 传给 run */
+  extraInput?: Record<string, z.ZodTypeAny>;
   run: (ctx: GenerationRunCtx) => Promise<unknown>;
 }
 
@@ -63,16 +68,19 @@ export function registerGenerationTool(
     {
       title: config.title,
       description: config.description,
-      inputSchema: { projectPath: z.string().describe('项目目录绝对路径') },
+      inputSchema: {
+        projectPath: z.string().describe('项目目录绝对路径'),
+        ...(config.extraInput ?? {}),
+      },
     },
-    async ({ projectPath }) => {
+    async ({ projectPath, ...rest }) => {
       try {
         const userDataPath = getUserDataPath();
         const { taskId } = await getPipelineService().createTask(
           config.kind,
           projectPath,
           async (handle) => {
-            const result = await config.run({ projectPath, userDataPath, handle });
+            const result = await config.run({ projectPath, userDataPath, handle, params: rest });
             emitProjectUpdated(getMainWindow, projectPath, config.sections);
             return result;
           },
@@ -138,5 +146,15 @@ export function registerGenerationTools(
     kind: 'generate_covers',
     sections: ['aiAnalysis'],
     run: (ctx) => runCoversHeadless(ctx),
+  });
+
+  registerGenerationTool(server, getMainWindow, getUserDataPath, {
+    name: 'lingji_export_video',
+    title: '导出 MP4',
+    description: '用 Remotion 渲染时间线为 H.264 MP4，写入项目目录（可用 out 指定文件名/路径）。返回 taskId。',
+    kind: 'export_video',
+    sections: [],
+    extraInput: { out: z.string().optional().describe('输出文件名或绝对路径，默认 export.mp4') },
+    run: (ctx) => runExportHeadless(ctx, { out: ctx.params?.out as string | undefined }),
   });
 }
