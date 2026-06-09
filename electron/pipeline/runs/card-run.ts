@@ -17,7 +17,13 @@ import {
   DEFAULT_CARD_STYLE,
   getDefaultTemplate,
 } from '../../../src/types/ai';
-import type { AICard, AISegment, AIAnalysisResult, MediaCardContent } from '../../../src/types/ai';
+import type {
+  AICard,
+  AISegment,
+  AIAnalysisResult,
+  MediaCardContent,
+  CoverCandidate,
+} from '../../../src/types/ai';
 import type { SrtEntry } from '../../../src/types';
 
 /** image/video 卡本地重写时的兜底展示时长（ms），复刻 src/store/ai.ts 的 MEDIA_DEFAULT_DURATION_MS。 */
@@ -34,7 +40,7 @@ interface Loaded {
   card: AICard;
   segment: AISegment | undefined;
   entries: SrtEntry[];
-  coverCandidates: unknown[];
+  coverCandidates: CoverCandidate[];
 }
 
 async function loadForCard(ctx: GenerationRunCtx): Promise<Loaded> {
@@ -188,7 +194,7 @@ export async function runRegenerateCardMedia(
       `仅 image/video 卡可重生成媒体，实际为 ${l.card.type}`,
     );
   }
-  const content = (l.card.content ?? {}) as Record<string, unknown>;
+  const content = (l.card.content ?? {}) as unknown as Record<string, unknown>;
   const cmnCtx = {
     settings: l.settings,
     projectBindings: l.projectBindings,
@@ -268,11 +274,25 @@ export async function runConvertCard(ctx: GenerationRunCtx, deps: ConvertDeps = 
     } else {
       const fromSubtitles =
         deps.fromSubtitles ?? (generateSingleCardFromSubtitles as unknown as FromSubtitlesFn);
+      const [cardTemplate, imageTemplate] = await Promise.all([
+        loadEffectivePromptTemplate('cards.segment', {
+          userDataPath: ctx.userDataPath,
+          projectDir: l.projectPath,
+        }),
+        loadEffectivePromptTemplate('card.image', {
+          userDataPath: ctx.userDataPath,
+          projectDir: l.projectPath,
+        }),
+      ]);
+      const projectStylePresetId = (await loadProjectFile(l.projectPath)).stylePresetId;
       generated = await fromSubtitles(l.entries, plan.draft, l.settings, {
         globalPrompt: l.result.globalPrompt,
+        projectStylePresetId,
         defaultStylePresetId: l.settings.defaultStylePresetId,
         programSummary: l.result.summary,
         keywords: l.result.keywords,
+        cardTemplate,
+        imageTemplate,
         projectBindings: l.projectBindings,
         validateMotionSource: assertCardRenders,
       });
