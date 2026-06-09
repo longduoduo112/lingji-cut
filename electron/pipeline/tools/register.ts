@@ -10,6 +10,7 @@ import {
 import { buildTaskTools } from './task-tools';
 import { getActiveProjectPath } from '../context';
 import { loadRecentProjects } from '../../recent-projects';
+import { registerGenerationTools } from '../headless-generation';
 
 function jsonResult(data: unknown) {
   return {
@@ -41,7 +42,7 @@ function pipelineErrorMessage(err: unknown): string {
 
 export function registerPipelineMcpTools(
   server: McpServer,
-  _getMainWindow: () => unknown | null,
+  getMainWindow: () => import('electron').BrowserWindow | null,
   getUserDataPath: () => string,
 ): void {
   const taskTools = buildTaskTools(getPipelineService());
@@ -203,4 +204,6 @@ export function registerPipelineMcpTools(
       }
     },
   );
+
+  registerGenerationTools(server, getMainWindow, getUserDataPath);
 }
