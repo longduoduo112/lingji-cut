@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { regenerateCoverPrompt } from '../../../src/lib/ai-analysis';
 import { generateCoverCandidates } from '../../../src/lib/cover-generation';
+import { createPersistedAIState } from '../../../src/lib/ai-persistence';
 import { resolvePromptBinding } from '../../../src/lib/llm/binding-resolver';
 import { parseSrt } from '../../../src/lib/srt-parser';
 import { loadFullHeadlessAISettings, loadHeadlessProjectBindings } from '../headless-settings';
@@ -77,9 +78,13 @@ export async function runCoverPromptHeadless(
 
   handle.update({ phase: '写入', percent: 90 });
   const headless = new HeadlessProjectContext(projectPath);
+  const persisted = createPersistedAIState(
+    { ...analysisResult, coverPrompts: prompts },
+    project.aiAnalysis?.coverCandidates ?? [],
+  );
   await headless.saveSection('aiAnalysis', {
-    analysisResult: { ...analysisResult, coverPrompts: prompts },
-    coverCandidates: project.aiAnalysis?.coverCandidates ?? [],
+    analysisResult: persisted.analysisResult,
+    coverCandidates: persisted.coverCandidates,
   });
   handle.update({ phase: '完成', percent: 100 });
   return prompts;
@@ -148,9 +153,10 @@ export async function runCoverImagesHeadless(
 
   handle.update({ phase: '写入', percent: 95 });
   const headless = new HeadlessProjectContext(projectPath);
+  const persisted = createPersistedAIState(analysisResult, candidates);
   await headless.saveSection('aiAnalysis', {
-    analysisResult,
-    coverCandidates: candidates,
+    analysisResult: persisted.analysisResult,
+    coverCandidates: persisted.coverCandidates,
   });
   handle.update({ phase: '完成', percent: 100 });
   return candidates;
