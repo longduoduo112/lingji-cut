@@ -44,7 +44,7 @@ function fail(err: unknown, json: boolean): number {
   const e = err as CliError;
   const message = e?.message ?? String(err);
   if (json) {
-    process.stderr.write(JSON.stringify({ error: message, code: e?.code }) + '\n');
+    process.stderr.write(JSON.stringify({ error: message, code: e?.code ?? 'unknown_error' }) + '\n');
   } else {
     process.stderr.write(`错误: ${message}\n`);
   }
