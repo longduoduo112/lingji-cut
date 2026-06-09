@@ -28,11 +28,14 @@ describe('registerPipelineMcpTools', () => {
       'lingji_list_recent_projects',
       'lingji_generate_audio',
       'lingji_analyze_subtitles',
+      'lingji_generate_cover_prompts',
+      'lingji_generate_cover_images',
+      'lingji_generate_covers',
     ];
     for (const name of expected) {
       expect(server.tools.has(name)).toBe(true);
     }
-    expect(server.tools.size).toBeGreaterThanOrEqual(11);
+    expect(server.tools.size).toBeGreaterThanOrEqual(14);
   });
 
   it('lingji_create_project handler returns success result for fresh dir', async () => {

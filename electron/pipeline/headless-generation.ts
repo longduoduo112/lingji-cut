@@ -5,6 +5,11 @@ import { getPipelineService, type TaskHandle } from '.';
 import type { PipelineTaskKind } from './types';
 import { runTtsHeadless } from './runs/tts-run';
 import { runAnalyzeHeadless } from './runs/analyze-run';
+import {
+  runCoverPromptHeadless,
+  runCoverImagesHeadless,
+  runCoversHeadless,
+} from './runs/cover-run';
 
 const PROJECT_UPDATED_CHANNEL = 'pipeline:project-updated';
 
@@ -105,5 +110,33 @@ export function registerGenerationTools(
     kind: 'analyze_subtitles',
     sections: ['aiAnalysis'],
     run: (ctx) => runAnalyzeHeadless(ctx),
+  });
+
+  registerGenerationTool(server, getMainWindow, getUserDataPath, {
+    name: 'lingji_generate_cover_prompts',
+    title: '生成封面提示词',
+    description:
+      '基于字幕与分析结果生成封面提示词，写入 aiAnalysis.analysisResult.coverPrompts；需先完成 subtitle analyze。返回 taskId。',
+    kind: 'generate_covers',
+    sections: ['aiAnalysis'],
+    run: (ctx) => runCoverPromptHeadless(ctx),
+  });
+
+  registerGenerationTool(server, getMainWindow, getUserDataPath, {
+    name: 'lingji_generate_cover_images',
+    title: '生成封面图',
+    description: '由现有封面提示词出封面图，写入 covers/ 与 aiAnalysis.coverCandidates。返回 taskId。',
+    kind: 'generate_covers',
+    sections: ['aiAnalysis'],
+    run: (ctx) => runCoverImagesHeadless(ctx),
+  });
+
+  registerGenerationTool(server, getMainWindow, getUserDataPath, {
+    name: 'lingji_generate_covers',
+    title: '封面提示词+出图',
+    description: '一次性生成封面提示词并出图。返回 taskId。',
+    kind: 'generate_covers',
+    sections: ['aiAnalysis'],
+    run: (ctx) => runCoversHeadless(ctx),
   });
 }
