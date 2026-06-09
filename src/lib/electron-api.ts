@@ -342,6 +342,9 @@ export interface ElectronAPI {
   getAppLogs: () => Promise<AppLogEntry[]>;
   getAppLogFilePath: () => Promise<string>;
   onRenderProgress: (callback: (progress: number) => void) => () => void;
+  onProjectUpdated: (
+    callback: (payload: { projectPath: string; sections: string[] }) => void,
+  ) => () => void;
   onMenuAction: (callback: (event: MenuEvent) => void) => () => void;
   onAppLog: (callback: (entry: AppLogEntry) => void) => () => void;
   toggleDevTools: () => Promise<void>;

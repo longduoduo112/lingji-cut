@@ -192,6 +192,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('render-progress', handler);
     return () => ipcRenderer.removeListener('render-progress', handler);
   },
+  onProjectUpdated: (
+    callback: (payload: { projectPath: string; sections: string[] }) => void,
+  ) => {
+    const handler = (_event: unknown, payload: { projectPath: string; sections: string[] }) =>
+      callback(payload);
+    ipcRenderer.on('pipeline:project-updated', handler);
+    return () => ipcRenderer.removeListener('pipeline:project-updated', handler);
+  },
   onMenuAction: (callback: (event: MenuEvent) => void) => {
     const handler = (_event: unknown, event: MenuEvent) => callback(event);
     ipcRenderer.on('menu-action', handler);
