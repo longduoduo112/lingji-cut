@@ -1,7 +1,10 @@
 import { loadGlobalSettings } from '../global-settings';
-import { resolveDefaultTTSConfig } from '../../src/lib/tts-settings';
+import { resolveDefaultTTSConfig, normalizeTTSSettings } from '../../src/lib/tts-settings';
 import { readPromptBindings } from '../prompt-bindings-io';
 import { GenerationError } from './generation-error';
+import { migrateToProviders } from '../../src/lib/llm/provider-utils';
+import { migrateImageProviders } from '../../src/lib/llm/migrate-image-providers';
+import { DEFAULT_JIMENG_MODEL, DEFAULT_STYLE_PRESET_ID } from '../../src/types/ai';
 import type { AISettings, TTSProvider, TTSVoicePreset, PromptBindingMap } from '../../src/types/ai';
 
 /** 读取全局 AISettings（明文，含 keys）；无则返回 null */
@@ -37,4 +40,48 @@ export async function loadHeadlessTTSConfig(userDataPath: string): Promise<Headl
 /** 读取项目级 prompt 绑定 */
 export async function loadHeadlessProjectBindings(projectDir: string): Promise<PromptBindingMap> {
   return readPromptBindings({ projectDir });
+}
+
+/** 复制自 src/store/ai.ts buildDefaultAISettings 的默认字面量（store 不可 main 导入） */
+function defaultAISettings(): AISettings {
+  return {
+    llmProviders: [],
+    defaultProviderId: null,
+    defaultModel: null,
+    llmBaseUrl: '',
+    llmApiKey: '',
+    llmModel: '',
+    enableThinking: true,
+    jimengApiUrl: '',
+    jimengSessionId: '',
+    jimengModel: DEFAULT_JIMENG_MODEL,
+    minimaxApiKey: '',
+    minimaxVoiceId: 'male-qn-qingse',
+    minimaxSpeed: 1.0,
+    minimaxVol: 1.0,
+    minimaxPitch: 0,
+    minimaxEmotion: '',
+    minimaxModel: 'speech-2.8-hd',
+    ttsProviders: [],
+    defaultTtsProviderId: null,
+    defaultTtsVoiceId: null,
+    ttsVoices: [],
+    imageProviders: [],
+    defaultImageProviderId: null,
+    defaultImageModel: null,
+    globalCoverImagePrompt: '',
+    videoProviders: [],
+    defaultVideoProviderId: null,
+    defaultVideoModel: null,
+    promptBindings: {},
+    cardGenerationConcurrency: 2,
+    defaultStylePresetId: DEFAULT_STYLE_PRESET_ID,
+  };
+}
+
+/** 完整 AISettings（默认填充 + 迁移链 + 明文 keys），供封面/卡片/LLM 使用 */
+export async function loadFullHeadlessAISettings(userDataPath: string): Promise<AISettings> {
+  const file = await loadGlobalSettings(userDataPath);
+  const merged = { ...defaultAISettings(), ...(file?.aiSettings ?? {}) } as AISettings;
+  return normalizeTTSSettings(migrateImageProviders(migrateToProviders(merged)));
 }
