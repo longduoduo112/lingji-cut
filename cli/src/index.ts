@@ -6,6 +6,10 @@ import { output } from './format';
 import { runProjectCommand } from './commands/project';
 import { runTaskCommand } from './commands/task';
 import { runAudioCommand } from './commands/audio';
+import { runSubtitleCommand } from './commands/subtitle';
+import { runCardsCommand } from './commands/cards';
+import { runCoverCommand } from './commands/cover';
+import { runExportCommand } from './commands/export';
 import { CliError } from './errors';
 
 const HELP = `灵机 CLI (lingji)
@@ -19,6 +23,10 @@ const HELP = `灵机 CLI (lingji)
   lingji task cancel <id>           取消任务
   lingji task wait <id>             轮询任务直到完成
   lingji audio gen [--project <p>] [--wait]   生成口播音频(TTS)
+  lingji subtitle analyze [--wait]            字幕分析 + 卡片生成
+  lingji cards gen [--wait]                   生成 AI 卡片（同 subtitle analyze）
+  lingji cover prompt|image|gen [--wait]      封面提示词 / 出图 / 一次性
+  lingji export [--out <file>] [--wait]       导出 MP4
 
 全局开关:
   --json                JSON 输出
@@ -39,8 +47,16 @@ async function dispatch(
       return runTaskCommand(action, positionals, flags, client);
     case 'audio':
       return runAudioCommand(action, flags, client);
+    case 'subtitle':
+      return runSubtitleCommand(action, flags, client);
+    case 'cards':
+      return runCardsCommand(action, flags, client);
+    case 'cover':
+      return runCoverCommand(action, flags, client);
+    case 'export':
+      return runExportCommand(flags, client);
     default:
-      throw new CliError(`未知命令组: ${group}（支持 project/task/audio）`, 'bad_args', 2);
+      throw new CliError(`未知命令组: ${group}（支持 project/task/audio/subtitle/cards/cover/export）`, 'bad_args', 2);
   }
 }
 
