@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { writeEndpointFile, removeEndpointFile } from '../electron/mcp/endpoint-file';
+import { readFileSync as readSrc } from 'node:fs';
 
 describe('endpoint-file', () => {
   it('writes endpoint json with url/port/pid/startedAt then removes it', async () => {
@@ -30,5 +31,14 @@ describe('endpoint-file', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('server.ts endpoint wiring', () => {
+  it('startMcpServer writes and stopMcpServer removes the endpoint file', () => {
+    const src = readSrc(new URL('../electron/mcp/server.ts', import.meta.url), 'utf8');
+    expect(src).toContain("from './endpoint-file'");
+    expect(src).toContain('writeEndpointFile(');
+    expect(src).toContain('removeEndpointFile(');
   });
 });

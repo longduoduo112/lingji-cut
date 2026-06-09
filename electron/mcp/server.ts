@@ -9,6 +9,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { registerTools } from './tools';
+import { writeEndpointFile, removeEndpointFile } from './endpoint-file';
 
 // ─── 模块状态 ─────────────────────────────────────────────
 let httpServer: Server | null = null;
@@ -125,6 +126,9 @@ export async function startMcpServer(
   return new Promise<void>((resolve, reject) => {
     httpServer!.listen(port, '127.0.0.1', () => {
       console.log(`[MCP] HTTP Server 已启动: http://127.0.0.1:${port}/mcp`);
+      void writeEndpointFile(port).catch((err) =>
+        console.error('[MCP] 写端点文件失败:', err),
+      );
       resolve();
     });
     httpServer!.on('error', (err) => {
@@ -156,6 +160,7 @@ export async function stopMcpServer(): Promise<void> {
       httpServer!.close(() => resolve());
     });
     httpServer = null;
+    void removeEndpointFile().catch(() => {});
   }
 
   console.log('[MCP] Server 已停止');
