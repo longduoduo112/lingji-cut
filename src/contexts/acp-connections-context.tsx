@@ -10,6 +10,7 @@ import type {
 } from '../types/conversation';
 import { useConversationWorkspace } from './conversation-workspace-context';
 import { useAgentStore } from '../store/agent';
+import { getAgentPresentation } from '../lib/agent-presentation';
 
 type ConnectionsMap = Record<number, ConversationConnectionState>;
 
@@ -187,6 +188,35 @@ function toPersistedBlocks(message: ConversationConnectionState['liveMessage']):
   });
 }
 
+export interface AssistantTurnPersistInput {
+  role: 'assistant';
+  blocks: ConversationBlock[];
+  sessionStatsJson?: string | null;
+  agentId?: string;
+  agentName?: string;
+}
+
+/**
+ * 由连接状态 + turn_complete 事件构造 assistant turn 的持久化入参。
+ * 关键：带上 per-turn 的 agentId / agentName（来自当前连接的 agentType），
+ * 使同一会话混合 agent 历史能按回合归属到正确的 agent。
+ */
+export function buildAssistantTurnInput(
+  connection: ConversationConnectionState,
+  options: { stopReason: string; sessionStatsJson?: string | null },
+): AssistantTurnPersistInput {
+  const blocks = toPersistedBlocks(connection.liveMessage);
+  const agentId = connection.agentType;
+  const agentName = getAgentPresentation(agentId).displayName;
+  return {
+    role: 'assistant',
+    blocks: [...blocks, { type: 'turn_complete', stopReason: options.stopReason }],
+    sessionStatsJson: options.sessionStatsJson,
+    agentId,
+    agentName,
+  };
+}
+
 function isMissingConversationError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -269,7 +299,13 @@ export function AcpConnectionsProvider({ children }: AcpConnectionsProviderProps
 
   async function persistConversationTurn(
     conversationId: number,
-    input: { role: 'user' | 'assistant'; blocks: ConversationBlock[]; sessionStatsJson?: string | null },
+    input: {
+      role: 'user' | 'assistant';
+      blocks: ConversationBlock[];
+      sessionStatsJson?: string | null;
+      agentId?: string;
+      agentName?: string;
+    },
   ) {
     const projectId = workspaceRef.current.projectId;
     if (!projectId || input.blocks.length === 0) return;
@@ -294,17 +330,15 @@ export function AcpConnectionsProvider({ children }: AcpConnectionsProviderProps
     }
     if (type === 'turn_complete') {
       const current = connectionsRef.current[conversationId] ?? createEmptyConnectionState(conversationId);
-      const blocks = toPersistedBlocks(current.liveMessage);
       const stopReason = String(payload.stopReason ?? 'end_turn');
       const usage =
         payload.usage && typeof payload.usage === 'object'
           ? JSON.stringify(payload.usage)
           : undefined;
-      void persistConversationTurn(conversationId, {
-        role: 'assistant',
-        blocks: [...blocks, { type: 'turn_complete', stopReason }],
-        sessionStatsJson: usage,
-      });
+      void persistConversationTurn(
+        conversationId,
+        buildAssistantTurnInput(current, { stopReason, sessionStatsJson: usage }),
+      );
     }
 
     updateConversationState(conversationId, (current) => {
