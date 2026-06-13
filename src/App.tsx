@@ -560,9 +560,8 @@ export default function App() {
         projectDir: currentProjectDir,
         applyCardSource: (id, tsx) =>
           useTimelineStore.getState().applyExternalCardSource(id, tsx),
-        onScriptChanged: () => {
-          /* Task 12 接入 script/original 灌回 + 版本历史；本任务留空钩子 */
-        },
+        onScriptChanged: (kind, content) =>
+          useScriptStore.getState().applyExternalScriptFile(kind, content),
       });
     });
     const offLock = window.electronAPI?.onAiEditLockChanged?.((change) => {

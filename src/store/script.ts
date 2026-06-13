@@ -150,6 +150,13 @@ interface ScriptActions {
   setProjectDir: (dir: string | null) => void;
   setOriginalText: (text: string) => void;
   setScriptText: (text: string) => void;
+  /**
+   * 外部直接改 script.md / original.md（file-first）后把内容真实灌回工作台。
+   * 与流式生成不同：不播光标/打字动画，直接 set 内存正文（编辑器即绑定该正文）。
+   * kind==='script' 时额外补建一个版本快照（source: 'external'），保住"script.md 保存即生成版本"。
+   * 防回环：内容与当前一致则直接返回，不建版本、不更新。
+   */
+  applyExternalScriptFile: (kind: 'script' | 'original', content: string) => void;
   setSelectedTemplate: (id: string) => void;
   setAnnotations: (annotations: Annotation[]) => void;
   setGenerating: (generating: boolean) => void;
@@ -300,6 +307,29 @@ export const useScriptStore = create<ScriptState & ScriptActions>((set, get) => 
   },
   setOriginalText: (text) => set({ originalText: text }),
   setScriptText: (text) => set({ scriptText: text }),
+  applyExternalScriptFile: (kind, content) => {
+    const { scriptText, originalText, projectDir } = get();
+    if (kind === 'original') {
+      // 防回环：内容一致则不动
+      if (content === originalText) return;
+      set({ originalText: content });
+      return;
+    }
+    // kind === 'script'
+    // 防回环：与当前正文一致则不灌回、不补建版本
+    if (content === scriptText) return;
+    set({ scriptText: content });
+    // 补建版本快照（保住"script.md 保存即生成版本"的能力）。
+    // 复用脚本历史 IPC（与工作台保存同一通道），标记 source: 'external'。
+    if (projectDir && typeof window !== 'undefined' && window.scriptHistoryAPI) {
+      void window.scriptHistoryAPI.create({
+        projectId: projectDir,
+        fileName: 'script.md',
+        content,
+        source: 'external',
+      });
+    }
+  },
   setSelectedTemplate: (id) => set({ selectedTemplate: id }),
   setAnnotations: (annotations) => set({ annotations }),
   setGenerating: (generating) => set({ generating }),
