@@ -19,6 +19,7 @@
  *                                             agent_message was emitted, to avoid
  *                                             token-boundary concatenation)
  *   turn.completed                        → usage { inputTokens, outputTokens }
+ *                                            then turn_end { stopReason:'end_turn' }
  *   error (Reconnecting …)               → status { label:'reconnecting', detail }
  *   error (other)                        → error { message }
  */
@@ -200,6 +201,10 @@ export function createCodexParser(
         const outputTokens =
           usage?.output_tokens ?? usage?.outputTokens ?? undefined;
         onEvent({ type: 'usage', inputTokens, outputTokens });
+        // Emit turn_end AFTER usage so the Renderer's turn_complete fires and the
+        // codex assistant reply is persisted. Without this, codex turns never
+        // reach toRuntimeEvent's 'turn_end'→'turn_complete' path and are dropped.
+        onEvent({ type: 'turn_end', stopReason: 'end_turn' });
         break;
       }
 

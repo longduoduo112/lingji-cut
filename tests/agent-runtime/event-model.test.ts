@@ -158,6 +158,30 @@ describe('error', () => {
   });
 });
 
+// ─── status with sessionId → session_started ──────────────────────────────────
+
+describe('status with sessionId', () => {
+  it('maps to session_started carrying sessionId — consumed by case "session_started"', () => {
+    const result = mapEvent({ type: 'status', label: 'init', sessionId: 'sess-xyz' });
+    expect(result).toEqual({ type: 'session_started', sessionId: 'sess-xyz' });
+  });
+
+  it('maps to session_started even with other optional fields present', () => {
+    const result = mapEvent({
+      type: 'status',
+      label: 'running',
+      detail: 'ok',
+      model: 'claude-3-5',
+      sessionId: 's1',
+    });
+    expect(result).toEqual({ type: 'session_started', sessionId: 's1' });
+  });
+
+  it('treats empty-string sessionId as no session (returns null)', () => {
+    expect(mapEvent({ type: 'status', label: 'x', sessionId: '' })).toBeNull();
+  });
+});
+
 // ─── usage ────────────────────────────────────────────────────────────────────
 
 describe('usage', () => {
@@ -186,14 +210,8 @@ describe('usage', () => {
 // ─── null 分支（首版不映射） ──────────────────────────────────────────────────
 
 describe('null branches (unmapped in v1)', () => {
-  it('status → null', () => {
+  it('status without sessionId → null', () => {
     expect(mapEvent({ type: 'status', label: 'connecting' })).toBeNull();
-  });
-
-  it('status with all optional fields → null', () => {
-    expect(
-      mapEvent({ type: 'status', label: 'running', detail: 'ok', model: 'claude-3-5', sessionId: 's1' }),
-    ).toBeNull();
   });
 
   it('thinking_start → null', () => {

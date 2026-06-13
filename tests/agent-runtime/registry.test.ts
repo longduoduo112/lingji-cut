@@ -83,6 +83,22 @@ describe('agent-runtime registry', () => {
       expect(args).toContain('--print');
       expect(args).toContain('--verbose');
     });
+
+    it('includes --resume <sessionId> when resumeSessionId provided', () => {
+      const def = getAgentDef('claude')!;
+      const args = def.buildArgs({ prompt: 'hello', resumeSessionId: 'sess-abc' });
+      expect(args).toContain('--resume');
+      expect(args).toContain('sess-abc');
+      // --resume must be immediately followed by the sessionId
+      const idx = args.indexOf('--resume');
+      expect(args[idx + 1]).toBe('sess-abc');
+    });
+
+    it('omits --resume when resumeSessionId absent', () => {
+      const def = getAgentDef('claude')!;
+      const args = def.buildArgs({ prompt: 'hello' });
+      expect(args).not.toContain('--resume');
+    });
   });
 
   describe('codex buildArgs', () => {
@@ -98,6 +114,20 @@ describe('agent-runtime registry', () => {
       const args = def.buildArgs({ prompt: 'hello', model: 'gpt-4o' });
       expect(args).toContain('--model');
       expect(args).toContain('gpt-4o');
+    });
+
+    it('passes the prompt as the trailing positional argument', () => {
+      const def = getAgentDef('codex')!;
+      const args = def.buildArgs({ prompt: 'do the thing' });
+      expect(args).toContain('do the thing');
+      // prompt must be the last positional arg so `codex exec --json <prompt>` works
+      expect(args[args.length - 1]).toBe('do the thing');
+    });
+
+    it('keeps prompt last even when model is provided', () => {
+      const def = getAgentDef('codex')!;
+      const args = def.buildArgs({ prompt: 'analyze repo', model: 'gpt-4o' });
+      expect(args[args.length - 1]).toBe('analyze repo');
     });
   });
 

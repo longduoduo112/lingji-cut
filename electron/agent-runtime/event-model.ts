@@ -90,14 +90,17 @@ export type RuntimeEventOut =
    *       此处用 outputTokens 映射 used，size 降级为 0。
    *       若后续 parser 能提供 contextWindowSize，在此更新。
    */
-  | { type: 'usage'; used: number; size: number };
+  | { type: 'usage'; used: number; size: number }
+  /** case 'session_started': payload.sessionId（用于持久化 externalId） */
+  | { type: 'session_started'; sessionId: string };
 
 // ─── 映射函数 ─────────────────────────────────────────────────────────────────
 
 /**
  * 把协议无关的 AgentStreamEvent 映射到 Renderer 侧 applyRuntimeEvent 消费的形状。
- * 首版不映射的事件类型返回 null：
- *   status / thinking_start / thinking_end / tool_input_delta / raw
+ * status：带 sessionId → session_started；不带 sessionId → null。
+ * 不映射的事件类型返回 null：
+ *   thinking_start / thinking_end / tool_input_delta / raw
  */
 export function toRuntimeEvent(ev: AgentStreamEvent): RuntimeEventOut | null {
   switch (ev.type) {
@@ -149,8 +152,15 @@ export function toRuntimeEvent(ev: AgentStreamEvent): RuntimeEventOut | null {
         size: 0,
       };
 
-    // 首版不映射，返回 null
     case 'status':
+      // 带 sessionId 的 status → session_started，使 Renderer 持久化 externalId。
+      // 不带 sessionId（或空串）的 status 仍不映射，返回 null（保持原行为）。
+      if (ev.sessionId) {
+        return { type: 'session_started', sessionId: ev.sessionId };
+      }
+      return null;
+
+    // 首版不映射，返回 null
     case 'thinking_start':
     case 'thinking_end':
     case 'tool_input_delta':

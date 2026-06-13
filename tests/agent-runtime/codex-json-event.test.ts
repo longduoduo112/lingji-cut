@@ -211,28 +211,46 @@ describe('item.completed — agent_message', () => {
 // ─── turn.completed ───────────────────────────────────────────────────────────
 
 describe('turn.completed', () => {
-  it('emits usage with snake_case token fields', () => {
+  it('emits usage with snake_case token fields followed by turn_end', () => {
     const { events, parser } = makeParser();
     feedLines(parser, {
       type: 'turn.completed',
       usage: { input_tokens: 100, output_tokens: 50 },
     });
-    expect(events).toEqual([{ type: 'usage', inputTokens: 100, outputTokens: 50 }]);
+    expect(events).toEqual([
+      { type: 'usage', inputTokens: 100, outputTokens: 50 },
+      { type: 'turn_end', stopReason: 'end_turn' },
+    ]);
   });
 
-  it('emits usage with camelCase token fields (fallback)', () => {
+  it('emits usage with camelCase token fields (fallback) followed by turn_end', () => {
     const { events, parser } = makeParser();
     feedLines(parser, {
       type: 'turn.completed',
       usage: { inputTokens: 200, outputTokens: 75 },
     });
-    expect(events).toEqual([{ type: 'usage', inputTokens: 200, outputTokens: 75 }]);
+    expect(events).toEqual([
+      { type: 'usage', inputTokens: 200, outputTokens: 75 },
+      { type: 'turn_end', stopReason: 'end_turn' },
+    ]);
   });
 
-  it('emits usage{inputTokens:undefined, outputTokens:undefined} when usage field is absent', () => {
+  it('emits usage{undefined tokens} then turn_end when usage field is absent', () => {
     const { events, parser } = makeParser();
     feedLines(parser, { type: 'turn.completed' });
-    expect(events).toEqual([{ type: 'usage', inputTokens: undefined, outputTokens: undefined }]);
+    expect(events).toEqual([
+      { type: 'usage', inputTokens: undefined, outputTokens: undefined },
+      { type: 'turn_end', stopReason: 'end_turn' },
+    ]);
+  });
+
+  it('emits turn_end strictly after usage', () => {
+    const { events, parser } = makeParser();
+    feedLines(parser, { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } });
+    const usageIdx = events.findIndex((e) => e.type === 'usage');
+    const turnEndIdx = events.findIndex((e) => e.type === 'turn_end');
+    expect(usageIdx).toBeGreaterThanOrEqual(0);
+    expect(turnEndIdx).toBeGreaterThan(usageIdx);
   });
 });
 
@@ -293,7 +311,8 @@ describe('full representative event sequence', () => {
     expect(events[2]).toEqual({ type: 'tool_result', toolUseId: 'cmd-1', content: 'hello', isError: false });
     expect(events[3]).toEqual({ type: 'text_delta', delta: 'The command ran successfully.' });
     expect(events[4]).toEqual({ type: 'usage', inputTokens: 300, outputTokens: 80 });
-    expect(events).toHaveLength(5);
+    expect(events[5]).toEqual({ type: 'turn_end', stopReason: 'end_turn' });
+    expect(events).toHaveLength(6);
   });
 
   it('handles multiple Bash tool calls with deduplication', () => {
@@ -327,9 +346,10 @@ describe('full representative event sequence', () => {
       { type: 'turn.completed' },
     );
 
-    expect(events).toHaveLength(2); // status + usage only
+    expect(events).toHaveLength(3); // status + usage + turn_end
     expect(events[0]).toMatchObject({ type: 'status' });
     expect(events[1]).toMatchObject({ type: 'usage' });
+    expect(events[2]).toMatchObject({ type: 'turn_end' });
   });
 });
 
