@@ -1,0 +1,338 @@
+/**
+ * runtime-registry.ts
+ *
+ * RuntimeRegistry — 多协议 Agent Runtime 的多会话管理 + 归一化事件转发层。
+ *
+ * 取代旧 `electron/acp/connection-registry.ts`。对外接口/事件刻意对齐旧的，
+ * 使 A10 切换 ipc 时改动最小：
+ *   - 方法：connect / sendPrompt / cancelTurn / disconnect / disconnectAll /
+ *           setPermissionPolicy / setMode / setConfigOption / respondPermission /
+ *           list / get / size
+ *   - 事件（按 conversationId 维度）：
+ *       'status'  → { conversationId, status }
+ *       'event'   → { conversationId, event }  （event 为 Renderer 消费形状）
+ *
+ * ── 连接模型折中（ACP 持久会话 vs CLI 每轮 spawn） ───────────────────────────
+ *   旧 ACP：先 connect 建持久会话，再多次 sendPrompt。
+ *   多协议 CLI（claude/codex）：通常每个 prompt spawn 一次进程跑一轮。
+ *   折中方案：
+ *     - connect 只登记会话上下文（def / cwd / model / sessionId 等），不 spawn，
+ *       状态置为 'connected'。
+ *     - sendPrompt 时 new AgentSession（经 createSession 工厂）并 start 跑一轮；
+ *       该轮 AgentSession.onEvent → toRuntimeEvent → emit 'event'。
+ *     - 轮内状态置 'prompting'；turn_end / error 后回落 'connected'。
+ *   resume：pi 用 parentSession，claude/codex 用 resumeSessionId。首版透传记录的
+ *   sessionId 作为 resume 依据（见下方 TODO）。
+ */
+
+import { EventEmitter } from 'node:events';
+import { AgentSession } from './session';
+import type { AgentSessionStartInput } from './session';
+import type { AgentStreamEvent } from './event-model';
+import { toRuntimeEvent } from './event-model';
+import { getAgentDef } from './registry';
+import type { RuntimeAgentDef } from './types';
+
+// ─── 状态与事件 payload（对齐旧 connection-registry） ────────────────────────
+
+export type RuntimeStatus =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'prompting'
+  | 'error';
+
+export interface RuntimeConnectInput {
+  conversationId: number;
+  agentType: string; // 'claude' | 'codex' | 'pi'
+  projectDir: string;
+  model?: string;
+  /** resume：pi parentSession / claude·codex 续轮 sessionId */
+  sessionId?: string | null;
+  env?: Record<string, string>;
+  permissionPolicy?: string;
+}
+
+export interface RuntimeSnapshot {
+  conversationId: number;
+  projectDir: string;
+  agentType: string;
+  status: RuntimeStatus;
+  sessionId: string | null;
+}
+
+export interface RuntimeStatusPayload {
+  conversationId: number;
+  status: RuntimeStatus;
+}
+
+export interface RuntimeEventPayload {
+  conversationId: number;
+  event: Record<string, unknown>;
+}
+
+// ─── 可注入的 AgentSession 抽象（便于单测） ──────────────────────────────────
+
+export interface AgentSessionLike {
+  start(input: AgentSessionStartInput): Promise<void>;
+  cancel(): void;
+}
+
+interface RuntimeContextEntry {
+  snapshot: RuntimeSnapshot;
+  def: RuntimeAgentDef;
+  model?: string;
+  env?: Record<string, string>;
+  /** 当前活跃的轮会话（仅在 prompting 期间存在） */
+  activeSession: AgentSessionLike | null;
+}
+
+interface RuntimeRegistryOptions {
+  /** 可注入的 AgentSession 工厂；默认 new AgentSession()。 */
+  createSession?: () => AgentSessionLike;
+  defaultPermissionPolicy?: string;
+}
+
+// ─── RuntimeRegistry ─────────────────────────────────────────────────────────
+
+export class RuntimeRegistry extends EventEmitter {
+  private readonly contexts = new Map<number, RuntimeContextEntry>();
+  private readonly createSession: () => AgentSessionLike;
+  private permissionPolicy: string;
+
+  constructor(options: RuntimeRegistryOptions = {}) {
+    super();
+    this.permissionPolicy = options.defaultPermissionPolicy ?? 'tiered';
+    this.createSession = options.createSession ?? (() => new AgentSession());
+  }
+
+  size(): number {
+    return this.contexts.size;
+  }
+
+  list(): RuntimeSnapshot[] {
+    return Array.from(this.contexts.values(), (entry) => ({ ...entry.snapshot }));
+  }
+
+  get(conversationId: number): RuntimeSnapshot | null {
+    const entry = this.contexts.get(conversationId);
+    return entry ? { ...entry.snapshot } : null;
+  }
+
+  /**
+   * 登记会话上下文（不 spawn）。已存在则覆盖（先 disconnect 旧的）。
+   */
+  async connect(input: RuntimeConnectInput): Promise<RuntimeSnapshot> {
+    const def = getAgentDef(input.agentType);
+    if (!def) {
+      throw new Error(`Unknown agent type: "${input.agentType}"`);
+    }
+
+    if (this.contexts.has(input.conversationId)) {
+      this.disconnect(input.conversationId);
+    }
+
+    const snapshot: RuntimeSnapshot = {
+      conversationId: input.conversationId,
+      projectDir: input.projectDir,
+      agentType: input.agentType,
+      status: 'connected',
+      sessionId: input.sessionId ?? null,
+    };
+    const entry: RuntimeContextEntry = {
+      snapshot,
+      def,
+      model: input.model,
+      env: input.env,
+      activeSession: null,
+    };
+    this.contexts.set(input.conversationId, entry);
+
+    this.emitStatus(input.conversationId, 'connected');
+    return { ...snapshot };
+  }
+
+  /**
+   * 起一轮：new AgentSession → start。contents 文本化为 prompt。
+   * onEvent → toRuntimeEvent → emit 'event'（非 null）。
+   * turn_end / error 后回落 'connected' 并清理 activeSession。
+   */
+  async sendPrompt(conversationId: number, contents: unknown[]): Promise<void> {
+    const entry = this.getEntryOrThrow(conversationId);
+
+    const prompt = stringifyContents(contents);
+    const session = this.createSession();
+    entry.activeSession = session;
+
+    this.setStatus(entry, 'prompting');
+
+    let settled = false;
+    const settle = (status: RuntimeStatus) => {
+      if (settled) return;
+      settled = true;
+      if (entry.activeSession === session) {
+        entry.activeSession = null;
+      }
+      // 仅在该轮仍是当前上下文时回落状态（disconnect 后不再发）
+      if (this.contexts.get(conversationId) === entry) {
+        this.setStatus(entry, status);
+      }
+    };
+
+    const onEvent = (ev: AgentStreamEvent) => {
+      const out = toRuntimeEvent(ev);
+      if (out) {
+        this.emit('event', {
+          conversationId,
+          event: out as unknown as Record<string, unknown>,
+        } satisfies RuntimeEventPayload);
+      }
+      if (ev.type === 'turn_end') {
+        settle('connected');
+      } else if (ev.type === 'error') {
+        settle('error');
+      }
+    };
+
+    try {
+      await session.start({
+        def: entry.def,
+        prompt,
+        cwd: entry.snapshot.projectDir,
+        model: entry.model ?? entry.def.defaultModel,
+        env: entry.env,
+        // resume：pi 经 parentSession，claude/codex 经 resumeSessionId。
+        // TODO(A10+): 区分协议传递 resume；首版统一透传已记录 sessionId。
+        parentSession: entry.snapshot.sessionId,
+        resumeSessionId: entry.snapshot.sessionId,
+        isResuming: Boolean(entry.snapshot.sessionId),
+        onEvent,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.emit('event', {
+        conversationId,
+        event: { type: 'error', message } as Record<string, unknown>,
+      } satisfies RuntimeEventPayload);
+      settle('error');
+      return;
+    }
+
+    // start 已返回但没有显式 turn_end（如 CLI 进程同步结束）时，
+    // 若仍处于 prompting，回落到 connected。
+    settle('connected');
+  }
+
+  /** 取消当前轮：调 session.cancel；状态回落 connected。 */
+  cancelTurn(conversationId: number): void {
+    const entry = this.contexts.get(conversationId);
+    if (!entry) return;
+    entry.activeSession?.cancel();
+    entry.activeSession = null;
+    if (entry.snapshot.status === 'prompting') {
+      this.setStatus(entry, 'connected');
+    }
+  }
+
+  /** 清理会话上下文，取消活跃轮，发 disconnected。 */
+  disconnect(conversationId: number): void {
+    const entry = this.contexts.get(conversationId);
+    if (!entry) return;
+    try {
+      entry.activeSession?.cancel();
+    } catch {
+      // 容错
+    }
+    entry.activeSession = null;
+    this.contexts.delete(conversationId);
+    this.emitStatus(conversationId, 'disconnected');
+  }
+
+  disconnectAll(): void {
+    for (const conversationId of Array.from(this.contexts.keys())) {
+      this.disconnect(conversationId);
+    }
+  }
+
+  /**
+   * 记录权限策略（供后续新连接使用）。
+   * 多协议首版 CLI 无运行时权限协商，故仅记录，不向活跃会话下发。
+   * TODO(A10+): 若 CLI 支持权限策略参数，在 sendPrompt 起轮时透传。
+   */
+  setPermissionPolicy(policy: string): void {
+    this.permissionPolicy = policy;
+  }
+
+  /** 兼容旧 ipc：多协议首版无 modes，noop。 */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async setMode(_conversationId: number, _modeId: string): Promise<void> {
+    // TODO(A10+): 多协议暂不支持 mode 切换。
+  }
+
+  /** 兼容旧 ipc：多协议首版无 config options，noop。 */
+  async setConfigOption(
+    _conversationId: number,
+    _configId: string,
+    _valueId: string,
+  ): Promise<void> {
+    // TODO(A10+): 多协议暂不支持 config option。
+  }
+
+  /** 兼容旧 ipc：多协议首版无交互式 permission 协商，noop。 */
+  async respondPermission(
+    _conversationId: number,
+    _requestId: string,
+    _optionId: string,
+  ): Promise<void> {
+    // TODO(A10+): 多协议暂不支持交互式 permission 响应。
+  }
+
+  // ── 内部 ──────────────────────────────────────────────────────────────────
+
+  private setStatus(entry: RuntimeContextEntry, status: RuntimeStatus): void {
+    entry.snapshot.status = status;
+    this.emitStatus(entry.snapshot.conversationId, status);
+  }
+
+  private emitStatus(conversationId: number, status: RuntimeStatus): void {
+    this.emit('status', { conversationId, status } satisfies RuntimeStatusPayload);
+  }
+
+  private getEntryOrThrow(conversationId: number): RuntimeContextEntry {
+    const entry = this.contexts.get(conversationId);
+    if (!entry) {
+      throw new Error(`No active runtime for conversation ${conversationId}`);
+    }
+    return entry;
+  }
+}
+
+// ─── 工具：contents 文本化为 prompt ──────────────────────────────────────────
+
+/**
+ * 把 sendPrompt 的 contents（ACP 风格 content block 数组）压成纯文本 prompt。
+ * - { type: 'text', text } → text
+ * - 字符串 → 原样
+ * - 其他 → JSON 兜底
+ */
+function stringifyContents(contents: unknown[]): string {
+  if (!Array.isArray(contents)) return String(contents ?? '');
+  const parts: string[] = [];
+  for (const item of contents) {
+    if (typeof item === 'string') {
+      parts.push(item);
+      continue;
+    }
+    if (item && typeof item === 'object') {
+      const obj = item as Record<string, unknown>;
+      if (typeof obj.text === 'string') {
+        parts.push(obj.text);
+        continue;
+      }
+      parts.push(JSON.stringify(obj));
+      continue;
+    }
+    parts.push(String(item ?? ''));
+  }
+  return parts.join('\n');
+}
