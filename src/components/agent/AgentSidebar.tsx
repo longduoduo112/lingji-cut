@@ -8,7 +8,7 @@ import { getPreferredAgentType } from '../../lib/agent-api';
 import { AgentHeader } from './AgentHeader';
 import { ConversationToolbar } from './ConversationToolbar';
 import { SessionListPane } from './SessionListPane';
-import { ConversationDetailPane } from './ConversationDetailPane';
+import { ChatPane } from './ChatPane';
 import styles from './AgentSidebar.module.css';
 import { ConversationWorkspaceProvider } from '../../contexts/conversation-workspace-context';
 import { AcpConnectionsProvider, useAcpConnections } from '../../contexts/acp-connections-context';
@@ -148,7 +148,7 @@ function SidebarWorkspaceShell({ projectDir }: { projectDir: string }) {
           }}
         />
       </div>
-      <ConversationDetailPane
+      <ChatPane
         projectDir={projectDir}
         explicitActivated={explicitConversationId !== null}
       />

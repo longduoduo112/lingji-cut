@@ -11,7 +11,7 @@ import {
 import { AcpConnectionsProvider } from '../src/contexts/acp-connections-context';
 import { ConversationRuntimeProvider } from '../src/contexts/conversation-runtime-context';
 import { SessionListPane } from '../src/components/agent/SessionListPane';
-import { ConversationDetailPane } from '../src/components/agent/ConversationDetailPane';
+import { ChatPane } from '../src/components/agent/ChatPane';
 
 function buildConversationApiMock(): ConversationAPI {
   const conversations = [
@@ -187,7 +187,7 @@ describe('conversation workspace skeleton', () => {
                 onDeleteConversation={() => undefined}
                 onCreateConversation={() => undefined}
               />
-              <ConversationDetailPane projectDir="/tmp/project-a" explicitActivated={false} />
+              <ChatPane projectDir="/tmp/project-a" explicitActivated={false} />
             </div>
           </ConversationRuntimeProvider>
         </AcpConnectionsProvider>
