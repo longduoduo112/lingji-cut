@@ -1935,7 +1935,7 @@ ipcMain.handle('start-watching', async (_event, dir: string) => {
 
   fileWatcher.on('change', async (filePath: string) => {
     const relative = path.relative(dir, filePath);
-    if (!relative.endsWith('.md') && !relative.endsWith('.json')) return;
+    if (!relative.endsWith('.md') && !relative.endsWith('.json') && !relative.endsWith('.tsx')) return;
 
     try {
       const content = await fs.readFile(filePath, 'utf-8');
