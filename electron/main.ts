@@ -78,6 +78,7 @@ import { registerScriptHistoryIpc } from './script-history/ipc';
 import { LockMonitor } from './ai-edit/lock-watcher';
 import { validateTimeline, type EditError } from '../src/lib/external-edit-validate';
 import { buildEditResult, writeEditResult } from './ai-edit/result-writer';
+import { consumeSelfWrite } from './ai-edit/self-write-guard';
 import {
   appendAutoRunEvent,
   getAutoRunLogDir,
@@ -1941,6 +1942,9 @@ ipcMain.handle('start-watching', async (_event, dir: string) => {
 
     try {
       const content = await fs.readFile(filePath, 'utf-8');
+      // 自写抑制：若内容与主进程最近一次自写完全相同，判为自身回声，
+      // 跳过校验与转发，打断 autosave↔watch 回环（不会误伤真实外部编辑——内容不同）。
+      if (consumeSelfWrite(path.resolve(filePath), content)) return;
       if (relative === 'project.json') {
         let errors: EditError[] = [];
         try {

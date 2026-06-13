@@ -14,6 +14,7 @@ import {
   hydrateTimelineCards,
 } from '../src/lib/motion-card-externalize';
 import type { TimelineData } from '../src/types';
+import { markSelfWrite } from './ai-edit/self-write-guard';
 
 const PROJECT_FILE = 'project.json';
 
@@ -44,16 +45,22 @@ async function readProjectJson(projectDir: string): Promise<ProjectData | null> 
 
 async function writeProjectJson(projectDir: string, data: ProjectData): Promise<void> {
   await fs.mkdir(projectDir, { recursive: true });
-  await fs.writeFile(path.join(projectDir, PROJECT_FILE), JSON.stringify(data, null, 2), 'utf-8');
+  const abs = path.resolve(projectDir, PROJECT_FILE);
+  const jsonStr = JSON.stringify(data, null, 2);
+  await fs.writeFile(abs, jsonStr, 'utf-8');
+  // 记录自写内容：chokidar 监听到同内容变更时识别为自身回声并跳过转发，打断 autosave↔watch 回环。
+  markSelfWrite(abs, jsonStr);
 }
 
 /** projectDir 绑定的卡片源码 IO 适配器（相对路径 → 项目目录下绝对路径）。 */
 function cardIo(projectDir: string) {
   return {
     writeFile: async (rel: string, content: string) => {
-      const abs = path.join(projectDir, rel);
+      const abs = path.resolve(projectDir, rel);
       await fs.mkdir(path.dirname(abs), { recursive: true });
       await fs.writeFile(abs, content, 'utf-8');
+      // 记录自写内容（卡片 tsx），见 markSelfWrite 说明。
+      markSelfWrite(abs, content);
     },
     readFile: async (rel: string): Promise<string | null> => {
       try {
