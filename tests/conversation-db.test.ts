@@ -62,6 +62,14 @@ describe('conversation db migrations', () => {
     expect(columns.find((column) => column.name === 'agent_type')?.notnull).toBe(1);
     expect(columns.find((column) => column.name === 'message_count')?.notnull).toBe(1);
 
+    const turnColumns = db
+      .prepare('PRAGMA table_info(conversation_turn);')
+      .all() as Array<{ name: string }>;
+    const turnColumnNames = turnColumns.map((column) => column.name);
+    expect(turnColumnNames).toEqual(
+      expect.arrayContaining(['id', 'conversation_id', 'role', 'content', 'created_at', 'agent_id', 'agent_name']),
+    );
+
     const dbPath = resolveConversationDbPath(tempDir);
     expect(dbPath).toBe(path.join(tempDir, '.acp', 'conversation.sqlite3'));
 

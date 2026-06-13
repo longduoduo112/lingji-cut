@@ -250,6 +250,101 @@ describe('ConversationService', () => {
     expect(detail?.sessionStatsJson).toBe('{"used":10,"size":100}');
   });
 
+  it('persists agentId and agentName on turns and reads them back', () => {
+    const fixture = createFixture();
+    fixtures.push(fixture);
+
+    const created = fixture.service.createConversation({
+      projectId: 'p-agent-turn',
+      agentType: 'claude-acp',
+      title: 'agent turn test',
+    });
+
+    // Append a turn with agentId and agentName
+    const result = fixture.service.appendTurn('p-agent-turn', created.id, {
+      role: 'assistant',
+      blocks: [{ type: 'text', text: 'hello from codex' }],
+      agentId: 'codex',
+      agentName: 'Codex',
+    });
+
+    expect(result.turn.agentId).toBe('codex');
+    expect(result.turn.agentName).toBe('Codex');
+
+    // Read back via detail
+    const detail = fixture.service.getConversationDetail(created.id);
+    expect(detail?.turns).toHaveLength(1);
+    expect(detail?.turns[0]?.agentId).toBe('codex');
+    expect(detail?.turns[0]?.agentName).toBe('Codex');
+  });
+
+  it('reads back undefined agentId/agentName when not provided (backward compat)', () => {
+    const fixture = createFixture();
+    fixtures.push(fixture);
+
+    const created = fixture.service.createConversation({
+      projectId: 'p-no-agent-turn',
+      agentType: 'claude-acp',
+      title: 'no agent turn test',
+    });
+
+    // Append a turn without agentId/agentName
+    const result = fixture.service.appendTurn('p-no-agent-turn', created.id, {
+      role: 'user',
+      blocks: [{ type: 'text', text: 'user message' }],
+    });
+
+    expect(result.turn.agentId).toBeUndefined();
+    expect(result.turn.agentName).toBeUndefined();
+
+    // Read back via detail
+    const detail = fixture.service.getConversationDetail(created.id);
+    expect(detail?.turns[0]?.agentId).toBeUndefined();
+    expect(detail?.turns[0]?.agentName).toBeUndefined();
+  });
+
+  it('preserves mixed turns with and without agentId in same conversation', () => {
+    const fixture = createFixture();
+    fixtures.push(fixture);
+
+    const created = fixture.service.createConversation({
+      projectId: 'p-mixed-turns',
+      agentType: 'claude-acp',
+      title: 'mixed turns test',
+    });
+
+    // Old-style turn (no agent attribution)
+    fixture.service.appendTurn('p-mixed-turns', created.id, {
+      role: 'user',
+      blocks: [{ type: 'text', text: 'user question' }],
+    });
+
+    // New-style turn with agent attribution
+    fixture.service.appendTurn('p-mixed-turns', created.id, {
+      role: 'assistant',
+      blocks: [{ type: 'text', text: 'claude response' }],
+      agentId: 'claude-acp',
+      agentName: 'Claude',
+    });
+
+    // Another new-style turn from different agent
+    fixture.service.appendTurn('p-mixed-turns', created.id, {
+      role: 'assistant',
+      blocks: [{ type: 'text', text: 'codex response' }],
+      agentId: 'codex',
+      agentName: 'Codex',
+    });
+
+    const detail = fixture.service.getConversationDetail(created.id);
+    expect(detail?.turns).toHaveLength(3);
+    expect(detail?.turns[0]?.agentId).toBeUndefined();
+    expect(detail?.turns[0]?.agentName).toBeUndefined();
+    expect(detail?.turns[1]?.agentId).toBe('claude-acp');
+    expect(detail?.turns[1]?.agentName).toBe('Claude');
+    expect(detail?.turns[2]?.agentId).toBe('codex');
+    expect(detail?.turns[2]?.agentName).toBe('Codex');
+  });
+
   it('deletes conversation and clears opened pointer when deleting active one', () => {
     const fixture = createFixture();
     fixtures.push(fixture);

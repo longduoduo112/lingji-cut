@@ -41,6 +41,8 @@ export interface ConversationTurnEntity {
   role: string;
   blocks: ConversationTurnBlock[];
   createdAt: string;
+  agentId?: string;
+  agentName?: string;
 }
 
 export interface OpenedConversationEntity {
@@ -77,6 +79,8 @@ export interface AppendConversationTurnInput {
   role: string;
   blocks: ConversationTurnBlock[];
   sessionStatsJson?: string | null;
+  agentId?: string;
+  agentName?: string;
 }
 
 export interface AppendConversationTurnResult {

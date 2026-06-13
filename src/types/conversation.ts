@@ -28,6 +28,8 @@ export interface ConversationTurn {
   role: 'user' | 'assistant' | 'tool' | 'system';
   blocks: ConversationBlock[];
   createdAt: string;
+  agentId?: string;
+  agentName?: string;
 }
 
 export type ConversationBlock =
@@ -82,6 +84,8 @@ export interface AppendConversationTurnInput {
   role: ConversationTurn['role'];
   blocks: ConversationBlock[];
   sessionStatsJson?: string | null;
+  agentId?: string;
+  agentName?: string;
 }
 
 export interface AppendConversationTurnResult {

@@ -33,6 +33,8 @@ export interface AppendConversationTurnParams {
   role: string;
   blocks: ConversationTurnBlock[];
   sessionStatsJson?: string | null;
+  agentId?: string;
+  agentName?: string;
 }
 
 function buildDefaultConversationTitle(now = new Date()): string {
@@ -160,7 +162,13 @@ export class ConversationService {
     if (conversation.projectId !== projectId) {
       throw new Error(`Conversation ${conversationId} does not belong to project ${projectId}`);
     }
-    return this.repository.appendConversationTurn(conversationId, input);
+    return this.repository.appendConversationTurn(conversationId, {
+      role: input.role,
+      blocks: input.blocks,
+      sessionStatsJson: input.sessionStatsJson,
+      agentId: input.agentId,
+      agentName: input.agentName,
+    });
   }
 
   deleteConversation(projectId: string, conversationId: number): void {

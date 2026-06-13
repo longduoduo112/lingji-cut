@@ -39,6 +39,8 @@ interface ConversationTurnRow {
   role: string;
   content: string;
   created_at: string;
+  agent_id: string | null;
+  agent_name: string | null;
 }
 
 function mapConversationRow(row: ConversationRow): ConversationEntity {
@@ -73,13 +75,22 @@ function mapConversationTurnRow(row: ConversationTurnRow): ConversationTurnEntit
     blocks = [{ type: 'text', text: row.content }];
   }
 
-  return {
+  const entity: ConversationTurnEntity = {
     id: row.id,
     conversationId: row.conversation_id,
     role: row.role,
     blocks,
     createdAt: row.created_at,
   };
+
+  if (row.agent_id != null) {
+    entity.agentId = row.agent_id;
+  }
+  if (row.agent_name != null) {
+    entity.agentName = row.agent_name;
+  }
+
+  return entity;
 }
 
 function createMonotonicUpdatedAt(previousUpdatedAt: string, now = new Date()): string {
@@ -294,11 +305,18 @@ export class ConversationRepository {
         .prepare(
           `
           INSERT INTO conversation_turn (
-            conversation_id, role, content, created_at
-          ) VALUES (?, ?, ?, ?)
+            conversation_id, role, content, created_at, agent_id, agent_name
+          ) VALUES (?, ?, ?, ?, ?, ?)
           `,
         )
-        .run(conversationId, input.role, JSON.stringify(input.blocks), now);
+        .run(
+          conversationId,
+          input.role,
+          JSON.stringify(input.blocks),
+          now,
+          input.agentId ?? null,
+          input.agentName ?? null,
+        );
 
       this.db
         .prepare(
