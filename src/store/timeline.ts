@@ -18,6 +18,7 @@ import {
 } from '../types';
 import type { AICardTimelineDraft } from '../types/ai';
 import { getFileNameFromPath } from '../lib/utils';
+import { isAiEditLocked } from './ai-edit';
 import {
   getAudioOverlayTracks,
   getNextAudioOverlayTrack,
@@ -1242,6 +1243,11 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 if (typeof window !== 'undefined') {
   useTimelineStore.subscribe((state, previousState) => {
     if (state.timeline === previousState.timeline) {
+      return;
+    }
+
+    // AI 文件编辑会话锁定期间，暂停自动保存，避免与外部文件写入互相覆盖。
+    if (isAiEditLocked()) {
       return;
     }
 
