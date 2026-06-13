@@ -4,6 +4,35 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-13
+
+本版本带来全新的命令行工具 `lingji` 与配套的 headless（无头）主进程执行框架：音频、字幕分析、卡片、封面、导出等流水线步骤现在都能在终端里驱动，无需点开界面逐步操作。全部能力向后兼容，桌面端原有交互不受影响。
+
+### Added
+- **全新命令行工具 `lingji`**：无头 CLI，通过 MCP 服务地址与运行中的灵机剪影桌面端通信，在终端里驱动完整创作流水线（`cli/src/`）。覆盖子命令：
+  - `project current | list | open` — 查看活动项目 / 列最近项目 / 切换项目
+  - `audio gen` — 生成口播音频（MiniMax TTS，写盘 + SRT）
+  - `subtitle analyze` — 字幕分析 + 卡片生成
+  - `cards list | show | update | regenerate | regen-media | convert | delete` — AI 卡片的查看与重生成 / 重生成媒体 / 图片卡转 Motion 卡 / 删除
+  - `cover prompt | image | gen` — 封面提示词 / 出图 / 一次性生成
+  - `export` — 导出 MP4
+  - `task status | list | cancel | wait <id>` — 任务查询与控制（支持 `--wait` 轮询至完成）
+  - 全局开关 `--json`（机器可读输出）、`--server <url>`（覆盖 MCP 服务地址）
+  - `npm run install:cli` / `uninstall:cli` 一键全局安装 / 卸载 `lingji` 命令
+- **Headless 主进程执行框架**：TTS / 字幕分析 / 卡片 / 封面 / 导出全部可在无 UI 交互下由主进程直接执行，并通过刷新信号让已打开的项目同步最新结果（`registerGenerationTool`、`renderVideoHeadless`、完整 `AISettings` 装配与迁移链）。
+- **新增 pipeline MCP 工具**：`lingji_generate_audio`、`lingji_analyze_subtitles`、`lingji_export_video`、卡片操作系列（list / get / update / delete / regenerate / regen-media / convert）、`lingji_get_active_project`、`lingji_list_recent_projects`，供外部 AI（Claude Code / Codex / Gemini）远程编排。
+- **MCP 端点发现文件**：服务启停时写入 / 删除端点文件，CLI 据此自动定位运行中的服务地址，无需手动传 `--server`。
+- **应用级错误边界 `AppErrorBoundary`**：页面渲染期抛错时转为可见错误信息 + 恢复入口，避免整窗黑屏（典型触发：项目切换时的中间不一致渲染），并暴露真正抛错的组件便于定位（`src/components/AppErrorBoundary.tsx`）。
+
+### Changed
+- **`lingji_open_project` 切换运行中窗口**：校验通过后经 `menu-action` 通道复用「打开最近项目」流程，让运行中的窗口直接切到目标项目（此前仅校验目录合法性）。
+- **渲染进程订阅 `pipeline:project-updated`**：headless 写盘后，已打开的项目在 Renderer 侧自动刷新（新增 IPC 通道，向后兼容）。
+- **`App.setPage` 对相同目标页短路**：避免 `AnimatePresence mode="wait"` 退化为「同页退出再进入」而卡成空白。
+
+### Fixed
+- **图片卡转 Motion 卡字幕分支**：`convert→motion` 补齐 `cardTemplate` / `imageTemplate` / `stylePresetId`，转换后样式不再丢失。
+- **`audio gen` UI 刷新失效**：音频生成结果写回 `timeline.podcast`，使已打开项目的 UI 刷新生效。
+
 ## [1.1.0] - 2026-06-06
 
 本版本是 v1.0.1 以来的一次大版本更新：渲染引擎整体从 HyperFrames 迁移到 Remotion，并带来卡片风格模板库、多 Provider TTS 音色体系、AI 卡片增量流式呈现等多项新能力。
@@ -56,6 +85,7 @@
 ### Build / Packaging
 - macOS 多架构（arm64 + x64）DMG，Windows x64 zip 通过 GitHub Actions 自动构建并发布。
 
+[1.2.0]: https://github.com/yoqu/lingji-cut/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/yoqu/lingji-cut/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/yoqu/lingji-cut/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/yoqu/lingji-cut/releases/tag/v1.0.0
