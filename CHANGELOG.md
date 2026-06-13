@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+- **AI File-First 编辑 + 实时热重载**：外部 CLI agent（Claude Code / Codex / Gemini 等）现在可直接编辑项目文件来改视频与文稿，编辑器实时把改动热重载到预览，形成「AI 改文件 → 编辑器实时反映」闭环。
+  - **Motion Card 源码外置**：卡片 TSX 源码从 `project.json` 内嵌字符串外置为独立文件 `ai-cards/<overlayId>/motionCard.tsx`，`project.json` 只存 `tsxPath` 引用；内存态始终带源码、仅落盘时剥离（编译/渲染管线零改动），老项目首次加载自动迁移（`src/lib/motion-card-externalize.ts`）。
+  - **文件信号会话锁**：AI 编辑前写 `.lingji/edit-lock.json`（带 `heartbeat`/`ttlMs`），编辑器据此暂停自动保存、状态栏显示「AI 正在编辑」，避免内存态覆盖外部改动；忘记解锁时按 TTL 自动释放（`electron/ai-edit/`）。
+  - **实时热重载钩子**：`project.json`、`ai-cards/**/motionCard.tsx`、`script.md`/`original.md` 的外部变更经 chokidar 灌回对应 store 并刷新预览；`script.md` 外部保存补建版本历史（`source: external`）（`src/lib/external-edit-sync.ts`）。
+  - **校验守门 + 结果回传**：外部改 `project.json` 经基础约束校验（时间为正、动画枚举合法），结果写 `.lingji/edit-result.json` 供 agent 自查，校验失败的脏数据不灌回预览，无需调用 MCP 工具（`src/lib/external-edit-validate.ts`）。
+  - **文件契约文档 + 两个 Skill**：`docs/ai-contract/`（视频/文稿/锁/结果协议）+ `lingji-video-edit` / `lingji-script-edit` 两个边界清晰的 file-first skill；ACP 连接时把契约要点同步进项目目录的 `CLAUDE.md` / `AGENTS.md` / `GEMINI.md`（`electron/acp/contract-sync.ts`）。
+
 ## [1.2.0] - 2026-06-13
 
 本版本带来全新的命令行工具 `lingji` 与配套的 headless（无头）主进程执行框架：音频、字幕分析、卡片、封面、导出等流水线步骤现在都能在终端里驱动，无需点开界面逐步操作。全部能力向后兼容，桌面端原有交互不受影响。
