@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { acpLog } from './acp-log';
+import { type AgentProfile } from './agent-profiles';
 
 const execFileAsync = promisify(execFile);
 
@@ -206,6 +207,29 @@ export class BinaryManager {
     return { command: AGENT_BIN_NAME, args: [] };
   }
 
+  /** 按 profile 解析 spawn 命令：managed 走托管二进制查找；unmanaged 走 npx 适配器。 */
+  async getSpawnCommandForProfile(
+    profile: AgentProfile,
+    version: string,
+  ): Promise<{ command: string; args: string[] }> {
+    if (!profile.managed && profile.unmanagedSpawn) {
+      const base = profile.unmanagedSpawn;
+      if (base.command === 'npx') {
+        const npx = await this.findNpxPath();
+        return { command: npx ?? 'npx', args: [...base.args] };
+      }
+      return { command: base.command, args: [...base.args] };
+    }
+    return this.getSpawnCommand(version);
+  }
+
+  /** 公开：在 nvm 版本目录 / PATH 解析某依赖二进制（供 preflight 查 pi）。返回绝对路径或 null。 */
+  async resolveBinary(name: string): Promise<string | null> {
+    const inVersions = this.findBinaryInNodeVersions(name);
+    if (inVersions) return inVersions;
+    return this.findBinaryPath(name);
+  }
+
   // ── 内部方法 ──────────────────────────────────────────────────────────
 
   private async npmInstallGlobal(
@@ -257,7 +281,7 @@ export class BinaryManager {
     }
   }
 
-  private async findBinaryPath(name: string): Promise<string | null> {
+  async findBinaryPath(name: string): Promise<string | null> {
     return this.whichSync(name);
   }
 
