@@ -238,7 +238,11 @@ export interface AcpConnectionsContextValue {
   getConnection: (conversationId: number) => ConversationConnectionState;
   connect: (input: ConnectionCommandInput) => Promise<void>;
   disconnect: (conversationId: number) => Promise<void>;
-  sendPrompt: (conversationId: number, contents: PromptInputBlock[]) => Promise<void>;
+  sendPrompt: (
+    conversationId: number,
+    contents: PromptInputBlock[],
+    opts?: { model?: string },
+  ) => Promise<void>;
   cancelTurn: (conversationId: number) => Promise<void>;
   setMode: (conversationId: number, modeId: string) => Promise<void>;
   setConfigOption: (conversationId: number, configId: string, valueId: string) => Promise<void>;
@@ -547,7 +551,11 @@ export function AcpConnectionsProvider({ children }: AcpConnectionsProviderProps
     }));
   }
 
-  async function sendPrompt(conversationId: number, contents: PromptInputBlock[]): Promise<void> {
+  async function sendPrompt(
+    conversationId: number,
+    contents: PromptInputBlock[],
+    opts?: { model?: string },
+  ): Promise<void> {
     if (!window.agentAPI) return;
     setActiveConversationId(conversationId);
     updateConversationState(conversationId, (current) => ({
@@ -574,7 +582,7 @@ export function AcpConnectionsProvider({ children }: AcpConnectionsProviderProps
       role: 'user',
       blocks: toConversationBlocks(contents),
     });
-    await window.agentAPI.sendPromptToConversation(conversationId, contents);
+    await window.agentAPI.sendPromptToConversation(conversationId, contents, opts);
   }
 
   async function cancelTurn(conversationId: number): Promise<void> {

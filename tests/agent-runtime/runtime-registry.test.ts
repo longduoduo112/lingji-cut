@@ -120,6 +120,23 @@ describe('RuntimeRegistry', () => {
     expect(typeof input.onEvent).toBe('function');
   });
 
+  it('sendPrompt opts.model 覆盖 connect 时登记的 model 并透传给 session.start', async () => {
+    const { registry, sessions } = makeRegistry();
+    attachListeners(registry);
+
+    await registry.connect({ ...baseConnect, model: 'm1' });
+    await registry.sendPrompt(1, [{ type: 'text', text: 'hi' }], { model: 'm2' });
+
+    const started = sessions.filter((s) => s.startCalls > 0);
+    expect(started.length).toBe(1);
+    expect(started[0].lastInput!.model).toBe('m2');
+
+    // 覆盖后回写 entry.model：下一轮不带 opts 也沿用 m2。
+    await registry.sendPrompt(1, [{ type: 'text', text: 'again' }]);
+    const second = sessions.filter((s) => s.startCalls > 0)[1];
+    expect(second.lastInput!.model).toBe('m2');
+  });
+
   it('text_delta → emit event {type:text}', async () => {
     const { registry, sessions } = makeRegistry();
     attachListeners(registry);

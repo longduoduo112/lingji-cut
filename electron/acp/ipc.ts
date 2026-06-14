@@ -105,9 +105,12 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
     runtimeRegistry.disconnect(conversationId);
   });
 
-  ipcMain.handle('agent:send-prompt-runtime', async (_event, conversationId: number, contents: unknown[]) => {
-    await runtimeRegistry.sendPrompt(conversationId, contents);
-  });
+  ipcMain.handle(
+    'agent:send-prompt-runtime',
+    async (_event, conversationId: number, contents: unknown[], opts?: { model?: string }) => {
+      await runtimeRegistry.sendPrompt(conversationId, contents, opts);
+    },
+  );
 
   ipcMain.handle('agent:cancel-turn-runtime', async (_event, conversationId: number) => {
     runtimeRegistry.cancelTurn(conversationId);

@@ -15,6 +15,7 @@
 import React from 'react';
 import { MessageInput, type MessageInputProps } from './MessageInput';
 import { AgentPicker } from './AgentPicker';
+import { ModelPicker } from './ModelPicker';
 
 export interface ChatComposerProps extends MessageInputProps {
   /** 是否在输入框上方显示 agent 选择器（仅新建会话/未绑定 agent 时为 true）。 */
@@ -23,12 +24,28 @@ export interface ChatComposerProps extends MessageInputProps {
   selectedAgentId?: string;
   /** agent 选择变更回调。 */
   onAgentChange?: (agentId: string) => void;
+  /**
+   * 当前 agent id（用于在输入框下方渲染模型选择芯片）。有值时显示 ModelPicker。
+   * 与 selectedAgentId 区分语义：selectedAgentId 用于「新建会话选 agent」场景，
+   * agentId 用于「已绑定会话切模型」的常驻芯片。
+   */
+  agentId?: string;
+  /** 当前模型 id（受控）；缺省时 ModelPicker 用 presentation.defaultModel。 */
+  modelId?: string;
+  /** 模型切换回调。 */
+  onModelChange?: (modelId: string) => void;
+  /** 点击芯片 agent 区进入设置中心切换 agent。 */
+  onOpenAgentSettings?: () => void;
 }
 
 export function ChatComposer({
   showAgentPicker = false,
   selectedAgentId,
   onAgentChange,
+  agentId,
+  modelId,
+  onModelChange,
+  onOpenAgentSettings,
   ...messageInputProps
 }: ChatComposerProps): React.ReactElement {
   return (
@@ -42,6 +59,16 @@ export function ChatComposer({
         </div>
       )}
       <MessageInput {...messageInputProps} />
+      {agentId && (
+        <div className="chat-composer__model-picker">
+          <ModelPicker
+            agentId={agentId}
+            value={modelId}
+            onChange={(id) => onModelChange?.(id)}
+            onOpenAgentSettings={onOpenAgentSettings}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -157,8 +157,18 @@ export class RuntimeRegistry extends EventEmitter {
    * onEvent → toRuntimeEvent → emit 'event'（非 null）。
    * turn_end / error 后回落 'connected' 并清理 activeSession。
    */
-  async sendPrompt(conversationId: number, contents: unknown[]): Promise<void> {
+  async sendPrompt(
+    conversationId: number,
+    contents: unknown[],
+    opts?: { model?: string },
+  ): Promise<void> {
     const entry = this.getEntryOrThrow(conversationId);
+
+    // 每轮可热切 model：opts.model 覆盖 connect 时登记的 entry.model（仅本轮）。
+    // 并回写 entry.model 使后续轮沿用，与芯片受控选择保持一致。
+    if (opts?.model) {
+      entry.model = opts.model;
+    }
 
     const prompt = stringifyContents(contents);
     const session = this.createSession();

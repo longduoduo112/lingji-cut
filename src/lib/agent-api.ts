@@ -96,7 +96,11 @@ export interface AgentAPI {
     agentType?: string;
   }): Promise<void>;
   disconnectRuntime(conversationId: number): Promise<void>;
-  sendPromptToConversation(conversationId: number, contents: PromptInputBlock[]): Promise<void>;
+  sendPromptToConversation(
+    conversationId: number,
+    contents: PromptInputBlock[],
+    opts?: { model?: string },
+  ): Promise<void>;
   cancelConversationTurn(conversationId: number): Promise<void>;
   setConversationMode(conversationId: number, modeId: string): Promise<void>;
   setConversationConfigOption(conversationId: number, configId: string, valueId: string): Promise<void>;
