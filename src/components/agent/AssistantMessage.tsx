@@ -19,7 +19,75 @@ import { TextBlock } from './TextBlock';
 import { ThinkingBlock } from './ThinkingBlock';
 import { ErrorBlock } from './ErrorBlock';
 import { ToolCallBlock } from './ToolCallBlock';
-import type { ConversationTurn, PendingPermission } from '../../types/conversation';
+import { ToolGroupBlock } from './ToolGroupBlock';
+import type { ConversationBlock, ConversationTurn, PendingPermission } from '../../types/conversation';
+
+type ToolCallBlockData = Extract<ConversationBlock, { type: 'tool_call' }>;
+
+/** 把 ConversationBlock 中的 tool_call 收窄为 ToolCallBlock 接收的形状。 */
+function toToolCallProps(block: ToolCallBlockData) {
+  return {
+    type: 'tool_call' as const,
+    toolCallId: block.toolCallId,
+    title: block.title,
+    kind: block.kind,
+    status: block.status,
+    rawInput: block.rawInput,
+    rawOutput: block.rawOutput,
+  };
+}
+
+/**
+ * 渲染单元：非 tool_call block 原样分发；连续同名 tool_call 聚合。
+ *  - 把 turn.blocks 切成若干段，每段要么是单个非 tool_call block，
+ *    要么是一段**连续的**同名 tool_call。
+ *  - 段内 1 个 tool_call → 直接渲染 <ToolCallBlock>。
+ *  - 段内 ≥2 个同名 tool_call → 渲染 <ToolGroupBlock> 聚合卡。
+ * 非 tool_call（text/thinking/error）打断聚合（只聚合连续同名 tool_call）。
+ */
+export function renderBlocks(blocks: ConversationBlock[]): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  let i = 0;
+  while (i < blocks.length) {
+    const block = blocks[i];
+    if (block.type !== 'tool_call') {
+      switch (block.type) {
+        case 'text':
+          out.push(<TextBlock key={i} text={block.text} />);
+          break;
+        case 'thinking':
+          out.push(<ThinkingBlock key={i} text={block.text} />);
+          break;
+        case 'error':
+          out.push(<ErrorBlock key={i} message={block.message} />);
+          break;
+        default:
+          break;
+      }
+      i += 1;
+      continue;
+    }
+
+    // 收集从 i 起连续的同名 tool_call。
+    const groupTitle = block.title;
+    const group: ToolCallBlockData[] = [];
+    let j = i;
+    while (j < blocks.length) {
+      const b = blocks[j];
+      if (b.type !== 'tool_call' || b.title !== groupTitle) break;
+      group.push(b);
+      j += 1;
+    }
+
+    if (group.length >= 2) {
+      out.push(<ToolGroupBlock key={`group-${i}`} blocks={group.map(toToolCallProps)} />);
+    } else {
+      out.push(<ToolCallBlock key={i} block={toToolCallProps(group[0])} />);
+    }
+    i = j;
+  }
+  return out;
+}
 
 /** agentId → 展示名映射，作为 turn.agentName 缺失时的回退。 */
 function agentNameFromId(agentId: string): string {
@@ -144,34 +212,8 @@ function AssistantMessageInner({
         <span>{agentName}</span>
       </div>
 
-      {/* block 分发 */}
-      {turn.blocks.map((block, index) => {
-        switch (block.type) {
-          case 'text':
-            return <TextBlock key={index} text={block.text} />;
-          case 'thinking':
-            return <ThinkingBlock key={index} text={block.text} />;
-          case 'error':
-            return <ErrorBlock key={index} message={block.message} />;
-          case 'tool_call':
-            return (
-              <ToolCallBlock
-                key={index}
-                block={{
-                  type: 'tool_call',
-                  toolCallId: block.toolCallId,
-                  title: block.title,
-                  kind: block.kind,
-                  status: block.status,
-                  rawInput: block.rawInput,
-                  rawOutput: block.rawOutput,
-                }}
-              />
-            );
-          default:
-            return null;
-        }
-      })}
+      {/* block 分发（连续同名 tool_call 聚合为 ToolGroupBlock） */}
+      {renderBlocks(turn.blocks)}
 
       {/* 权限卡 */}
       {pendingPermission ? (
