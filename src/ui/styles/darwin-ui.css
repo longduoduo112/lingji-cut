@@ -169,3 +169,19 @@ input, select, textarea {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* 运行中标题的流光效果（工具卡 op-card / 流式态标题复用）。 */
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--color-mac-text-sec, rgba(235, 235, 245, 0.6)) 0%,
+    var(--color-foreground, #fff) 50%,
+    var(--color-mac-text-sec, rgba(235, 235, 245, 0.6)) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: shimmer 1.6s linear infinite;
+}
