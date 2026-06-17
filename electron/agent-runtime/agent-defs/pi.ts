@@ -61,6 +61,7 @@ export const piAgentDef = {
   id: 'pi',
   name: 'Pi',
   bin: 'pi',
+  bundledNodeEntry: 'resources/pi/dist/cli.js',
   versionArgs: ['--version'],
   streamFormat: 'pi-rpc',
   resumesSessionViaCli: true,
