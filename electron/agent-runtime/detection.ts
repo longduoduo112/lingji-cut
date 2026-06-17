@@ -81,6 +81,16 @@ export interface ModelListResult {
   source: ModelListSource;
 }
 
+/**
+ * 内置 Node 入口（如 pi 的 resources/pi/dist/cli.js）相关注入依赖。
+ * 全部可选，缺省时退回 process.execPath / 模块内 execFileAsync，便于单测注入。
+ */
+export interface ListModelsBundledDeps {
+  resolveBundledEntry?: (relPath: string) => string | null;
+  execPath?: string;
+  execFileAsync?: (cmd: string, args: string[], opts?: any) => Promise<{ stdout: unknown; stderr: unknown }>;
+}
+
 /** clean env：去掉 npm_*（与 session.ts spawn 一致），避免污染 CLI 探测。 */
 function modelExecEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
@@ -104,6 +114,7 @@ function modelExecEnv(): NodeJS.ProcessEnv {
 export async function listAgentModels(
   bm: BinaryManagerLike,
   def: RuntimeAgentDef,
+  bundled?: ListModelsBundledDeps,
 ): Promise<ModelListResult> {
   const fallback: ModelListResult = {
     models: def.fallbackModels ?? def.models ?? [],
@@ -112,16 +123,34 @@ export async function listAgentModels(
 
   if (!def.listModelsArgs || !def.parseModels) return fallback;
 
-  // 解析 bin（def.bin → fallbackBins）
-  let binPath: string | null = null;
-  for (const candidate of [def.bin, ...(def.fallbackBins ?? [])]) {
-    const resolved = await bm.resolveBinary(candidate);
-    if (resolved) {
-      binPath = resolved;
-      break;
+  const exec = bundled?.execFileAsync ?? execFileAsync;
+
+  // 计算执行命令、参数与环境。
+  let command: string;
+  let args: string[];
+  let env = modelExecEnv();
+
+  if (def.bundledNodeEntry) {
+    // 内置 Node 入口：用 Electron 的 process.execPath 以 ELECTRON_RUN_AS_NODE 跑 cli.js。
+    const entry = bundled?.resolveBundledEntry?.(def.bundledNodeEntry);
+    if (!entry) return fallback;
+    command = bundled?.execPath ?? process.execPath;
+    args = [entry, ...def.listModelsArgs];
+    env = { ...env, ELECTRON_RUN_AS_NODE: '1' };
+  } else {
+    // 旧路径：解析 bin（def.bin → fallbackBins）。
+    let binPath: string | null = null;
+    for (const candidate of [def.bin, ...(def.fallbackBins ?? [])]) {
+      const resolved = await bm.resolveBinary(candidate);
+      if (resolved) {
+        binPath = resolved;
+        break;
+      }
     }
+    if (!binPath) return fallback;
+    command = binPath;
+    args = def.listModelsArgs;
   }
-  if (!binPath) return fallback;
 
   // 优先解析声明的流；失败再试另一条流（不同 CLI 版本可能把列表打到 stdout 或 stderr）。
   const parseDef = def.parseModels;
@@ -140,10 +169,10 @@ export async function listAgentModels(
   };
 
   try {
-    const result = await execFileAsync(binPath, def.listModelsArgs, {
+    const result = await exec(command, args, {
       timeout: 20_000,
       maxBuffer: 8 * 1024 * 1024,
-      env: modelExecEnv(),
+      env,
     });
     const parsed = tryParse(result);
     return parsed ? { models: parsed, source: 'live' } : fallback;

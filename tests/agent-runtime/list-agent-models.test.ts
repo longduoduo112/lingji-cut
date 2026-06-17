@@ -173,4 +173,29 @@ describe('listAgentModels', () => {
     expect(res.source).toBe('fallback');
     expect(res.models.map((m) => m.id)).toEqual(['default', 'x/y']);
   });
+
+  it('bundled entry: lists models via execPath + entry, parses stderr', async () => {
+    const fakeExec = async (cmd: string, args: string[]) => {
+      expect(cmd).toBe('/abs/electron');
+      expect(args[0]).toBe('/abs/cli.js');
+      expect(args).toContain('--list-models');
+      return { stdout: '', stderr: 'provider model\nanthropic claude-x' };
+    };
+    const result = await listAgentModels(
+      { resolveBinary: async () => null },
+      piAgentDef, // the real pi def already has bundledNodeEntry + listModelsArgs + parseModels
+      { resolveBundledEntry: () => '/abs/cli.js', execPath: '/abs/electron', execFileAsync: fakeExec },
+    );
+    expect(result.source).toBe('live');
+    expect(result.models.some((m) => m.id === 'anthropic/claude-x')).toBe(true);
+  });
+
+  it('bundled entry: returns fallback when entry cannot be resolved', async () => {
+    const result = await listAgentModels(
+      { resolveBinary: async () => null },
+      piAgentDef,
+      { resolveBundledEntry: () => null, execPath: '/abs/electron', execFileAsync: async () => ({ stdout: '', stderr: '' }) },
+    );
+    expect(result.source).toBe('fallback');
+  });
 });
