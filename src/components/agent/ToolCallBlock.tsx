@@ -183,7 +183,6 @@ export function ToolCallBlock({
   const commandLike = descriptor.category === 'command';
   const title = descriptor.label;
   const status = statusText(statusKind, commandLike);
-  const rawTitle = textValue(block.title);
   const [expanded, setExpanded] = useState(defaultExpanded ?? statusKind === 'error');
   const statusClass =
     statusKind === 'error'
@@ -208,28 +207,27 @@ export function ToolCallBlock({
         <span className={`${styles.eventStatus} ${statusClass}`}>
           <StatusIcon kind={statusKind} /> {status}
         </span>
-        <span className={styles.eventTitle}>{descriptor.subject}</span>
+        {/* subject 直接拼在 header 同一行：读取/编辑/写入显示路径、命令显示 shell 一行。
+            命令类用等宽字体的内联 code 风格；其他类用普通 eventTitle 文本风格。
+            折叠态下不再额外渲染单独的 "目标 / 命令 xxx" 预览块——保持与读取文件同一排版语言。 */}
+        {descriptor.subject ? (
+          commandLike ? (
+            <code className={`${styles.eventTitle} ${styles.eventTitleMono}`} title={descriptor.subject}>
+              {descriptor.subject}
+            </code>
+          ) : (
+            <span className={styles.eventTitle} title={descriptor.subject}>{descriptor.subject}</span>
+          )
+        ) : null}
         {descriptor.meta.map((item) => (
           <span key={item} className={styles.eventStatus}>{item}</span>
         ))}
-        {rawTitle ? <span className={styles.eventStatus}>{rawTitle}</span> : null}
         {hasDetail ? (
           <span className={styles.eventChevron} aria-hidden>
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </span>
         ) : null}
       </button>
-
-      {descriptor.subject && !expanded ? (
-        <div className={`${styles.toolPreview} ${commandLike ? styles.commandPreview : ''}`}>
-          <div className={styles.toolPreviewLine}>
-            <span className={styles.toolPreviewLabel}>{descriptor.previewLabel}</span>
-            <code className={commandLike ? styles.commandCode : styles.inlineCode}>
-              {descriptor.subject}
-            </code>
-          </div>
-        </div>
-      ) : null}
 
       {hasDetail && expanded ? (
         <div className={styles.toolDetails}>

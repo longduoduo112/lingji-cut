@@ -220,9 +220,10 @@ describe('ToolCallBlock 折叠展开', () => {
       );
     });
 
-    // 默认折叠：详情区不可见，但目标预览会露出。
-    expect(container.textContent).toContain('目标');
+    // 默认折叠：详情区不可见，但 subject 直接显示在 header 同一行（不再有独立的 "目标" 预览行）。
+    expect(container.textContent).toContain('b.md');
     expect(container.textContent).not.toContain('Input');
+    expect(container.textContent).not.toContain('目标');
 
     const head = container.querySelector('button')!;
     expect(head).toBeTruthy();

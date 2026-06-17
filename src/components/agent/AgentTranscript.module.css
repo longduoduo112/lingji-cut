@@ -51,6 +51,17 @@
   white-space: nowrap;
 }
 
+/* 命令类工具的 subject 直接以等宽字体展示在 header 同一行；
+   .eventTitle 已负责省略号、宽度自适应，这里只追加字体族和轻微背景以提示是 shell。 */
+.eventTitleMono {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-text-primary) 9%, transparent);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
 .eventStatus {
   display: inline-flex;
   align-items: center;
@@ -221,16 +232,6 @@
   margin: 3px 0 12px;
 }
 
-.fileGroupTitle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 22px;
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .fileDiffList {
   display: flex;
   flex-direction: column;
@@ -287,9 +288,21 @@
 
 .diffFileName { flex: 1 1 auto; }
 
-.plus { color: var(--color-success); font-weight: 600; }
+/* +N / -M 徽章：用 inline-flex + align-items: center 让 +/- 字符与 RollingNumber
+ * 内的数字按高度中线对齐。两边 line-height: 1 + height: 1em 保证视觉高度一致，
+ * 不会再出现"数字盒子顶部高于 + 号"的错位。 */
+.plus,
+.minus {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-weight: 600;
+  line-height: 1;
+}
 
-.minus { color: var(--color-danger); font-weight: 600; }
+.plus { color: var(--color-success); }
+
+.minus { color: var(--color-danger); }
 
 .diffTable {
   display: block;
@@ -336,6 +349,114 @@
   padding: 12px;
   color: var(--color-text-muted);
   font-size: 12px;
+}
+
+/* —— 命令组紧凑行 ——
+ * "已运行 N 条命令" 折叠态下每条命令一行；点击单行独立展开它的 shell pre。
+ * 视觉与单卡 ToolCallBlock 的 header 看齐（左侧侧栏、12px 字号、等宽命令文本）。 */
+.commandList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 10px 7px;
+  padding: 4px 0 0 14px;
+  border-left: 1px solid color-mix(in srgb, var(--color-text-muted) 32%, transparent);
+  list-style: none;
+}
+
+.commandRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.commandRowHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.commandRowHead:hover { color: var(--color-text-secondary); }
+
+.commandRowLabel {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.commandRowText {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1 1 auto;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commandRowChevron {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.commandRowBody {
+  margin: 2px 0 6px;
+}
+
+.commandRowStatusLine {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+/* —— RollingNumber：odometer 风格的"数字往上翻" ——
+ * 仅在 props value 真发生变化时滚一次（流式追加）；历史回显 value 不变 → 静态显示。
+ * 关键约束：
+ *  - 高度严格 = 1em，line-height: 1，让外层 .plus/.minus 用 center 对齐时
+ *    与 +/- 字符高度同形，视觉对齐稳定（不依赖 inline-block baseline 退化行为）。
+ *  - tabular-nums 防止数字字宽变化让 +/- 颜色块挪位。 */
+.rollingNumber {
+  display: inline-block;
+  overflow: hidden;
+  height: 1em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.rollingNumberStrip {
+  display: flex;
+  flex-direction: column;
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.rollingNumberCell {
+  display: block;
+  height: 1em;
+  line-height: 1;
+}
+
+.rollingNumberStatic {
+  display: inline-block;
+  line-height: 1;
 }
 
 @keyframes agentBlink {

@@ -147,7 +147,7 @@ describe('AssistantMessage 同名工具调用聚合', () => {
     container.remove();
   });
 
-  it('命令聚合展开后直接显示 shell 卡片，不再嵌套单个工具卡和 Command/Output 分组', () => {
+  it('命令聚合默认就紧凑列出每条命令；点击单条行展开它的 shell，互不影响', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -159,20 +159,28 @@ describe('AssistantMessage 同名工具调用聚合', () => {
       root.render(<AssistantMessage turn={turn} />);
     });
 
-    const groupHeader = Array.from(container.querySelectorAll('button')).find((el) =>
-      el.textContent?.includes('已运行 2 条命令'),
+    // 折叠/默认展开态下两条命令文本都直接可见，不需要先点开整组。
+    expect(container.textContent).toContain('wc -l original.md');
+    expect(container.textContent).toContain('rm .lingji/edit-lock.json');
+    // 默认每条 shell 输出还没渲染，避免一次性铺满。
+    expect(container.textContent).not.toContain('$ wc -l original.md');
+    expect(container.textContent).not.toContain('110 original.md');
+
+    // 点第二条命令行，展开它的 shell。
+    const rmRow = Array.from(container.querySelectorAll('button')).find((el) =>
+      el.textContent?.includes('rm .lingji/edit-lock.json'),
     )!;
     act(() => {
-      groupHeader.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      rmRow.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
-
-    expect(container.textContent).toContain('$ wc -l original.md');
-    expect(container.textContent).toContain('110 original.md');
     expect(container.textContent).toContain('$ rm .lingji/edit-lock.json');
     expect(container.textContent).toContain('(no output)');
+    // 第一条没动，仍然没有 shell 输出。
+    expect(container.textContent).not.toContain('$ wc -l original.md');
+    expect(container.textContent).not.toContain('110 original.md');
+
     expect(container.textContent).not.toContain('Command');
     expect(container.textContent).not.toContain('Output');
-    expect(container.querySelectorAll('button')).toHaveLength(1);
 
     act(() => root.unmount());
     container.remove();
@@ -184,8 +192,9 @@ describe('AssistantMessage 同名工具调用聚合', () => {
       toolCall('Read', 'completed', 'r1'),
     ]);
     const html = renderToStaticMarkup(<AssistantMessage turn={turn} />);
-    expect(html).toContain('Edit');
-    expect(html).toContain('Read');
+    // descriptor.label 中文化后看到的是 "编辑文件" / "读取文件"，不再渲染 rawTitle。
+    expect(html).toContain('编辑文件');
+    expect(html).toContain('读取文件');
     expect(html).not.toContain('×2');
     expect(html).not.toContain('Edit ×');
   });

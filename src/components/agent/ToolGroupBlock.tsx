@@ -86,20 +86,76 @@ function GroupStatusIcon({ kind }: { kind: GroupStatusKind }) {
   return <span aria-label="运行中" className="inline-block h-2 w-2 rounded-full bg-mac-blue animate-pulse" />;
 }
 
-function shellText(block: ToolCallBlockType): string {
+function commandSubject(block: ToolCallBlockType): string {
   const descriptor = describeToolCallBlock(block);
-  const command = descriptor.category === 'command' ? descriptor.subject : '';
-  const output = block.rawOutput?.trimEnd() || '(no output)';
-  return command ? `$ ${command}\n${output}` : output;
+  return descriptor.category === 'command' && descriptor.subject
+    ? descriptor.subject
+    : textValue(block.title) || '命令';
 }
 
-function CommandGroupDetails({ blocks }: { blocks: ToolCallBlockType[] }) {
-  const shell = blocks.map(shellText).join('\n\n');
+function shellText(block: ToolCallBlockType): string {
+  const command = commandSubject(block);
+  const output = block.rawOutput?.trimEnd() || '(no output)';
+  return `$ ${command}\n${output}`;
+}
+
+/**
+ * 命令组紧凑列表 —— 每条命令一行，行内单独展开 / 收起 shell 输出。
+ * 折叠态下用户即可扫读所有已执行命令；不需要先点开整组才能看到。
+ */
+function CommandList({ blocks }: { blocks: ToolCallBlockType[] }) {
+  // 用 toolCallId（兜底为索引）维护 per-row 展开状态。同时只支持多个独立展开，无互斥。
+  const [openSet, setOpenSet] = useState<Set<string>>(() => new Set());
+  const toggle = (key: string) =>
+    setOpenSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
   return (
-    <div className={styles.commandGroupDetails}>
-      <div className={styles.detailLabel}>Shell</div>
-      <pre className={`${styles.detailPre} ${styles.detailShell} ${styles.commandGroupShell}`}>{shell}</pre>
-    </div>
+    <ul className={styles.commandList}>
+      {blocks.map((block, index) => {
+        const key = block.toolCallId || `cmd-${index}`;
+        const opened = openSet.has(key);
+        const status = classifyStatus(block.status);
+        const command = commandSubject(block);
+        const rowStatusClass =
+          status === 'error'
+            ? styles.eventStatusError
+            : status === 'ok'
+              ? styles.eventStatusOk
+              : '';
+        return (
+          <li key={key} className={styles.commandRow}>
+            <button
+              type="button"
+              className={`${styles.commandRowHead} ${rowStatusClass}`}
+              onClick={() => toggle(key)}
+              aria-expanded={opened}
+            >
+              <span className={styles.commandRowLabel}>已运行</span>
+              <code className={styles.commandRowText}>{command}</code>
+              <span className={styles.commandRowChevron} aria-hidden>
+                {opened ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              </span>
+            </button>
+            {opened ? (
+              <div className={styles.commandRowBody}>
+                <pre className={`${styles.detailPre} ${styles.detailShell} ${styles.commandGroupShell}`}>
+                  {shellText(block)}
+                </pre>
+                <div className={styles.commandRowStatusLine}>
+                  <GroupStatusIcon kind={status} />
+                  <span>{status === 'error' ? '失败' : status === 'ok' ? '成功' : '运行中'}</span>
+                </div>
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -108,7 +164,8 @@ export function ToolGroupBlock({ blocks }: { blocks: ToolCallBlockType[] }) {
   const commandLike = isCommandGroup(blocks);
   const firstDescriptor = blocks[0] ? describeToolCallBlock(blocks[0]) : null;
   const title = groupTitle(blocks);
-  const [expanded, setExpanded] = useState(statusKind === 'error');
+  // 命令组默认就把命令列表展开（信息密度优先）；非命令组保持原行为（出错才默认展开）。
+  const [expanded, setExpanded] = useState(commandLike ? true : statusKind === 'error');
   const statusClass =
     statusKind === 'error'
       ? styles.eventStatusError
@@ -128,6 +185,8 @@ export function ToolGroupBlock({ blocks }: { blocks: ToolCallBlockType[] }) {
           <GroupIcon descriptor={firstDescriptor} />
         </span>
         {commandLike ? (
+          // 命令组的标题文案本身已包含状态语义（"正在运行 / 已运行 / N 条执行失败"），
+          // 所以不再叠加 "已执行 / 调用失败" 之类的二次 status 文字，避免重复元素。
           <span className={`${styles.eventLabel} ${statusClass}`}>
             {commandGroupLabel(statusKind, blocks.length)}
           </span>
@@ -147,7 +206,7 @@ export function ToolGroupBlock({ blocks }: { blocks: ToolCallBlockType[] }) {
 
       {expanded ? (
         commandLike ? (
-          <CommandGroupDetails blocks={blocks} />
+          <CommandList blocks={blocks} />
         ) : (
           <div className={styles.groupChildren}>
             {blocks.map((block, index) => (

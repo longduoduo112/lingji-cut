@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Copy, FilePenLine } from 'lucide-react';
+import { ChevronDown, ChevronRight, FilePenLine } from 'lucide-react';
+import { structuredPatch } from 'diff';
+import { RollingNumber } from './RollingNumber';
 import styles from './AgentTranscript.module.css';
 
 export interface FileChangedBlockData {
@@ -27,19 +29,25 @@ function changedLineCount(file: FileChangedBlockData): { added: number; removed:
   const fromDiff = file.diff ? diffLineCount(file.diff) : null;
   if (fromDiff) return fromDiff;
 
-  const before = file.before?.split('\n') ?? [];
-  const after = file.after.split('\n');
   if (file.before === null) {
-    return { added: after.filter((line) => line.length > 0).length || after.length, removed: 0 };
+    const lines = file.after.split('\n');
+    return { added: lines.filter((line) => line.length > 0).length || lines.length, removed: 0 };
   }
 
-  const max = Math.max(before.length, after.length);
+  // 走真正的行级 LCS，避免按下标对位时"开头加一行 → 后续全部错位标 -+"。
+  return countFromStructuredPatch(file.path, file.before, file.after);
+}
+
+function countFromStructuredPatch(path: string, before: string, after: string): { added: number; removed: number } {
+  const patch = structuredPatch(path, path, before, after, '', '', { context: 0 });
   let added = 0;
   let removed = 0;
-  for (let i = 0; i < max; i += 1) {
-    if (before[i] === after[i]) continue;
-    if (before[i] !== undefined) removed += 1;
-    if (after[i] !== undefined) added += 1;
+  for (const hunk of patch.hunks) {
+    for (const raw of hunk.lines) {
+      if (raw.startsWith('\\')) continue;
+      if (raw.startsWith('+')) added += 1;
+      else if (raw.startsWith('-')) removed += 1;
+    }
   }
   return { added, removed };
 }
@@ -61,28 +69,38 @@ function simpleDiff(file: FileChangedBlockData): DiffLine[] {
     if (parsed.length > 0) return parsed.slice(0, 120);
   }
 
-  const before = file.before?.split('\n') ?? [];
-  const after = file.after.split('\n');
-  const max = Math.max(before.length, after.length);
+  // before/after 直接拿到时也走 structuredPatch：和 tool-call-descriptor 那条路径一致，
+  // 避免"开头插一行后续全错位"的视觉灾难。
+  if (file.before === null) {
+    return file.after.split('\n').map((text, index) => ({
+      kind: 'add' as const,
+      oldLine: null,
+      newLine: index + 1,
+      text,
+    })).slice(0, 80);
+  }
+  const patch = structuredPatch(file.path, file.path, file.before, file.after, '', '', { context: 3 });
   const lines: DiffLine[] = [];
-
-  for (let i = 0; i < max; i += 1) {
-    const oldText = before[i];
-    const newText = after[i];
-    if (oldText === newText) {
-      if (oldText !== undefined) {
-        lines.push({ kind: 'same', oldLine: i + 1, newLine: i + 1, text: oldText });
+  for (const hunk of patch.hunks) {
+    let oldLine = hunk.oldStart;
+    let newLine = hunk.newStart;
+    for (const raw of hunk.lines) {
+      if (raw.startsWith('\\')) continue;
+      const marker = raw[0];
+      const text = raw.slice(1);
+      if (marker === '+') {
+        lines.push({ kind: 'add', oldLine: null, newLine, text });
+        newLine += 1;
+      } else if (marker === '-') {
+        lines.push({ kind: 'remove', oldLine, newLine: null, text });
+        oldLine += 1;
+      } else if (marker === ' ') {
+        lines.push({ kind: 'same', oldLine, newLine, text });
+        oldLine += 1;
+        newLine += 1;
       }
-      continue;
-    }
-    if (oldText !== undefined) {
-      lines.push({ kind: 'remove', oldLine: i + 1, newLine: null, text: oldText });
-    }
-    if (newText !== undefined) {
-      lines.push({ kind: 'add', oldLine: null, newLine: i + 1, text: newText });
     }
   }
-
   return lines.slice(0, 80);
 }
 
@@ -135,9 +153,13 @@ function DiffPreview({ file }: { file: FileChangedBlockData }) {
         <span className={styles.diffFileName} title={file.path}>
           {fileName(file.path)}
         </span>
-        <span className={styles.plus}>+{count.added}</span>
-        <span className={styles.minus}>-{count.removed}</span>
-        <Copy size={14} strokeWidth={1.8} aria-hidden />
+        {/* 0 行变更不渲染，避免 "+0 / -0" 这种没意义的视觉噪声。 */}
+        {count.added > 0 ? (
+          <span className={styles.plus}>+<RollingNumber value={count.added} prefix="+" /></span>
+        ) : null}
+        {count.removed > 0 ? (
+          <span className={styles.minus}>-<RollingNumber value={count.removed} prefix="-" /></span>
+        ) : null}
       </div>
       {diff.length === 0 ? (
         <div className={styles.emptyDiff}>文件内容无可展示差异</div>
@@ -170,15 +192,9 @@ function DiffPreview({ file }: { file: FileChangedBlockData }) {
   );
 }
 
-function fileListLabel(actionLabel: string): string {
-  if (actionLabel === '新增了') return '已新增的文件';
-  if (actionLabel === '删除了') return '已删除的文件';
-  if (actionLabel === '编辑了') return '已编辑的文件';
-  return '已变更的文件';
-}
-
 export function FileChangedBlock({ files }: { files: FileChangedBlockData[] }) {
-  const [expanded, setExpanded] = useState(true);
+  // 默认收起：用户大多数时候只关心"改了几行"，不需要默认就把 diff 全展示。
+  const [expanded, setExpanded] = useState(false);
   if (files.length === 0) return null;
   const operations = new Set(files.map((file) => file.operation ?? 'edit'));
   const actionLabel =
@@ -210,8 +226,12 @@ export function FileChangedBlock({ files }: { files: FileChangedBlockData[] }) {
           <FilePenLine size={15} strokeWidth={1.8} />
         </span>
         <span className={styles.eventLabel}>{actionLabel} {files.length} 个文件</span>
-        <span className={styles.plus}>+{total.added}</span>
-        <span className={styles.minus}>-{total.removed}</span>
+        {total.added > 0 ? (
+          <span className={styles.plus}>+<RollingNumber value={total.added} prefix="+" /></span>
+        ) : null}
+        {total.removed > 0 ? (
+          <span className={styles.minus}>-<RollingNumber value={total.removed} prefix="-" /></span>
+        ) : null}
         <span className={styles.eventChevron} aria-hidden>
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
@@ -219,10 +239,6 @@ export function FileChangedBlock({ files }: { files: FileChangedBlockData[] }) {
 
       {expanded ? (
         <div className={styles.fileGroupBody}>
-          <div className={styles.fileGroupTitle}>
-            <span>{fileListLabel(actionLabel)}</span>
-            <ChevronDown size={14} strokeWidth={1.8} aria-hidden />
-          </div>
           <div className={styles.fileDiffList}>
             {files.map((file) => (
               <DiffPreview key={file.path} file={file} />

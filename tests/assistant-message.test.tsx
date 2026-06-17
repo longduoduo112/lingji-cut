@@ -67,13 +67,14 @@ describe('AssistantMessage block 分发', () => {
     expect(html).toContain('回复');
     // ThinkingBlock（折叠头标签 + 字数）
     expect(html).toContain('思考过程');
-    // ToolCallBlock（工具标题）
-    expect(html).toContain('read_text_file');
+    // ToolCallBlock（中文化后的工具标签；rawTitle 不再渲染）
+    expect(html).toContain('读取文件');
     // ErrorBlock（错误文案）
     expect(html).toContain('工具执行失败：超时');
   });
 
   it('renders grouped file_changed blocks with a diff preview', () => {
+    // FileChangedBlock 默认折叠，diff 详情需要点击展开后才可见；这里只断头部摘要。
     const html = renderToStaticMarkup(
       <AssistantMessage
         turn={makeTurn({
@@ -95,10 +96,50 @@ describe('AssistantMessage block 分发', () => {
       />,
     );
     expect(html).toContain('编辑了 2 个文件');
-    expect(html).toContain('index.js');
-    expect(html).toContain('src/other.js');
-    expect(html).toContain('const b = 2;');
-    expect(html).toContain('const b = 3;');
+    // 头部 +N / -M 通过 RollingNumber 渲染，aria-label 暴露了真实数字。
+    // index.js 改 1 行 + other.js 整段替换（new 增 1）= +2；两个 before 各 1 行 = -2。
+    expect(html).toContain('aria-label="+2"');
+    expect(html).toContain('aria-label="-2"');
+  });
+
+  it('点击 file_changed 头按钮后展开 diff 详情可见', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        <AssistantMessage
+          turn={makeTurn({
+            blocks: [
+              {
+                type: 'file_changed',
+                path: 'src/index.js',
+                before: 'const a = 1;\nconst b = 2;',
+                after: 'const a = 1;\nconst b = 3;',
+              },
+            ],
+          })}
+        />,
+      );
+    });
+
+    // 默认折叠：diff 体不可见。
+    expect(container.textContent).not.toContain('const b = 3;');
+
+    const header = Array.from(container.querySelectorAll('button')).find((el) =>
+      el.textContent?.includes('编辑了 1 个文件'),
+    )!;
+    expect(header).toBeTruthy();
+    act(() => {
+      header.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain('index.js');
+    expect(container.textContent).toContain('const b = 2;');
+    expect(container.textContent).toContain('const b = 3;');
+
+    act(() => root.unmount());
+    container.remove();
   });
 
   it('promotes consecutive edit/write/delete tool calls into a file change block', () => {
@@ -139,9 +180,9 @@ describe('AssistantMessage block 分发', () => {
     );
 
     expect(html).toContain('变更了 3 个文件');
-    expect(html).toContain('a.ts');
-    expect(html).toContain('src/b.ts');
-    expect(html).toContain('src/c.ts');
+    // 头部摘要 +N / -M 数字可见（RollingNumber aria-label）。
+    expect(html).toMatch(/aria-label="\+\d+"/);
+    expect(html).toMatch(/aria-label="-\d+"/);
     expect(html).not.toContain('工具调用');
   });
 
@@ -196,9 +237,10 @@ describe('AssistantMessage block 分发', () => {
     );
 
     expect(html).toContain('编辑了 1 个文件');
-    expect(html).toContain('patched.ts');
-    expect(html).toContain('old');
-    expect(html).toContain('new');
+    // 默认折叠：patched.ts / old / new 这些 diff 细节不再出现在折叠态里。
+    expect(html).not.toContain('patched.ts');
+    expect(html).not.toContain('old');
+    expect(html).not.toContain('new');
   });
 });
 

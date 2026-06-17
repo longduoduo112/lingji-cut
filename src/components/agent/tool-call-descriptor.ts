@@ -1,3 +1,5 @@
+import { structuredPatch } from 'diff';
+
 export interface ToolCallBlockLike {
   type: 'tool_call';
   title?: string;
@@ -201,17 +203,27 @@ function diffStats(diff: string): string | null {
 }
 
 function makeReplacementDiff(path: string, before: string, after: string): string {
-  const beforeLines = before ? before.split('\n') : [];
-  const afterLines = after ? after.split('\n') : [];
-  const oldCount = Math.max(1, beforeLines.length);
-  const newCount = Math.max(1, afterLines.length);
-  return [
-    `--- a/${path}`,
-    `+++ b/${path}`,
-    `@@ -1,${oldCount} +1,${newCount} @@`,
-    ...beforeLines.map((line) => `-${line}`),
-    ...afterLines.map((line) => `+${line}`),
-  ].join('\n');
+  // 用 jsdiff 的 structuredPatch 走真正的行级 LCS：
+  //   - "开头加一行" 这类只改首行的场景，only 输出 "+新行" 一行的 hunk + 上下文，
+  //     而不是把整段 before 标记 - / 整段 after 标记 +。
+  //   - oldString/newString 同时为多行时只输出真实差异行，不再放大成整段替换。
+  const safeBefore = before ?? '';
+  const safeAfter = after ?? '';
+  // structuredPatch 对最后一行无换行的内容会写出 `\ No newline at end of file` 元行；
+  // 我们在序列化时统一吃掉，但 patch 算法本身仍按真实内容跑。
+  const patch = structuredPatch(path, path, safeBefore, safeAfter, '', '', { context: 3 });
+  if (!patch.hunks.length) return '';
+
+  const lines: string[] = [`--- a/${path}`, `+++ b/${path}`];
+  for (const hunk of patch.hunks) {
+    lines.push(`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`);
+    for (const raw of hunk.lines) {
+      // 跳过 `\ No newline at end of file` 之类的元信息行，避免渲染层把它当 diff 行展示。
+      if (raw.startsWith('\\')) continue;
+      lines.push(raw);
+    }
+  }
+  return lines.join('\n');
 }
 
 function shellContent(command: string, rawOutput?: string): string {

@@ -175,4 +175,55 @@ describe('describeToolCallBlock', () => {
     expect(descriptor.subject).toBe('/tool_execution_start/ in electron');
     expect(descriptor.previewLabel).toBe('目标');
   });
+
+  it('"开头加一行" 不再被渲染成全文替换：行级 LCS 只输出一个 + 行', () => {
+    // 模拟用户场景：原文有 5 行，AI 在最前面加了一行 "// header"。
+    const before = 'line a\nline b\nline c\nline d\nline e\n';
+    const after = `// header\n${before}`;
+    const descriptor = describeToolCallBlock({
+      type: 'tool_call',
+      title: 'edit',
+      kind: 'edit',
+      status: 'completed',
+      rawInput: JSON.stringify({ path: 'src/foo.ts', oldString: before, newString: after }),
+      rawOutput: 'Successfully applied 1 edit to src/foo.ts',
+    });
+
+    const diffSection = descriptor.sections.find((section) => section.label === 'Diff');
+    expect(diffSection).toBeDefined();
+    const diff = diffSection!.content;
+
+    // 只新增了一行 "// header"，不应把所有原文行都标 - / +。
+    const minusLines = diff.split('\n').filter((line) => /^-(?!--)/.test(line));
+    const plusLines = diff.split('\n').filter((line) => /^\+(?!\+\+)/.test(line));
+    expect(plusLines.some((line) => line.includes('// header'))).toBe(true);
+    expect(minusLines).toHaveLength(0); // 没有任何行被删除
+    expect(plusLines).toHaveLength(1); // 只新增 1 行
+    expect(descriptor.meta).toContain('+1 / -0');
+  });
+
+  it('文件中部修改一行：hunk 大小远小于文件总行数', () => {
+    const beforeLines = Array.from({ length: 30 }, (_, i) => `row-${i + 1}`);
+    const afterLines = beforeLines.slice();
+    afterLines[14] = 'row-15-modified';
+    const before = `${beforeLines.join('\n')}\n`;
+    const after = `${afterLines.join('\n')}\n`;
+    const descriptor = describeToolCallBlock({
+      type: 'tool_call',
+      title: 'edit',
+      kind: 'edit',
+      status: 'completed',
+      rawInput: JSON.stringify({ path: 'docs/long.md', oldString: before, newString: after }),
+    });
+
+    const diff = descriptor.sections.find((section) => section.label === 'Diff')!.content;
+    // 只改了一行，hunk 中真实的 -/+ 行各一条。
+    const minus = diff.split('\n').filter((line) => /^-(?!--)/.test(line));
+    const plus = diff.split('\n').filter((line) => /^\+(?!\+\+)/.test(line));
+    expect(minus).toHaveLength(1);
+    expect(plus).toHaveLength(1);
+    // hunk 含上下文 + 改动总行数应远小于 30。
+    const hunkBodyLines = diff.split('\n').filter((line) => /^[ +-]/.test(line) && !/^[+-]{3}/.test(line));
+    expect(hunkBodyLines.length).toBeLessThan(30);
+  });
 });
