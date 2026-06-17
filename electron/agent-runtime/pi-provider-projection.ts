@@ -1,4 +1,4 @@
-import type { LLMProvider } from '../../src/types/ai';
+import type { LLMProvider, AISettings } from '../../src/types/ai';
 
 export interface PiModelEntry {
   id: string;
@@ -50,6 +50,35 @@ function toModelEntry(modelId: string, reasoning: boolean): PiModelEntry {
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     compat: { supportsDeveloperRole: false, supportsStore: false, supportsReasoningEffort: reasoning, maxTokensField: 'max_tokens' },
   };
+}
+
+export interface PiModelsJson {
+  providers: Record<string, PiProviderEntry>;
+}
+
+export function buildPiModelsJson(ai: AISettings): PiModelsJson {
+  const providers: Record<string, PiProviderEntry> = {};
+  for (const provider of ai.llmProviders ?? []) {
+    const projected = projectProviderToPi(provider);
+    if (projected) providers[projected.key] = projected.entry;
+  }
+  return { providers };
+}
+
+export interface PiSettingsJson {
+  defaultProvider?: string;
+  defaultModel?: string;
+  defaultThinkingLevel: string;
+}
+
+export function buildPiSettingsJson(ai: AISettings): PiSettingsJson {
+  const out: PiSettingsJson = { defaultThinkingLevel: 'medium' };
+  const provider = (ai.llmProviders ?? []).find((p) => p.id === ai.defaultProviderId);
+  if (provider && projectProviderToPi(provider)) {
+    out.defaultProvider = provider.id;
+    if (ai.defaultModel) out.defaultModel = ai.defaultModel;
+  }
+  return out;
 }
 
 export function projectProviderToPi(

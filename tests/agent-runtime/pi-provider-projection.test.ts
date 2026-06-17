@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { llmTypeToPiApi, projectProviderToPi } from '../../electron/agent-runtime/pi-provider-projection';
-import type { LLMProvider } from '../../src/types/ai';
+import { llmTypeToPiApi, projectProviderToPi, buildPiModelsJson, buildPiSettingsJson } from '../../electron/agent-runtime/pi-provider-projection';
+import type { LLMProvider, AISettings } from '../../src/types/ai';
 
 describe('llmTypeToPiApi', () => {
   it('maps known LLM types to pi api strings', () => {
@@ -55,5 +55,43 @@ describe('projectProviderToPi', () => {
   });
   it('skips providers with whitespace-only baseUrl', () => {
     expect(projectProviderToPi({ ...base, baseUrl: '   ' })).toBeNull();
+  });
+});
+
+describe('buildPiModelsJson', () => {
+  it('builds { providers } keyed by provider id, skipping unprojectable', () => {
+    const ai = {
+      llmProviders: [
+        { id: 'a', name: 'A', type: 'openai_compatible', baseUrl: 'https://a/v1', apiKey: 'k', models: ['m1'] },
+        { id: 'b', name: 'B', type: 'claude_code_acp', baseUrl: 'https://b', apiKey: '', models: [] },
+      ],
+      defaultProviderId: 'a', defaultModel: 'm1',
+    } as unknown as AISettings;
+    const out = buildPiModelsJson(ai);
+    expect(Object.keys(out.providers)).toEqual(['a']);
+    expect(out.providers.a.api).toBe('openai-completions');
+  });
+  it('returns empty providers when none projectable', () => {
+    const ai = { llmProviders: [], defaultProviderId: null, defaultModel: null } as unknown as AISettings;
+    expect(buildPiModelsJson(ai)).toEqual({ providers: {} });
+  });
+});
+
+describe('buildPiSettingsJson', () => {
+  it('derives defaultProvider/defaultModel from AISettings', () => {
+    const ai = {
+      llmProviders: [{ id: 'a', name: 'A', type: 'openai_compatible', baseUrl: 'https://a/v1', apiKey: 'k', models: ['m1'] }],
+      defaultProviderId: 'a', defaultModel: 'm1',
+    } as unknown as AISettings;
+    expect(buildPiSettingsJson(ai)).toMatchObject({ defaultProvider: 'a', defaultModel: 'm1', defaultThinkingLevel: 'medium' });
+  });
+  it('omits defaultProvider when none resolves or it is unprojectable', () => {
+    const none = { llmProviders: [], defaultProviderId: null, defaultModel: null } as unknown as AISettings;
+    expect(buildPiSettingsJson(none).defaultProvider).toBeUndefined();
+    const acpOnly = {
+      llmProviders: [{ id: 'x', name: 'X', type: 'claude_code_acp', baseUrl: 'https://x', apiKey: '', models: [] }],
+      defaultProviderId: 'x', defaultModel: null,
+    } as unknown as AISettings;
+    expect(buildPiSettingsJson(acpOnly).defaultProvider).toBeUndefined();
   });
 });
