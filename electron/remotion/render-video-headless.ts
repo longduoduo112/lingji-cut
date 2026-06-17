@@ -13,6 +13,10 @@ import { renderRemotionVideo } from './render';
 import { collectMotionCards } from '../../src/remotion/collect-cards';
 import { hydrateTimelineCards } from '../../src/lib/motion-card-externalize';
 import { prepareTimelineForHyperframes, type HyperframesAssetDescriptor } from '../../src/hyperframes/assets';
+import {
+  collectMotionCardAssets,
+  rewriteMotionCardAssetReferences,
+} from './motion-card-assets';
 
 // 以下三个辅助函数由 electron/main.ts 原样迁入（仅 render-video 使用）。
 
@@ -55,8 +59,9 @@ export async function createRenderPublicDir(
     timeline,
     projectDir,
   );
+  const motionCardAssets = await collectMotionCardAssets(timeline, projectDir);
   const publicDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lingjijianying-public-'));
-  await materializeRenderAssets(publicDir, assets);
+  await materializeRenderAssets(publicDir, [...assets, ...motionCardAssets]);
 
   return {
     timeline: renderTimeline,
@@ -123,6 +128,12 @@ export async function renderVideoHeadless(
       }
     },
   });
+  for (const overlay of hydratedTimeline.overlays) {
+    const motionCard = overlay.aiCardData?.motionCard;
+    if (motionCard?.tsx) {
+      motionCard.tsx = rewriteMotionCardAssetReferences(motionCard.tsx);
+    }
+  }
   // 编译 motion 卡片 TSX → CJS，随 inputProps 传入 Remotion，由 CardHost 在无头 Chrome 内求值。
   const cardSources = collectMotionCards(hydratedTimeline);
   const compiledCards = await compileCards(cardSources);
