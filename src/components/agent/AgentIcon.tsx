@@ -12,65 +12,6 @@ interface AgentIconConfig {
   content: (size: number) => React.ReactElement;
 }
 
-function ClaudeSVG({ size }: { size: number }) {
-  // 菱形 ✦ 风格，Anthropic 感，单色系统蓝
-  const r = size * 0.38;
-  const cx = size / 2;
-  const cy = size / 2;
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      fill="none"
-      aria-hidden="true"
-    >
-      {/* 四角星形 */}
-      <path
-        d={`M${cx},${cy - r} L${cx + r * 0.3},${cy} L${cx},${cy + r} L${cx - r * 0.3},${cy} Z`}
-        fill="currentColor"
-      />
-      <path
-        d={`M${cx - r},${cy} L${cx},${cy - r * 0.3} L${cx + r},${cy} L${cx},${cy + r * 0.3} Z`}
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function CodexSVG({ size }: { size: number }) {
-  // 六边形 ⬡，代表代码/结构感
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = size * 0.38;
-  const pts = Array.from({ length: 6 }, (_, i) => {
-    const angle = (Math.PI / 3) * i - Math.PI / 6;
-    return `${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`;
-  }).join(' ');
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      fill="none"
-      aria-hidden="true"
-    >
-      <polygon points={pts} fill="none" stroke="currentColor" strokeWidth={size * 0.1} />
-      <text
-        x={cx}
-        y={cy + size * 0.09}
-        textAnchor="middle"
-        fontSize={size * 0.35}
-        fill="currentColor"
-        fontFamily="'SF Mono', Menlo, monospace"
-        fontWeight="700"
-      >
-        {'>'}
-      </text>
-    </svg>
-  );
-}
-
 function PiSVG({ size }: { size: number }) {
   // π 字符
   const cx = size / 2;
@@ -116,14 +57,10 @@ function DefaultSVG({ size }: { size: number }) {
   );
 }
 
-/** agentId → 配置映射，支持带/不带 "-acp" 后缀；agentId 缺省时回退默认 */
+/** agentId → 配置映射，支持带/不带 "-acp" 后缀；agentId 缺省或未知时回退默认 */
 function resolveConfig(agentId: string | null | undefined): AgentIconConfig {
   const normalized = (agentId ?? '').toLowerCase().replace(/-acp$/, '');
   switch (normalized) {
-    case 'claude':
-      return { label: 'Claude', content: (size: number) => <ClaudeSVG size={size} /> };
-    case 'codex':
-      return { label: 'Codex', content: (size: number) => <CodexSVG size={size} /> };
     case 'pi':
       return { label: 'Pi', content: (size: number) => <PiSVG size={size} /> };
     default:

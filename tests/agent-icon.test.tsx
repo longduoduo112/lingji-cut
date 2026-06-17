@@ -3,37 +3,16 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { AgentIcon } from '../src/components/agent/AgentIcon';
 
 describe('AgentIcon', () => {
-  it('claude — 渲染不崩，含 aria-label "Claude"', () => {
-    const html = renderToStaticMarkup(<AgentIcon agentId="claude" />);
-    expect(html).toContain('aria-label="Claude"');
-    expect(html).toContain('title="Claude"');
-  });
-
-  it('codex — 渲染不崩，含 aria-label "Codex"', () => {
-    const html = renderToStaticMarkup(<AgentIcon agentId="codex" />);
-    expect(html).toContain('aria-label="Codex"');
-    expect(html).toContain('title="Codex"');
-  });
-
   it('pi — 渲染不崩，含 aria-label "Pi"', () => {
     const html = renderToStaticMarkup(<AgentIcon agentId="pi" />);
     expect(html).toContain('aria-label="Pi"');
     expect(html).toContain('title="Pi"');
   });
 
-  it('三个已知 id 各渲染不同 HTML', () => {
-    const claudeHtml = renderToStaticMarkup(<AgentIcon agentId="claude" />);
-    const codexHtml = renderToStaticMarkup(<AgentIcon agentId="codex" />);
+  it('pi 与默认回退渲染不同 HTML', () => {
     const piHtml = renderToStaticMarkup(<AgentIcon agentId="pi" />);
-
-    expect(claudeHtml).not.toBe(codexHtml);
-    expect(claudeHtml).not.toBe(piHtml);
-    expect(codexHtml).not.toBe(piHtml);
-  });
-
-  it('claude-acp 后缀 — 自动去除 -acp 后缀，识别为 Claude', () => {
-    const html = renderToStaticMarkup(<AgentIcon agentId="claude-acp" />);
-    expect(html).toContain('aria-label="Claude"');
+    const defaultHtml = renderToStaticMarkup(<AgentIcon agentId="unknown-agent-xyz" />);
+    expect(piHtml).not.toBe(defaultHtml);
   });
 
   it('pi-acp 后缀 — 识别为 Pi', () => {
@@ -60,14 +39,14 @@ describe('AgentIcon', () => {
   });
 
   it('size prop 影响渲染宽高', () => {
-    const html24 = renderToStaticMarkup(<AgentIcon agentId="claude" size={24} />);
-    const html16 = renderToStaticMarkup(<AgentIcon agentId="claude" size={16} />);
+    const html24 = renderToStaticMarkup(<AgentIcon agentId="pi" size={24} />);
+    const html16 = renderToStaticMarkup(<AgentIcon agentId="pi" size={16} />);
     expect(html24).toContain('width:24px');
     expect(html16).toContain('width:16px');
   });
 
   it('默认 size 为 16', () => {
-    const html = renderToStaticMarkup(<AgentIcon agentId="claude" />);
+    const html = renderToStaticMarkup(<AgentIcon agentId="pi" />);
     expect(html).toContain('width:16px');
   });
 });
