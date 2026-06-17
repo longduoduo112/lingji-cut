@@ -1,4 +1,4 @@
-import { ipcMain, type BrowserWindow } from 'electron';
+import { ipcMain, app, type BrowserWindow } from 'electron';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,8 +11,11 @@ import { fetchAgentApiModels } from './fetch-agent-api-models';
 import { runPreflight } from './preflight';
 import { McpConfigManager } from '../mcp/config-manager';
 import { getMcpServerStatus } from '../mcp/server';
-import type { PermissionPolicy } from './types';
+import type { PermissionPolicy, PromptInputBlock, ResolvedAgentSkill } from './types';
 import { ensureProjectAgentContracts } from './contract-sync';
+import { SkillRegistry } from '../agent-skills/registry';
+import { AGENT_SKILLS_DIRNAME } from '../agent-skills/constants';
+import { buildInjectionText } from '../agent-skills/inject';
 
 const CONFIG_PATH = path.join(os.homedir(), '.lingji', 'agent-config.json');
 
@@ -21,6 +24,13 @@ const binaryManager = new BinaryManager();
 // binaryManager 必须注入：AgentSession 依赖它做 detection / ensureNodeInPath，
 // 否则 sendPrompt 会报 'AgentSession: missing binaryManager'。
 const runtimeRegistry = new RuntimeRegistry({ binaryManager });
+
+// 内置 skill：种子在应用资源 resources/agent-skills，运行时复制到 ~/.lingji/agent-skills。
+// app.getAppPath() 在 dev 指向仓库根，在打包指向 app.asar（fs 读 asar 可用）。
+const skillRegistry = new SkillRegistry({
+  seedRoot: path.join(app.getAppPath(), 'resources', AGENT_SKILLS_DIRNAME),
+  targetRoot: path.join(os.homedir(), '.lingji', AGENT_SKILLS_DIRNAME),
+});
 
 interface RuntimeConnectPayload {
   conversationId: number;
@@ -77,6 +87,14 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
       }
     }
 
+    // 解析当前 agent 启用的内置 skills（连接期 pi --skill / codex --add-dir 用）
+    let resolvedSkills: ResolvedAgentSkill[] = [];
+    try {
+      resolvedSkills = await skillRegistry.resolveForAgent(agentId, agentEntry?.skills);
+    } catch (err) {
+      console.warn('[agent-skills] resolveForAgent 失败:', err);
+    }
+
     await runtimeRegistry.connect({
       conversationId: payload.conversationId,
       agentType: agentId,
@@ -85,6 +103,7 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
       sessionId: payload.sessionId ?? null,
       env,
       permissionPolicy: policy,
+      skills: resolvedSkills,
     });
   }
 
@@ -115,9 +134,13 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
       _event,
       conversationId: number,
       contents: unknown[],
-      opts?: { model?: string; reasoning?: string },
+      opts?: { model?: string; reasoning?: string; skillIds?: string[] },
     ) => {
-      await runtimeRegistry.sendPrompt(conversationId, contents, opts);
+      const finalContents = await maybeInjectSkills(conversationId, contents, opts?.skillIds);
+      await runtimeRegistry.sendPrompt(conversationId, finalContents, {
+        model: opts?.model,
+        reasoning: opts?.reasoning,
+      });
     },
   );
 
@@ -188,6 +211,19 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
   ipcMain.handle('agent:install', async (_event, version: string) => binaryManager.install(version));
   ipcMain.handle('agent:uninstall', () => binaryManager.uninstall());
   ipcMain.handle('agent:get-latest-version', () => binaryManager.getLatestVersion());
+
+  // 列出某 agent 的内置 skills（renderer 设置页 / composer 补全用）
+  ipcMain.handle('agent:list-skills', async (_e, agentId?: string) => {
+    const id = normalizeAgentId(agentId ?? 'claude');
+    try {
+      const cfg = await config.load();
+      const entry = cfg.agents[id];
+      return await skillRegistry.resolveForAgent(id, entry?.skills);
+    } catch (err) {
+      console.warn('[agent-skills] list-skills 失败:', err);
+      return [] as ResolvedAgentSkill[];
+    }
+  });
 }
 
 // ─── MCP 工具引导指令 ──────────────────────────────────────
@@ -268,6 +304,60 @@ ${MCP_INSTRUCTIONS_MARKER}
 | 查编辑器状态 | \`lingji_get_editor_state\` | — |
 | 查文件列表 | \`lingji_list_project_files\` | directory? |
 `;
+
+/**
+ * 若本轮带 skillIds：main 二次校验（当前 agent 已启用 + skill 存在），
+ * 读取主 SKILL.md 拼到 prompt 前。任何校验失败 / 读取失败都安静降级为原始消息。
+ */
+async function maybeInjectSkills(
+  conversationId: number,
+  contents: unknown[],
+  requestedIds: string[] | undefined,
+): Promise<unknown[]> {
+  if (!requestedIds || requestedIds.length === 0) return contents;
+  const snapshot = runtimeRegistry.get(conversationId);
+  if (!snapshot) return contents;
+
+  let enabled: ResolvedAgentSkill[] = [];
+  try {
+    const cfg = await config.load();
+    const entry = cfg.agents[snapshot.agentType];
+    const resolved = await skillRegistry.resolveForAgent(snapshot.agentType, entry?.skills);
+    enabled = resolved.filter((s) => s.enabled && s.status === 'available');
+  } catch {
+    return contents;
+  }
+
+  // requestedIds 已是 renderer 解析出的裸 id（不含 $）；此处仅去重并校验当前
+  // agent 是否启用，未启用 / 未知 id 一律丢弃。
+  const enabledIds = new Set(enabled.map((s) => s.id));
+  const seenIds = new Set<string>();
+  const valid = requestedIds.filter((id) => {
+    if (seenIds.has(id) || !enabledIds.has(id)) return false;
+    seenIds.add(id);
+    return true;
+  });
+  if (valid.length === 0) return contents;
+
+  const injected: { id: string; markdown: string }[] = [];
+  for (const id of valid) {
+    try {
+      injected.push({ id, markdown: await skillRegistry.readSkillMarkdown(id) });
+    } catch (err) {
+      console.warn(`[agent-skills] 读取 ${id} SKILL.md 失败:`, err);
+    }
+  }
+  if (injected.length === 0) return contents;
+
+  const blocks = contents as PromptInputBlock[];
+  const userText = blocks
+    .filter((b): b is PromptInputBlock & { type: 'text' } => !!b && (b as { type?: string }).type === 'text')
+    .map((b) => b.text)
+    .join('\n');
+  const nonText = blocks.filter((b) => !b || (b as { type?: string }).type !== 'text');
+  const injectedText = buildInjectionText(injected, userText);
+  return [{ type: 'text', text: injectedText } as PromptInputBlock, ...nonText];
+}
 
 /**
  * 确保脚本项目目录有 CLAUDE.md 且包含 MCP 工具引导指令
