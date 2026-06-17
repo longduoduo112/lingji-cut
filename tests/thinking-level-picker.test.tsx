@@ -2,11 +2,24 @@
 //
 // ThinkingLevelPicker 测试：
 // - pi（有 reasoningOptions）→ 渲染芯片，展开列出档位，选择回调。
-// - claude（无 reasoningOptions）→ 不渲染（返回 null）。
+// - 无 reasoningOptions 的 agent → 不渲染（返回 null）。
+//   注：当前 runtime 仅内置 pi（带 reasoningOptions），故用 mock 注入一个空 options
+//   的合成 agent 来覆盖「无档位 → null」这条防御性分支。
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ThinkingLevelPicker } from '../src/components/agent/ThinkingLevelPicker';
+
+vi.mock('../src/lib/agent-presentation', async (importActual) => {
+  const actual = await importActual<typeof import('../src/lib/agent-presentation')>();
+  return {
+    ...actual,
+    getAgentPresentation: (id: string | undefined | null) =>
+      id === '__no-reasoning__'
+        ? { id: '__no-reasoning__', displayName: 'NoReasoning', managed: false, reasoningOptions: [] }
+        : actual.getAgentPresentation(id),
+  };
+});
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -47,9 +60,9 @@ describe('ThinkingLevelPicker', () => {
     act(() => root.unmount());
   });
 
-  it('claude：无 reasoningOptions → 不渲染', async () => {
+  it('无 reasoningOptions 的 agent → 不渲染', async () => {
     const { container, root } = await mount(
-      <ThinkingLevelPicker agentId="claude" onChange={() => undefined} />,
+      <ThinkingLevelPicker agentId="__no-reasoning__" onChange={() => undefined} />,
     );
     expect(container.querySelector('[data-testid="thinking-level-chip"]')).toBeNull();
     act(() => root.unmount());

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 //
 // AgentPicker 测试：候选渲染 / 选择回调 / 当前高亮 / 可用性置灰。
+// 当前 runtime 仅内置 pi（codex/claude 已下线），候选列表自然只有 Pi 一项。
 // 交互用 jsdom + createRoot + act；可用性通过 mock window.agentAPI.runPreflight 注入。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
@@ -42,18 +43,19 @@ async function mount(props: { value: string; onChange: (id: string) => void }) {
 }
 
 describe('AgentPicker', () => {
-  it('renders all three agents (claude / codex / pi)', async () => {
-    const { container, root } = await mount({ value: 'claude', onChange: () => undefined });
+  it('renders the single bundled agent (pi)', async () => {
+    const { container, root } = await mount({ value: 'pi', onChange: () => undefined });
 
     const text = container.textContent ?? '';
-    expect(text).toContain('Claude');
-    expect(text).toContain('Codex');
     expect(text).toContain('Pi');
+    // codex/claude 已下线，不应再出现。
+    expect(text).not.toContain('Claude');
+    expect(text).not.toContain('Codex');
 
-    // 每个候选携带 data-agent-id，便于定位。
-    expect(container.querySelector('[data-agent-id="claude"]')).not.toBeNull();
-    expect(container.querySelector('[data-agent-id="codex"]')).not.toBeNull();
+    // 候选携带 data-agent-id，便于定位。
     expect(container.querySelector('[data-agent-id="pi"]')).not.toBeNull();
+    expect(container.querySelector('[data-agent-id="claude"]')).toBeNull();
+    expect(container.querySelector('[data-agent-id="codex"]')).toBeNull();
 
     act(() => root.unmount());
     container.remove();
@@ -61,34 +63,37 @@ describe('AgentPicker', () => {
 
   it('calls onChange with the agent id when an item is clicked', async () => {
     const onChange = vi.fn();
-    const { container, root } = await mount({ value: 'claude', onChange });
+    const { container, root } = await mount({ value: '', onChange });
 
-    const codexLabel = container.querySelector('[data-agent-id="codex"]')!;
-    const button = codexLabel.closest('button')!;
+    const piLabel = container.querySelector('[data-agent-id="pi"]')!;
+    const button = piLabel.closest('button')!;
     act(() => {
       button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(onChange).toHaveBeenCalledWith('codex');
+    expect(onChange).toHaveBeenCalledWith('pi');
 
     act(() => root.unmount());
     container.remove();
   });
 
   it('highlights the current value via aria-pressed', async () => {
-    const { container, root } = await mount({ value: 'codex', onChange: () => undefined });
+    const selected = await mount({ value: 'pi', onChange: () => undefined });
+    const piButton = selected.container.querySelector('[data-agent-id="pi"]')!.closest('button')!;
+    expect(piButton.getAttribute('aria-pressed')).toBe('true');
+    act(() => selected.root.unmount());
+    selected.container.remove();
 
-    const codexButton = container.querySelector('[data-agent-id="codex"]')!.closest('button')!;
-    const claudeButton = container.querySelector('[data-agent-id="claude"]')!.closest('button')!;
-    expect(codexButton.getAttribute('aria-pressed')).toBe('true');
-    expect(claudeButton.getAttribute('aria-pressed')).toBe('false');
-
-    act(() => root.unmount());
-    container.remove();
+    // 当前值非 pi（未选中）→ pi 项不应高亮。
+    const unselected = await mount({ value: '', onChange: () => undefined });
+    const piButton2 = unselected.container.querySelector('[data-agent-id="pi"]')!.closest('button')!;
+    expect(piButton2.getAttribute('aria-pressed')).toBe('false');
+    act(() => unselected.root.unmount());
+    unselected.container.remove();
   });
 
   it('disables an agent whose preflight fails and shows the install guide tooltip', async () => {
-    // pi 探测失败（未安装），其余通过。
+    // pi 探测失败（未安装）→ 置灰。
     runPreflight.mockImplementation(async (agentId?: string) => {
       if (agentId === 'pi') {
         return [{ label: 'CLI', status: 'fail', message: 'pi not found' }];
@@ -97,7 +102,7 @@ describe('AgentPicker', () => {
     });
 
     const onChange = vi.fn();
-    const { container, root } = await mount({ value: 'claude', onChange });
+    const { container, root } = await mount({ value: 'pi', onChange });
 
     const piLabel = container.querySelector('[data-agent-id="pi"]')! as HTMLElement;
     const piButton = piLabel.closest('button') as HTMLButtonElement;
@@ -107,10 +112,6 @@ describe('AgentPicker', () => {
     expect(piLabel.getAttribute('data-availability')).toBe('unavailable');
     // tooltip 使用 installGuide（包含 pi 安装提示）。
     expect(piLabel.getAttribute('title') ?? '').toContain('pi');
-
-    // 可用的 agent 不被禁用。
-    const claudeButton = container.querySelector('[data-agent-id="claude"]')!.closest('button') as HTMLButtonElement;
-    expect(claudeButton.disabled).toBe(false);
 
     act(() => root.unmount());
     container.remove();

@@ -245,17 +245,17 @@ describe('AssistantMessage block 分发', () => {
 });
 
 describe('AssistantMessage agent 头', () => {
-  it('renders Codex icon/name when turn.agentId is codex', () => {
+  it('renders Pi icon/name when turn.agentId is pi', () => {
     const html = renderToStaticMarkup(
-      <AssistantMessage turn={makeTurn({ agentId: 'codex' })} />,
+      <AssistantMessage turn={makeTurn({ agentId: 'pi' })} />,
     );
-    expect(html).toContain('aria-label="Codex"');
-    expect(html).toContain('Codex');
+    expect(html).toContain('aria-label="Pi"');
+    expect(html).toContain('Pi');
   });
 
   it('prefers turn.agentName over agentId mapping', () => {
     const html = renderToStaticMarkup(
-      <AssistantMessage turn={makeTurn({ agentId: 'codex', agentName: '我的助手' })} />,
+      <AssistantMessage turn={makeTurn({ agentId: 'pi', agentName: '我的助手' })} />,
     );
     expect(html).toContain('我的助手');
   });
@@ -264,10 +264,10 @@ describe('AssistantMessage agent 头', () => {
     const turn = makeTurn();
     delete turn.agentId;
     const html = renderToStaticMarkup(
-      <AssistantMessage turn={turn} fallbackAgentId="claude" />,
+      <AssistantMessage turn={turn} fallbackAgentId="pi" />,
     );
-    expect(html).toContain('aria-label="Claude"');
-    expect(html).toContain('Claude');
+    expect(html).toContain('aria-label="Pi"');
+    expect(html).toContain('Pi');
   });
 });
 

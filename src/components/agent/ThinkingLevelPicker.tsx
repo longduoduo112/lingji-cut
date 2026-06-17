@@ -3,7 +3,7 @@
  *
  * 与 ModelPicker 同款轻量 popover：左侧 Brain 图标 + 当前档位 label + chevron，
  * 点击展开下拉，列出该 agent 的 reasoningOptions（来自 runtime def）。仅当该 agent
- * 暴露 reasoningOptions（如 pi / codex）时由 ChatComposer 渲染。
+ * 暴露 reasoningOptions（pi 即如此）时由 ChatComposer 渲染。
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';

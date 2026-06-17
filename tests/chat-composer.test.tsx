@@ -80,11 +80,11 @@ describe('ChatComposer', () => {
   });
 
   it('renders AgentPicker when showAgentPicker is true', async () => {
-    const { container, root } = await mount({ showAgentPicker: true, selectedAgentId: 'claude' });
+    const { container, root } = await mount({ showAgentPicker: true, selectedAgentId: 'pi' });
 
     expect(container.querySelector('.agent-picker')).not.toBeNull();
-    expect(container.querySelector('[data-agent-id="claude"]')).not.toBeNull();
-    expect(container.querySelector('[data-agent-id="codex"]')).not.toBeNull();
+    // 当前 runtime 仅内置 pi。
+    expect(container.querySelector('[data-agent-id="pi"]')).not.toBeNull();
     // MessageInput 仍然存在。
     expect(container.querySelector('textarea')).not.toBeNull();
 
@@ -96,18 +96,18 @@ describe('ChatComposer', () => {
     const onAgentChange = vi.fn();
     const { container, root } = await mount({
       showAgentPicker: true,
-      selectedAgentId: 'claude',
+      selectedAgentId: '',
       onAgentChange,
     });
 
-    const codexButton = container
-      .querySelector('[data-agent-id="codex"]')!
+    const piButton = container
+      .querySelector('[data-agent-id="pi"]')!
       .closest('button')!;
     act(() => {
-      codexButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      piButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(onAgentChange).toHaveBeenCalledWith('codex');
+    expect(onAgentChange).toHaveBeenCalledWith('pi');
 
     act(() => root.unmount());
     container.remove();

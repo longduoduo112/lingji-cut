@@ -156,10 +156,6 @@ function copyableText(turn: ConversationTurn): string {
 function agentNameFromId(agentId: string): string {
   const normalized = agentId.toLowerCase().replace(/-acp$/, '');
   switch (normalized) {
-    case 'claude':
-      return 'Claude';
-    case 'codex':
-      return 'Codex';
     case 'pi':
       return 'Pi';
     default:

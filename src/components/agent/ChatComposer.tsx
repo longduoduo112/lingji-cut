@@ -5,7 +5,7 @@
  * 附件/图片、模式/配置选择器、取消、发送），不做重写。
  *
  * 唯一新增能力：在「新建会话尚未绑定 agent」场景下，于输入框上方渲染
- * `<AgentPicker/>`，让用户显式选择 Claude / Codex / Pi。
+ * `<AgentPicker/>`，让用户显式选择 agent（当前 runtime 仅内置 pi）。
  *
  * 设计取舍：保持对外接口与 MessageInput 完全兼容（透传所有 props），
  * 仅扩展三个与 agent 选择相关的新 prop。被 B8 ChatPane 使用；现有

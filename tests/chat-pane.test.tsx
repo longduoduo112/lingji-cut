@@ -110,7 +110,7 @@ function makeDetail(overrides: Partial<ConversationDetail> = {}): ConversationDe
     id: 1,
     projectId: 'project-a',
     title: '调试会话',
-    agentType: 'codex',
+    agentType: 'pi',
     status: 'active',
     externalId: null,
     parentId: null,
@@ -156,9 +156,9 @@ describe('ChatPane 渲染会话', () => {
     const html = renderChatPane({ projectDir: "/tmp/project-a", explicitActivated: true });
     // ChatHeader 标题
     expect(html).toContain('调试会话');
-    // 当前 agent 名 + 图标（agentType=codex）
-    expect(html).toContain('aria-label="Codex"');
-    expect(html).toContain('Codex');
+    // 当前 agent 名 + 图标（agentType=pi）
+    expect(html).toContain('aria-label="Pi"');
+    expect(html).toContain('Pi');
     // 消息正文
     expect(html).toContain('我来处理');
     // composer 由 MessageInput 渲染（占位文案）
@@ -167,8 +167,8 @@ describe('ChatPane 渲染会话', () => {
     expect(html).toContain('data-testid="conversation-dropdown-trigger"');
     // header 含 agent 只读标记（点击进设置）。
     expect(html).toContain('data-testid="chat-header-agent"');
-    // composer 含模型芯片（agentId=codex → ModelPicker）。
-    expect(html).toContain('data-agent-id="codex"');
+    // composer 含模型芯片（agentId=pi → ModelPicker）。
+    expect(html).toContain('data-agent-id="pi"');
     expect(html).toContain('data-testid="model-picker-agent"');
   });
 

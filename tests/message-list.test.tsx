@@ -59,24 +59,24 @@ describe('MessageList 混合 turns', () => {
   it('renders UserMessage and AssistantMessage with agent header', () => {
     const turns = [
       userTurn(1, '帮我读一下文件'),
-      assistantTurn(2, '好的，我来读取', 'codex'),
+      assistantTurn(2, '好的，我来读取', 'pi'),
     ];
     const html = renderToStaticMarkup(<MessageList turns={turns} />);
     // UserMessage 文本
     expect(html).toContain('帮我读一下文件');
     // AssistantMessage 正文 + agent 头
     expect(html).toContain('好的，我来读取');
-    expect(html).toContain('aria-label="Codex"');
-    expect(html).toContain('Codex');
+    expect(html).toContain('aria-label="Pi"');
+    expect(html).toContain('Pi');
   });
 
   it('passes fallbackAgentId to assistant turns without agentId', () => {
     const turns = [assistantTurn(1, '正文')];
     delete turns[0].agentId;
     const html = renderToStaticMarkup(
-      <MessageList turns={turns} fallbackAgentId="claude" />,
+      <MessageList turns={turns} fallbackAgentId="pi" />,
     );
-    expect(html).toContain('aria-label="Claude"');
+    expect(html).toContain('aria-label="Pi"');
   });
 });
 

@@ -1,7 +1,9 @@
 /**
- * AgentPicker — 新建会话时显式选择 agent（Claude / Codex / Pi）。
+ * AgentPicker — 新建会话时显式选择 agent。
  *
- * 替代旧的「启用 + sortOrder」隐式选择。被 ChatComposer / AgentSidebar 复用。
+ * 当前 runtime 只内置 pi 一个 agent（codex/claude 已下线），候选列表从
+ * `listAgentPresentations()` 取，因此自然只渲染 Pi 一项。组件本身与具体 agent
+ * 无关：未来若再接入多 agent，无需改动此处即可恢复多选。被 ChatComposer 复用。
  *
  * 可用性：挂载时对每个候选 agent 调 `runPreflight(agentId)` 探测可用性。
  * 任一检查项 status 为 'fail' 即视为不可用，置灰并用 installGuide 作为 tooltip。
