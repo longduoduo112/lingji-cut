@@ -159,7 +159,8 @@ describe('ensureDefaultAgents', () => {
       sortOrder: 5,
     };
     const result = ensureDefaultAgents({ pi: userPi });
-    expect(result.pi).toEqual(userPi);
+    // backfill adds skills, so use toMatchObject to check user fields are preserved
+    expect(result.pi).toMatchObject(userPi);
   });
 
   it('does not overwrite existing claude user config', async () => {
@@ -176,7 +177,8 @@ describe('ensureDefaultAgents', () => {
       sortOrder: 0,
     };
     const result = ensureDefaultAgents({ claude: userClaude });
-    expect(result.claude).toEqual(userClaude);
+    // backfill adds skills, so use toMatchObject to check user fields are preserved
+    expect(result.claude).toMatchObject(userClaude);
   });
 
   it('migrates legacy claude-acp/pi-acp config to new keys and drops legacy keys', async () => {
@@ -207,9 +209,9 @@ describe('ensureDefaultAgents', () => {
       'claude-acp': legacyClaude,
       'pi-acp': legacyPi,
     });
-    // 旧键已迁移到新键，用户配置保留
-    expect(result.claude).toEqual(legacyClaude);
-    expect(result.pi).toEqual(legacyPi);
+    // 旧键已迁移到新键，用户配置保留（backfill 会补 skills，用 toMatchObject 验证核心字段）
+    expect(result.claude).toMatchObject(legacyClaude);
+    expect(result.pi).toMatchObject(legacyPi);
     // 旧键被移除
     expect(result['claude-acp']).toBeUndefined();
     expect(result['pi-acp']).toBeUndefined();
@@ -256,8 +258,8 @@ describe('ensureDefaultAgents', () => {
       agents: { claude: customClaude },
     });
     const loaded = await config.load();
-    // 用户修改的 claude 必须完整保留，不被默认值覆盖
-    expect(loaded.agents.claude).toEqual(customClaude);
+    // 用户修改的 claude 必须完整保留，不被默认值覆盖（backfill 会补 skills，用 toMatchObject 验证核心字段）
+    expect(loaded.agents.claude).toMatchObject(customClaude);
   });
 
   it('load() migrates legacy on-disk config to new keys', async () => {

@@ -2,6 +2,7 @@ import { safeStorage } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AgentConfigData, AgentEntry } from './types';
+import { BUILTIN_SKILL_ID } from '../agent-skills/constants';
 
 /** 全局默认 agent id；无 activeAgentId 时回退到此。 */
 export const DEFAULT_AGENT_ID = 'claude';
@@ -51,6 +52,7 @@ function makeDefaultEntry(sortOrder: number): AgentEntry {
     configJson: '',
     version: '',
     sortOrder,
+    skills: [{ id: BUILTIN_SKILL_ID, enabled: true }],
   };
 }
 
@@ -77,6 +79,14 @@ export function ensureDefaultAgents(agents: Record<string, AgentEntry>): Record<
         next[newId] = next[legacyId];
       }
       delete next[legacyId];
+    }
+  }
+
+  // 为已存在但缺 skills 字段的条目补默认（旧数据迁移；不覆盖已配置）
+  for (const id of Object.keys(next)) {
+    const entry = next[id];
+    if (entry && entry.skills === undefined) {
+      next[id] = { ...entry, skills: [{ id: BUILTIN_SKILL_ID, enabled: true }] };
     }
   }
 
