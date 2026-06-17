@@ -10,7 +10,7 @@ export interface BuildArgsCtx {
   reasoning?: string;
   resumeSessionId?: string | null;
   isResuming?: boolean;
-  /** 连接期解析出的启用 skills（pi --skill / codex --add-dir 用）。 */
+  /** 连接期解析出的启用 skills（pi --skill 用）。 */
   skills?: ResolvedAgentSkill[];
 }
 
@@ -20,7 +20,7 @@ export interface AgentModel {
 }
 
 export interface RuntimeAgentDef {
-  id: string; // 'claude' | 'codex' | 'pi'
+  id: string; // 'pi'
   name: string;
   bin: string;
   /**
@@ -33,7 +33,6 @@ export interface RuntimeAgentDef {
   versionArgs: string[];
   buildArgs: (ctx: BuildArgsCtx) => string[];
   streamFormat: StreamFormat;
-  promptViaStdin?: boolean;
   resumesSessionViaCli?: boolean;
   env?: Record<string, string>;
   defaultModel?: string;

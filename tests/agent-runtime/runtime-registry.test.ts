@@ -97,6 +97,7 @@ describe('RuntimeRegistry', () => {
   beforeEach(() => {
     statusEvents = [];
     runtimeEvents = [];
+    hoisted.capturedDeps = null;
   });
 
   it('connect 登记会话上下文但不 spawn（不创建 session.start）', async () => {

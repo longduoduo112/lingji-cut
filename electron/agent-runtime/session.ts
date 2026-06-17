@@ -223,8 +223,6 @@ export class AgentSession {
 
     child.on('close', (...closeArgs: unknown[]) => {
       const code = typeof closeArgs[0] === 'number' ? (closeArgs[0] as number) : null;
-      // 非 pi 路径：flush parser（可能补 emit 末尾的 turn_end）
-      this.flushParser?.();
       if (this.cancelled) return;
       if (code != null && code !== 0) {
         this.emitTerminalError(
@@ -274,7 +272,7 @@ export class AgentSession {
     }
   }
 
-  /** 可选：多轮写入（claude stdinOpen 等场景；首版单轮一般不用） */
+  /** 可选：多轮写入（pi 多轮场景；首版单轮一般不用） */
   write(text: string): void {
     this.child?.stdin?.write(text);
   }
@@ -298,9 +296,6 @@ export class AgentSession {
   }
 
   // ── 内部 ──────────────────────────────────────────────────────────────────
-
-  /** parser flush 回调（pi-rpc 由其 session 自行管理，故可能为空） */
-  private flushParser: (() => void) | null = null;
 
   private emitTerminalError(
     onEvent: (ev: AgentStreamEvent) => void,
