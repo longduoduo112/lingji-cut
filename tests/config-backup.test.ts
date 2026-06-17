@@ -39,10 +39,10 @@ describe('collectBackup', () => {
     expect(backup.appVersion).toBe('1.0.0');
     expect(backup.platform).toBe(process.platform);
     expect(backup.globalSettings).toBeDefined();
-    // 首次使用时 load() 会注入默认的 claude / codex / pi 条目
-    expect(backup.agent.config.agents.claude).toBeDefined();
-    expect(backup.agent.config.agents.codex).toBeDefined();
+    // 首次使用时 load() 只注入默认的 pi 条目（codex/claude def 已移除）
     expect(backup.agent.config.agents.pi).toBeDefined();
+    expect(backup.agent.config.agents.claude).toBeUndefined();
+    expect(backup.agent.config.agents.codex).toBeUndefined();
     expect(backup.agent.apiKeys).toEqual({});
   });
 

@@ -26,17 +26,18 @@ function buildConnection(agentType: string): ConversationConnectionState {
 }
 
 describe('buildAssistantTurnInput', () => {
-  it('为 assistant turn 带上来自连接 agentType 的 agentId 与展示名', () => {
+  it('为 assistant turn 带上来自连接 agentType 的 agentId（展示名收敛到现存 runtime：pi -> Pi）', () => {
     const connection = buildConnection('codex');
     const input = buildAssistantTurnInput(connection, { stopReason: 'end_turn' });
 
     expect(input.role).toBe('assistant');
+    // agentId 保留原始连接值（便于排查旧持久化数据）
     expect(input.agentId).toBe('codex');
-    // 展示名来自 agent-presentation（runtime registry：codex -> 'Codex'）
-    expect(input.agentName).toBe('Codex');
+    // runtime registry 仅剩 pi，已移除的 codex 展示名回退默认 agent -> 'Pi'
+    expect(input.agentName).toBe('Pi');
   });
 
-  it('claude 连接归属为 claude / Claude Code，并附带 turn_complete 块与 usage', () => {
+  it('已移除的 claude 连接保留 agentId，展示名回退默认 Pi，并附带 turn_complete 块与 usage', () => {
     const connection = buildConnection('claude');
     const usage = JSON.stringify({ inputTokens: 10 });
     const input = buildAssistantTurnInput(connection, {
@@ -45,7 +46,7 @@ describe('buildAssistantTurnInput', () => {
     });
 
     expect(input.agentId).toBe('claude');
-    expect(input.agentName).toBe('Claude Code');
+    expect(input.agentName).toBe('Pi');
     expect(input.sessionStatsJson).toBe(usage);
     // 持久化的 blocks = liveMessage 内容 + turn_complete 收尾块
     expect(input.blocks).toEqual([
@@ -58,9 +59,9 @@ describe('buildAssistantTurnInput', () => {
     const connection = buildConnection('unknown-agent');
     const input = buildAssistantTurnInput(connection, { stopReason: 'end_turn' });
 
-    // agentId 保留原始连接值，便于排查；展示名回退默认 agent
+    // agentId 保留原始连接值，便于排查；展示名回退默认 agent -> 'Pi'
     expect(input.agentId).toBe('unknown-agent');
-    expect(input.agentName).toBe('Claude Code');
+    expect(input.agentName).toBe('Pi');
   });
 
   it('可用会话 agentType 兜底覆盖默认 claude，避免 Pi turn 被持久化成 Claude Code', () => {

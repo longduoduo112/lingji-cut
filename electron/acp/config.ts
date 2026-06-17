@@ -5,7 +5,7 @@ import type { AgentConfigData, AgentEntry } from './types';
 import { BUILTIN_SKILL_ID } from '../agent-skills/constants';
 
 /** 全局默认 agent id；无 activeAgentId 时回退到此。 */
-export const DEFAULT_AGENT_ID = 'claude';
+export const DEFAULT_AGENT_ID = 'pi';
 
 const DEFAULT_CONFIG: AgentConfigData = {
   agents: {},
@@ -14,23 +14,36 @@ const DEFAULT_CONFIG: AgentConfigData = {
 };
 
 /**
- * 旧 agent id → 新多协议 runtime id 的映射。
- * - 'claude-acp' → 'claude'
+ * 旧 ACP 键 → 现 runtime id 的迁移映射。
+ * 当前 runtime 仅保留 pi（codex/claude 的 def 已删），旧 ACP 键统一收敛到 pi。
  * - 'pi-acp'     → 'pi'
- * - 其余原样返回；未知值由调用方决定回退。
+ * - 'claude-acp' → 'pi'
+ *
+ * 注意：这里只放「需要在 ensureDefaultAgents 中真正搬迁条目」的旧键。
+ * 已移除的 runtime id（codex/claude）不放进来，避免迁移循环删除用户已持久化的
+ * claude/codex 条目；它们仅在 normalizeAgentId 里被归一化到 pi（见 REMOVED_AGENT_IDS）。
  */
 const LEGACY_ID_MAP: Record<string, string> = {
-  'claude-acp': 'claude',
   'pi-acp': 'pi',
+  'claude-acp': 'pi',
 };
 
 /**
- * 归一化 agent id：把旧 ACP 键映射到新多协议 runtime id（claude/codex/pi）。
- * 新键原样透传。
+ * 已从 runtime 移除的 agent id（def 不再存在）。归一化时收敛到 pi，
+ * 但不参与 ensureDefaultAgents 的条目搬迁，故不会删除用户旧条目。
+ */
+const REMOVED_AGENT_IDS = new Set(['codex', 'claude']);
+
+/**
+ * 归一化 agent id：旧 ACP 键 / 已移除 id 统一收敛到现存 runtime id（pi）。
+ * 未知值原样透传；空值回退默认（pi）。
  */
 export function normalizeAgentId(id: string | undefined | null): string {
-  if (!id) return 'claude';
-  return LEGACY_ID_MAP[id] ?? id;
+  if (!id) return DEFAULT_AGENT_ID;
+  const mapped = LEGACY_ID_MAP[id];
+  if (mapped) return mapped;
+  if (REMOVED_AGENT_IDS.has(id)) return DEFAULT_AGENT_ID;
+  return id;
 }
 
 /** 反查：给定新 id，返回对应的旧 ACP id（无则 null）。用于迁移期读旧凭证文件。 */
@@ -56,18 +69,18 @@ function makeDefaultEntry(sortOrder: number): AgentEntry {
   };
 }
 
-const CLAUDE_DEFAULT_ENTRY: AgentEntry = makeDefaultEntry(0);
-const CODEX_DEFAULT_ENTRY: AgentEntry = makeDefaultEntry(1);
-const PI_DEFAULT_ENTRY: AgentEntry = makeDefaultEntry(2);
+const PI_DEFAULT_ENTRY: AgentEntry = makeDefaultEntry(0);
 
 /**
- * 确保 agents 记录中包含必需的默认条目（claude/codex/pi）。
+ * 确保 agents 记录中包含必需的默认条目（仅 pi）。
  *
- * 兼容旧数据：若存在旧 'claude-acp' / 'pi-acp' 键，迁移其用户配置到新键
- * （'claude' / 'pi'），避免丢失用户已填的 apiKey/envText/model 等；新键已存在
- * 则不覆盖。迁移后移除旧键。
+ * 兼容旧数据：若存在旧 ACP 键 'pi-acp' / 'claude-acp'，迁移其用户配置到 'pi'，
+ * 避免丢失用户已填的 apiKey/envText/model 等；'pi' 已存在则不覆盖。迁移后移除旧键。
  *
- * 只在对应新 key 缺失时补入默认条目，不覆盖用户已有配置。
+ * 用户旧的 claude/codex 条目（runtime def 已删）原样保留在结果中，不强制创建、
+ * 也不删除——它们只是不再被使用。
+ *
+ * 只在 pi 缺失时补入默认条目，不覆盖用户已有配置。
  */
 export function ensureDefaultAgents(agents: Record<string, AgentEntry>): Record<string, AgentEntry> {
   const next: Record<string, AgentEntry> = { ...agents };
@@ -91,8 +104,6 @@ export function ensureDefaultAgents(agents: Record<string, AgentEntry>): Record<
   }
 
   return {
-    claude: CLAUDE_DEFAULT_ENTRY,
-    codex: CODEX_DEFAULT_ENTRY,
     pi: PI_DEFAULT_ENTRY,
     ...next,
   };

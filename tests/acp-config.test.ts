@@ -27,10 +27,10 @@ describe('AgentConfig', () => {
     const config = new AgentConfig(path.join(tmpDir, 'agent-config.json'));
     const data = await config.load();
     expect(data.permissionPolicy).toBe('tiered');
-    // 缺失文件时仍应包含默认的多协议条目 claude/codex/pi
-    expect(data.agents.claude).toBeDefined();
-    expect(data.agents.codex).toBeDefined();
+    // 缺失文件时只保证默认 pi 条目（codex/claude def 已移除，不再强制创建）
     expect(data.agents.pi).toBeDefined();
+    expect(data.agents.claude).toBeUndefined();
+    expect(data.agents.codex).toBeUndefined();
   });
 
   it('saves and loads agent config', async () => {
@@ -58,12 +58,12 @@ describe('AgentConfig', () => {
     expect(loaded.agents.claude.model).toBe('claude-sonnet-4-20250514');
   });
 
-  it('defaults activeAgentId to claude when missing on disk', async () => {
+  it('defaults activeAgentId to pi when missing on disk', async () => {
     const { AgentConfig } = await import('../electron/acp/config');
     const config = new AgentConfig(path.join(tmpDir, 'agent-config.json'));
-    // 缺失文件 → 默认激活 claude
+    // 缺失文件 → 默认激活 pi
     const fresh = await config.load();
-    expect(fresh.activeAgentId).toBe('claude');
+    expect(fresh.activeAgentId).toBe('pi');
 
     // 旧数据（无 activeAgentId 字段）→ 回退默认，不报错
     const configPath = path.join(tmpDir, 'legacy.json');
@@ -74,7 +74,7 @@ describe('AgentConfig', () => {
     );
     const legacy = new AgentConfig(configPath);
     const loaded = await legacy.load();
-    expect(loaded.activeAgentId).toBe('claude');
+    expect(loaded.activeAgentId).toBe('pi');
   });
 
   it('persists and reloads activeAgentId (global single active)', async () => {
@@ -82,14 +82,14 @@ describe('AgentConfig', () => {
     const config = new AgentConfig(path.join(tmpDir, 'agent-config.json'));
     await config.save({
       permissionPolicy: 'tiered',
-      activeAgentId: 'codex',
+      activeAgentId: 'pi',
       agents: {},
     });
     const loaded = await config.load();
-    expect(loaded.activeAgentId).toBe('codex');
+    expect(loaded.activeAgentId).toBe('pi');
   });
 
-  it('normalizes legacy activeAgentId on load', async () => {
+  it('normalizes legacy activeAgentId on load (claude-acp → pi)', async () => {
     const { AgentConfig } = await import('../electron/acp/config');
     const configPath = path.join(tmpDir, 'legacy-active.json');
     await fs.writeFile(
@@ -99,50 +99,53 @@ describe('AgentConfig', () => {
     );
     const config = new AgentConfig(configPath);
     const loaded = await config.load();
-    expect(loaded.activeAgentId).toBe('claude');
+    expect(loaded.activeAgentId).toBe('pi');
   });
 
   it('encrypts and decrypts API key', async () => {
     const { AgentConfig } = await import('../electron/acp/config');
     const config = new AgentConfig(path.join(tmpDir, 'agent-config.json'));
-    await config.setApiKey('claude', 'sk-ant-test-key-123');
-    const key = await config.getApiKey('claude');
-    expect(key).toBe('sk-ant-test-key-123');
+    await config.setApiKey('pi', 'sk-pi-test-key-123');
+    const key = await config.getApiKey('pi');
+    expect(key).toBe('sk-pi-test-key-123');
   });
 
-  it('getApiKey 接受旧键 claude-acp 并归一化到 claude', async () => {
+  it('getApiKey 接受旧键 pi-acp 并归一化到 pi', async () => {
     const { AgentConfig } = await import('../electron/acp/config');
     const config = new AgentConfig(path.join(tmpDir, 'agent-config.json'));
-    await config.setApiKey('claude', 'sk-new-key');
+    await config.setApiKey('pi', 'sk-new-key');
     // 用旧键查询，应归一化后读到同一个 key 文件
-    const key = await config.getApiKey('claude-acp');
+    const key = await config.getApiKey('pi-acp');
     expect(key).toBe('sk-new-key');
   });
 });
 
 describe('normalizeAgentId', () => {
-  it('maps legacy ids to new runtime ids', async () => {
+  it('收敛旧 ACP 键与已移除 runtime id 到 pi，未知值透传', async () => {
     const { normalizeAgentId } = await import('../electron/acp/config');
-    expect(normalizeAgentId('claude-acp')).toBe('claude');
+    // 旧 ACP 键 → pi
+    expect(normalizeAgentId('claude-acp')).toBe('pi');
     expect(normalizeAgentId('pi-acp')).toBe('pi');
-    expect(normalizeAgentId('codex')).toBe('codex');
-    expect(normalizeAgentId('claude')).toBe('claude');
-    expect(normalizeAgentId(undefined)).toBe('claude');
+    // 已移除的 runtime id（def 已删）→ pi
+    expect(normalizeAgentId('codex')).toBe('pi');
+    expect(normalizeAgentId('claude')).toBe('pi');
+    // 空值 → 默认 pi
+    expect(normalizeAgentId(undefined)).toBe('pi');
+    // 未知值原样透传
     expect(normalizeAgentId('unknown-xyz')).toBe('unknown-xyz');
   });
 });
 
 describe('ensureDefaultAgents', () => {
-  it('injects claude/codex/pi default entries when missing', async () => {
+  it('只保证 pi 默认条目，不再强制创建 claude/codex', async () => {
     const { ensureDefaultAgents } = await import('../electron/acp/config');
     const result = ensureDefaultAgents({});
-    expect(result.claude).toBeDefined();
-    expect(result.claude.enabled).toBe(false);
-    expect(result.claude.sortOrder).toBe(0);
-    expect(result.codex).toBeDefined();
-    expect(result.codex.sortOrder).toBe(1);
     expect(result.pi).toBeDefined();
-    expect(result.pi.sortOrder).toBe(2);
+    expect(result.pi.enabled).toBe(false);
+    expect(result.pi.sortOrder).toBe(0);
+    // codex/claude def 已移除，不再强制注入默认条目
+    expect(result.claude).toBeUndefined();
+    expect(result.codex).toBeUndefined();
   });
 
   it('does not overwrite existing pi user config', async () => {
@@ -181,19 +184,9 @@ describe('ensureDefaultAgents', () => {
     expect(result.claude).toMatchObject(userClaude);
   });
 
-  it('migrates legacy claude-acp/pi-acp config to new keys and drops legacy keys', async () => {
+  it('migrates legacy ACP keys (pi-acp / claude-acp) to pi and drops legacy keys', async () => {
     const { ensureDefaultAgents } = await import('../electron/acp/config');
-    const legacyClaude = {
-      enabled: true,
-      authMode: 'custom_api' as const,
-      apiKey: 'legacy-claude-key',
-      apiBaseUrl: 'https://legacy.anthropic.com',
-      model: 'claude-legacy',
-      envText: 'X=1',
-      configJson: '',
-      version: '0.20.0',
-      sortOrder: 9,
-    };
+    // 单个旧 ACP 键各自迁移到 pi
     const legacyPi = {
       enabled: true,
       authMode: 'subscription' as const,
@@ -205,38 +198,59 @@ describe('ensureDefaultAgents', () => {
       version: '',
       sortOrder: 7,
     };
-    const result = ensureDefaultAgents({
-      'claude-acp': legacyClaude,
-      'pi-acp': legacyPi,
-    });
-    // 旧键已迁移到新键，用户配置保留（backfill 会补 skills，用 toMatchObject 验证核心字段）
-    expect(result.claude).toMatchObject(legacyClaude);
-    expect(result.pi).toMatchObject(legacyPi);
-    // 旧键被移除
-    expect(result['claude-acp']).toBeUndefined();
-    expect(result['pi-acp']).toBeUndefined();
-    // codex 默认补入
-    expect(result.codex).toBeDefined();
+    const fromPiAcp = ensureDefaultAgents({ 'pi-acp': legacyPi });
+    expect(fromPiAcp.pi).toMatchObject(legacyPi);
+    expect(fromPiAcp['pi-acp']).toBeUndefined();
+
+    const legacyClaude = {
+      enabled: true,
+      authMode: 'custom_api' as const,
+      apiKey: 'legacy-claude-key',
+      apiBaseUrl: 'https://legacy.anthropic.com',
+      model: 'claude-legacy',
+      envText: 'X=1',
+      configJson: '',
+      version: '0.20.0',
+      sortOrder: 9,
+    };
+    const fromClaudeAcp = ensureDefaultAgents({ 'claude-acp': legacyClaude });
+    // claude-acp（claude def 已移除）的 ACP 配置同样收敛到 pi
+    expect(fromClaudeAcp.pi).toMatchObject(legacyClaude);
+    expect(fromClaudeAcp['claude-acp']).toBeUndefined();
+    // 不再强制创建 codex 条目
+    expect(fromClaudeAcp.codex).toBeUndefined();
   });
 
-  it('does not overwrite new key when both legacy and new exist', async () => {
+  it('does not overwrite pi when both legacy ACP key and pi exist', async () => {
     const { ensureDefaultAgents } = await import('../electron/acp/config');
-    const legacyClaude = { ...EMPTY_ENTRY, model: 'from-legacy', sortOrder: 0 };
-    const newClaude = { ...EMPTY_ENTRY, model: 'from-new', sortOrder: 0 };
+    const legacyPi = { ...EMPTY_ENTRY, model: 'from-legacy', sortOrder: 0 };
+    const newPi = { ...EMPTY_ENTRY, model: 'from-new', sortOrder: 0 };
     const result = ensureDefaultAgents({
-      'claude-acp': legacyClaude,
-      claude: newClaude,
+      'pi-acp': legacyPi,
+      pi: newPi,
     });
-    expect(result.claude.model).toBe('from-new');
-    expect(result['claude-acp']).toBeUndefined();
+    expect(result.pi.model).toBe('from-new');
+    expect(result['pi-acp']).toBeUndefined();
   });
 
-  it('load() returns pi with enabled=false and sortOrder=2 for new config', async () => {
+  it('preserves user claude/codex entries without forcing them as defaults', async () => {
+    const { ensureDefaultAgents } = await import('../electron/acp/config');
+    // 用户旧持久化的 claude/codex 条目不在 LEGACY_ID_MAP 中，原样保留、不被删除
+    const userClaude = { ...EMPTY_ENTRY, model: 'kept-claude', sortOrder: 3 };
+    const userCodex = { ...EMPTY_ENTRY, model: 'kept-codex', sortOrder: 4 };
+    const result = ensureDefaultAgents({ claude: userClaude, codex: userCodex });
+    expect(result.claude).toMatchObject(userClaude);
+    expect(result.codex).toMatchObject(userCodex);
+    // pi 默认仍补入
+    expect(result.pi).toBeDefined();
+  });
+
+  it('load() returns pi with enabled=false and sortOrder=0 for new config', async () => {
     const { AgentConfig } = await import('../electron/acp/config');
     const config = new AgentConfig(path.join(tmpDir, 'agent-config.json'));
     const data = await config.load();
     expect(data.agents.pi.enabled).toBe(false);
-    expect(data.agents.pi.sortOrder).toBe(2);
+    expect(data.agents.pi.sortOrder).toBe(0);
   });
 
   it('load() preserves user-modified claude after save/load roundtrip', async () => {
@@ -262,7 +276,7 @@ describe('ensureDefaultAgents', () => {
     expect(loaded.agents.claude).toMatchObject(customClaude);
   });
 
-  it('load() migrates legacy on-disk config to new keys', async () => {
+  it('load() migrates legacy on-disk ACP config to pi', async () => {
     const { AgentConfig } = await import('../electron/acp/config');
     const configPath = path.join(tmpDir, 'agent-config.json');
     await fs.writeFile(
@@ -275,7 +289,7 @@ describe('ensureDefaultAgents', () => {
     );
     const config = new AgentConfig(configPath);
     const loaded = await config.load();
-    expect(loaded.agents.claude.model).toBe('legacy-on-disk');
+    expect(loaded.agents.pi.model).toBe('legacy-on-disk');
     expect(loaded.agents['claude-acp']).toBeUndefined();
   });
 });
