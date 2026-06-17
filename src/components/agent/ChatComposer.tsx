@@ -16,6 +16,7 @@ import React from 'react';
 import { MessageInput, type MessageInputProps } from './MessageInput';
 import { AgentPicker } from './AgentPicker';
 import { ModelPicker } from './ModelPicker';
+import { ThinkingLevelPicker } from './ThinkingLevelPicker';
 
 export interface ChatComposerProps extends MessageInputProps {
   /** 是否在输入框上方显示 agent 选择器（仅新建会话/未绑定 agent 时为 true）。 */
@@ -34,6 +35,10 @@ export interface ChatComposerProps extends MessageInputProps {
   modelId?: string;
   /** 模型切换回调。 */
   onModelChange?: (modelId: string) => void;
+  /** 当前思考程度 id（受控）；缺省时用 presentation.defaultReasoning。 */
+  reasoningId?: string;
+  /** 思考程度切换回调。 */
+  onReasoningChange?: (reasoningId: string) => void;
   /** 点击芯片 agent 区进入设置中心切换 agent。 */
   onOpenAgentSettings?: () => void;
 }
@@ -45,6 +50,8 @@ export function ChatComposer({
   agentId,
   modelId,
   onModelChange,
+  reasoningId,
+  onReasoningChange,
   onOpenAgentSettings,
   ...messageInputProps
 }: ChatComposerProps): React.ReactElement {
@@ -60,12 +67,20 @@ export function ChatComposer({
       )}
       <MessageInput {...messageInputProps} />
       {agentId && (
-        <div className="chat-composer__model-picker">
+        <div
+          className="chat-composer__model-picker"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
+        >
           <ModelPicker
             agentId={agentId}
             value={modelId}
             onChange={(id) => onModelChange?.(id)}
             onOpenAgentSettings={onOpenAgentSettings}
+          />
+          <ThinkingLevelPicker
+            agentId={agentId}
+            value={reasoningId}
+            onChange={(id) => onReasoningChange?.(id)}
           />
         </div>
       )}

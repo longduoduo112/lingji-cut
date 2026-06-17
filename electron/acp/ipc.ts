@@ -6,6 +6,8 @@ import { AgentConfig, normalizeAgentId } from './config';
 import { BinaryManager } from './binary-manager';
 import { RuntimeRegistry } from '../agent-runtime/runtime-registry';
 import { getAgentDef } from '../agent-runtime/registry';
+import { listAgentModels } from '../agent-runtime/detection';
+import { fetchAgentApiModels } from './fetch-agent-api-models';
 import { runPreflight } from './preflight';
 import { McpConfigManager } from '../mcp/config-manager';
 import { getMcpServerStatus } from '../mcp/server';
@@ -16,7 +18,9 @@ const CONFIG_PATH = path.join(os.homedir(), '.lingji', 'agent-config.json');
 
 const config = new AgentConfig(CONFIG_PATH);
 const binaryManager = new BinaryManager();
-const runtimeRegistry = new RuntimeRegistry();
+// binaryManager 必须注入：AgentSession 依赖它做 detection / ensureNodeInPath，
+// 否则 sendPrompt 会报 'AgentSession: missing binaryManager'。
+const runtimeRegistry = new RuntimeRegistry({ binaryManager });
 
 interface RuntimeConnectPayload {
   conversationId: number;
@@ -107,7 +111,12 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
 
   ipcMain.handle(
     'agent:send-prompt-runtime',
-    async (_event, conversationId: number, contents: unknown[], opts?: { model?: string }) => {
+    async (
+      _event,
+      conversationId: number,
+      contents: unknown[],
+      opts?: { model?: string; reasoning?: string },
+    ) => {
       await runtimeRegistry.sendPrompt(conversationId, contents, opts);
     },
   );
@@ -131,6 +140,12 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
   // 配置管理
   ipcMain.handle('agent:get-config', () => config.load());
   ipcMain.handle('agent:save-config', async (_event, data) => config.save(data));
+  // 立即持久化全局激活 agent（不连带保存表单内其它未保存的草稿编辑）。
+  ipcMain.handle('agent:set-active-agent', async (_event, agentId: string) => {
+    const data = await config.load();
+    data.activeAgentId = normalizeAgentId(agentId);
+    await config.save(data);
+  });
   ipcMain.handle('agent:get-api-key', async (_event, agentId: string) => config.getApiKey(agentId));
   ipcMain.handle('agent:set-api-key', async (_event, agentId: string, key: string) =>
     config.setApiKey(agentId, key),
@@ -151,6 +166,25 @@ export function registerAgentIpc(getMainWindow: () => BrowserWindow | null): voi
   ipcMain.handle('agent:run-preflight', (_e, agentId?: string) =>
     runPreflight(binaryManager, config, agentId ?? 'claude'),
   );
+
+  // 动态模型列表：解析 agent CLI 的可选模型（pi 走 `pi --list-models`），
+  // 拉不到 / 未安装 / 非动态 agent 时返回兜底列表（source:'fallback'）。
+  ipcMain.handle('agent:list-models', async (_e, agentId?: string) => {
+    const id = normalizeAgentId(agentId ?? 'claude');
+    const def = getAgentDef(id);
+    if (!def) return { models: [], source: 'fallback' as const };
+    // claude CLI 无「列模型」命令；自定义 API 模式下从配置的 /v1/models 拉真实模型。
+    if (id === 'claude') {
+      const cfg = await config.load();
+      const entry = cfg.agents[id];
+      if (entry?.authMode === 'custom_api' && entry.apiBaseUrl?.trim()) {
+        const apiKey = await config.getApiKey(id);
+        const models = await fetchAgentApiModels(entry.apiBaseUrl, apiKey);
+        if (models && models.length > 0) return { models, source: 'live' as const };
+      }
+    }
+    return listAgentModels(binaryManager, def);
+  });
   ipcMain.handle('agent:install', async (_event, version: string) => binaryManager.install(version));
   ipcMain.handle('agent:uninstall', () => binaryManager.uninstall());
   ipcMain.handle('agent:get-latest-version', () => binaryManager.getLatestVersion());

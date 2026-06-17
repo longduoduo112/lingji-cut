@@ -5,6 +5,7 @@ import {
   getOpenedConversation,
   openConversation,
 } from './conversation-api';
+import { getPreferredAgentType } from './agent-api';
 
 const DEFAULT_AGENT_TYPE = 'claude';
 export const QUICK_ACTION_CONVERSATION_EVENT = 'conversation:activate';
@@ -52,9 +53,11 @@ async function ensureOpenedConversationRuntime(projectId: string): Promise<numbe
   const { agentApi } = assertAgentApi();
   let conversationId = await getOpenedConversation(projectId);
   if (conversationId === null) {
+    // 跟随设置中心的全局激活 agent；解析失败才回退默认。
+    const agentType = (await getPreferredAgentType()) || DEFAULT_AGENT_TYPE;
     const created = await createConversation({
       projectId,
-      agentType: DEFAULT_AGENT_TYPE,
+      agentType,
       title: '脚本工作台会话',
     });
     conversationId = created.id;

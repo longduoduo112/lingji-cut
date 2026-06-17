@@ -138,6 +138,35 @@ describe('agent-runtime registry', () => {
       expect(args).toContain('--mode');
       expect(args).toContain('rpc');
     });
+
+    it('reasoning 非 default → 透传 --thinking', () => {
+      const def = getAgentDef('pi')!;
+      const args = def.buildArgs({ prompt: 'hi', reasoning: 'high' });
+      expect(args).toContain('--thinking');
+      expect(args[args.indexOf('--thinking') + 1]).toBe('high');
+    });
+
+    it("reasoning='default' → 不透传 --thinking", () => {
+      const def = getAgentDef('pi')!;
+      const args = def.buildArgs({ prompt: 'hi', reasoning: 'default' });
+      expect(args).not.toContain('--thinking');
+    });
+  });
+
+  describe('codex/pi reasoningOptions', () => {
+    it('pi 暴露非空 reasoningOptions 且默认 default', () => {
+      const def = getAgentDef('pi')!;
+      expect(def.reasoningOptions && def.reasoningOptions.length).toBeGreaterThan(0);
+      expect(def.defaultReasoning).toBe('default');
+    });
+
+    it('codex reasoning 非 default → -c model_reasoning_effort，且 prompt 仍在末尾', () => {
+      const def = getAgentDef('codex')!;
+      const args = def.buildArgs({ prompt: 'analyze', model: 'gpt-5', reasoning: 'high' });
+      expect(args).toContain('-c');
+      expect(args.some((a) => a.includes('model_reasoning_effort'))).toBe(true);
+      expect(args[args.length - 1]).toBe('analyze');
+    });
   });
 
   describe('registry id uniqueness', () => {

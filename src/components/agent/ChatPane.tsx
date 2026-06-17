@@ -156,9 +156,14 @@ export function ChatPane({
   // 会话级模型选择：默认取该 agent 的 defaultModel。会话切换时重置为新 agent 的默认。
   const agentType = detail?.agentType;
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
+  // 会话级思考程度：默认取该 agent 的 defaultReasoning。会话/agent 切换时重置。
+  const [selectedReasoning, setSelectedReasoning] = useState<string | undefined>(undefined);
   useEffect(() => {
     const presentation = agentType ? getAgentPresentation(agentType) : null;
     setSelectedModel(presentation?.defaultModel ?? presentation?.models?.[0]?.id);
+    setSelectedReasoning(
+      presentation?.defaultReasoning ?? presentation?.reasoningOptions?.[0]?.id,
+    );
   }, [agentType, conversationId]);
 
   const ensureConnected = useCallback(async () => {
@@ -175,9 +180,12 @@ export function ChatPane({
     async (blocks: PromptInputBlock[]) => {
       if (!conversationId || !projectDir) return;
       await ensureConnected();
-      await connection.send(blocks, selectedModel ? { model: selectedModel } : undefined);
+      const opts: { model?: string; reasoning?: string } = {};
+      if (selectedModel) opts.model = selectedModel;
+      if (selectedReasoning) opts.reasoning = selectedReasoning;
+      await connection.send(blocks, Object.keys(opts).length > 0 ? opts : undefined);
     },
-    [conversationId, projectDir, ensureConnected, connection, selectedModel],
+    [conversationId, projectDir, ensureConnected, connection, selectedModel, selectedReasoning],
   );
 
   if (conversationId === null) {
@@ -272,6 +280,8 @@ export function ChatPane({
           agentId={agentType}
           modelId={selectedModel}
           onModelChange={setSelectedModel}
+          reasoningId={selectedReasoning}
+          onReasoningChange={setSelectedReasoning}
           onOpenAgentSettings={onOpenAgentSettings}
         />
         {!explicitActivated ? (

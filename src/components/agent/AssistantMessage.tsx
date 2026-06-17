@@ -15,6 +15,7 @@ import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { Button } from '../../ui';
 import { AgentIcon } from './AgentIcon';
+import { CopyButton } from './CopyButton';
 import { TextBlock } from './TextBlock';
 import { ThinkingBlock } from './ThinkingBlock';
 import { ErrorBlock } from './ErrorBlock';
@@ -45,7 +46,22 @@ function toToolCallProps(block: ToolCallBlockData) {
  *  - 段内 ≥2 个同名 tool_call → 渲染 <ToolGroupBlock> 聚合卡。
  * 非 tool_call（text/thinking/error）打断聚合（只聚合连续同名 tool_call）。
  */
-export function renderBlocks(blocks: ConversationBlock[]): React.ReactNode[] {
+export function renderBlocks(
+  blocks: ConversationBlock[],
+  opts: { isLastAssistant?: boolean; isStreaming?: boolean } = {},
+): React.ReactNode[] {
+  // 仅「最新一条 assistant 消息中的最后一个 thinking 块」算作最新：默认展开实时查看，
+  // 其余历史 thinking 折叠，避免推理内容堆叠占屏。
+  let lastThinkingIndex = -1;
+  if (opts.isLastAssistant) {
+    for (let k = blocks.length - 1; k >= 0; k -= 1) {
+      if (blocks[k].type === 'thinking') {
+        lastThinkingIndex = k;
+        break;
+      }
+    }
+  }
+
   const out: React.ReactNode[] = [];
   let i = 0;
   while (i < blocks.length) {
@@ -55,9 +71,18 @@ export function renderBlocks(blocks: ConversationBlock[]): React.ReactNode[] {
         case 'text':
           out.push(<TextBlock key={i} text={block.text} />);
           break;
-        case 'thinking':
-          out.push(<ThinkingBlock key={i} text={block.text} />);
+        case 'thinking': {
+          const isLatest = i === lastThinkingIndex;
+          out.push(
+            <ThinkingBlock
+              key={i}
+              text={block.text}
+              isLatest={isLatest}
+              streaming={isLatest && Boolean(opts.isStreaming)}
+            />,
+          );
           break;
+        }
         case 'error':
           out.push(<ErrorBlock key={i} message={block.message} />);
           break;
@@ -87,6 +112,15 @@ export function renderBlocks(blocks: ConversationBlock[]): React.ReactNode[] {
     i = j;
   }
   return out;
+}
+
+/** 从 turn 的 text 块拼出可复制的纯文本（thinking / tool_call / error 不计入）。 */
+function copyableText(turn: ConversationTurn): string {
+  return turn.blocks
+    .filter((block): block is Extract<ConversationBlock, { type: 'text' }> => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n\n')
+    .trim();
 }
 
 /** agentId → 展示名映射，作为 turn.agentName 缺失时的回退。 */
@@ -193,6 +227,10 @@ export interface AssistantMessageProps {
   pendingPermission?: PendingPermission | null;
   /** 用户响应权限请求回调 */
   onRespondPermission?: (requestId: string, optionId: string) => void;
+  /** 是否为最新一条 assistant 消息（决定其最后一个 thinking 是否默认展开）。 */
+  isLastAssistant?: boolean;
+  /** 是否处于流式输出中（用于最新 thinking 的「推理中」视觉）。 */
+  isStreaming?: boolean;
 }
 
 function AssistantMessageInner({
@@ -200,20 +238,36 @@ function AssistantMessageInner({
   fallbackAgentId,
   pendingPermission,
   onRespondPermission,
+  isLastAssistant,
+  isStreaming,
 }: AssistantMessageProps): React.ReactElement {
   const agentId = turn.agentId ?? fallbackAgentId ?? 'agent';
   const agentName = turn.agentName ?? agentNameFromId(agentId);
+  const copyText = copyableText(turn);
 
   return (
-    <div className="flex flex-col gap-2 max-w-[95%]">
-      {/* agent 身份头 */}
+    // group：用于在 hover 时提亮复制按钮。
+    // userSelect:text + cursor:auto：显式允许鼠标拖拽选中消息文本并手动复制，
+    // 不受外层可能继承的 user-select:none 影响。
+    <div
+      className="group flex flex-col gap-2 max-w-[95%]"
+      style={{ userSelect: 'text', WebkitUserSelect: 'text', cursor: 'auto' }}
+    >
+      {/* agent 身份头 + 复制按钮 */}
       <div className="flex items-center gap-2 text-[11px] font-medium text-mac-text-muted/70">
         <AgentIcon agentId={agentId} size={16} />
         <span>{agentName}</span>
+        {copyText ? (
+          <CopyButton
+            text={copyText}
+            label="复制回复"
+            className="ml-auto opacity-60 group-hover:opacity-100 focus-visible:opacity-100"
+          />
+        ) : null}
       </div>
 
       {/* block 分发（连续同名 tool_call 聚合为 ToolGroupBlock） */}
-      {renderBlocks(turn.blocks)}
+      {renderBlocks(turn.blocks, { isLastAssistant, isStreaming })}
 
       {/* 权限卡 */}
       {pendingPermission ? (
@@ -237,7 +291,9 @@ function areEqual(prev: AssistantMessageProps, next: AssistantMessageProps): boo
     prev.turn === next.turn &&
     prev.fallbackAgentId === next.fallbackAgentId &&
     prev.pendingPermission === next.pendingPermission &&
-    prev.onRespondPermission === next.onRespondPermission
+    prev.onRespondPermission === next.onRespondPermission &&
+    prev.isLastAssistant === next.isLastAssistant &&
+    prev.isStreaming === next.isStreaming
   );
 }
 

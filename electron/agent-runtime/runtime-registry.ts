@@ -27,7 +27,7 @@
 
 import { EventEmitter } from 'node:events';
 import { AgentSession } from './session';
-import type { AgentSessionStartInput } from './session';
+import type { AgentSessionStartInput, SessionBinaryManager } from './session';
 import type { AgentStreamEvent } from './event-model';
 import { toRuntimeEvent } from './event-model';
 import { getAgentDef } from './registry';
@@ -82,14 +82,22 @@ interface RuntimeContextEntry {
   snapshot: RuntimeSnapshot;
   def: RuntimeAgentDef;
   model?: string;
+  /** 思考程度（reasoning effort）；每轮可热切，沿用至后续轮。 */
+  reasoning?: string;
   env?: Record<string, string>;
   /** 当前活跃的轮会话（仅在 prompting 期间存在） */
   activeSession: AgentSessionLike | null;
 }
 
 interface RuntimeRegistryOptions {
-  /** 可注入的 AgentSession 工厂；默认 new AgentSession()。 */
+  /** 可注入的 AgentSession 工厂；默认 () => new AgentSession({ binaryManager })。 */
   createSession?: () => AgentSessionLike;
+  /**
+   * detection / ensureNodeInPath 用的 BinaryManager。默认 createSession 会把它
+   * 注入新建的 AgentSession；不提供 binaryManager 也不提供 createSession 时，
+   * AgentSession.start() 会报 'missing binaryManager'。
+   */
+  binaryManager?: SessionBinaryManager;
   defaultPermissionPolicy?: string;
 }
 
@@ -103,7 +111,9 @@ export class RuntimeRegistry extends EventEmitter {
   constructor(options: RuntimeRegistryOptions = {}) {
     super();
     this.permissionPolicy = options.defaultPermissionPolicy ?? 'tiered';
-    this.createSession = options.createSession ?? (() => new AgentSession());
+    const binaryManager = options.binaryManager;
+    this.createSession =
+      options.createSession ?? (() => new AgentSession({ binaryManager }));
   }
 
   size(): number {
@@ -160,14 +170,17 @@ export class RuntimeRegistry extends EventEmitter {
   async sendPrompt(
     conversationId: number,
     contents: unknown[],
-    opts?: { model?: string },
+    opts?: { model?: string; reasoning?: string },
   ): Promise<void> {
     const entry = this.getEntryOrThrow(conversationId);
 
-    // 每轮可热切 model：opts.model 覆盖 connect 时登记的 entry.model（仅本轮）。
-    // 并回写 entry.model 使后续轮沿用，与芯片受控选择保持一致。
+    // 每轮可热切 model / reasoning：opts 覆盖登记值并回写，后续轮沿用，
+    // 与芯片受控选择保持一致。
     if (opts?.model) {
       entry.model = opts.model;
+    }
+    if (opts?.reasoning) {
+      entry.reasoning = opts.reasoning;
     }
 
     const prompt = stringifyContents(contents);
@@ -210,6 +223,7 @@ export class RuntimeRegistry extends EventEmitter {
         prompt,
         cwd: entry.snapshot.projectDir,
         model: entry.model ?? entry.def.defaultModel,
+        reasoning: entry.reasoning ?? entry.def.defaultReasoning,
         env: entry.env,
         // resume：pi 经 parentSession，claude/codex 经 resumeSessionId。
         // TODO(A10+): 区分协议传递 resume；首版统一透传已记录 sessionId。

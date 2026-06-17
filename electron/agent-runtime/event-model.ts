@@ -94,6 +94,25 @@ export type RuntimeEventOut =
   /** case 'session_started': payload.sessionId（用于持久化 externalId） */
   | { type: 'session_started'; sessionId: string };
 
+// ─── 工具分类 ─────────────────────────────────────────────────────────────────
+
+/**
+ * 按工具名推断一个粗粒度类别标签（仅用于 UI 右上角的小标签）。
+ * 无法判断时返回 ''（UI 在 kind 为空时不渲染标签，避免显示无意义的 "other"）。
+ * 主标题始终用工具名（title），类别只是辅助。
+ */
+export function classifyToolKind(name: string): string {
+  const n = (name || '').toLowerCase();
+  if (!n) return '';
+  if (/(bash|shell|exec|run|command|terminal|process|kill)/.test(n)) return 'execute';
+  if (/(write|edit|create|update|patch|apply|insert|append|replace|delete|remove|\brm\b|move|rename|mkdir)/.test(n))
+    return 'edit';
+  if (/(fetch|http|web|curl|browse|download|request)/.test(n)) return 'fetch';
+  if (/(read|cat|view|open|glob|grep|search|find|\blist\b|\bls\b|get_|read_)/.test(n)) return 'read';
+  if (/(think|todo|plan)/.test(n)) return 'think';
+  return '';
+}
+
 // ─── 映射函数 ─────────────────────────────────────────────────────────────────
 
 /**
@@ -119,8 +138,10 @@ export function toRuntimeEvent(ev: AgentStreamEvent): RuntimeEventOut | null {
       return {
         type: 'tool_call',
         toolCallId: ev.id,
-        title: ev.name,
-        kind: 'other',
+        // 标题用工具名；缺省兜底 'Tool'（避免空标题）。
+        title: ev.name || 'Tool',
+        // 类别按工具名派生；无法判断时为空，UI 不渲染标签（不再显示 "other"）。
+        kind: classifyToolKind(ev.name),
         status: 'pending',
         rawInput: JSON.stringify(ev.input ?? null),
       };

@@ -101,6 +101,57 @@ describe('AssistantMessage agent 头', () => {
   });
 });
 
+describe('AssistantMessage 复制按钮 + 文本可选中', () => {
+  it('renders a 复制回复 button and allows text selection on content', () => {
+    const html = renderToStaticMarkup(<AssistantMessage turn={makeTurn()} />);
+    // 复制按钮（aria-label = 复制回复）
+    expect(html).toContain('aria-label="复制回复"');
+    // 显式允许鼠标拖拽选中文本（user-select: text）
+    expect(html).toMatch(/user-select:\s*text/i);
+  });
+
+  it('does not render copy button when there is no text block', () => {
+    const turn = makeTurn({
+      blocks: [{ type: 'thinking', text: '只有思考没有正文' }],
+    });
+    const html = renderToStaticMarkup(<AssistantMessage turn={turn} />);
+    expect(html).not.toContain('aria-label="复制回复"');
+  });
+
+  it('copies the joined text blocks to clipboard on click', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    const turn = makeTurn({
+      blocks: [
+        { type: 'text', text: '第一段' },
+        { type: 'thinking', text: '思考不计入复制' },
+        { type: 'text', text: '第二段' },
+      ],
+    });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(<AssistantMessage turn={turn} />);
+    });
+
+    const copyButton = Array.from(container.querySelectorAll('button')).find(
+      (el) => el.getAttribute('aria-label') === '复制回复',
+    )!;
+    expect(copyButton).toBeTruthy();
+    act(() => {
+      copyButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(writeText).toHaveBeenCalledWith('第一段\n\n第二段');
+
+    act(() => root.unmount());
+    container.remove();
+  });
+});
+
 describe('AssistantMessage 权限卡', () => {
   it('renders permission options when pendingPermission is provided', () => {
     const html = renderToStaticMarkup(

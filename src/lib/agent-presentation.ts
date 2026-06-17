@@ -64,6 +64,10 @@ export interface AgentPresentation extends AgentUiMeta {
   models?: AgentModel[];
   /** Default model id (from runtime def). */
   defaultModel?: string;
+  /** 思考程度可选项（为空表示该 agent 不支持思考程度切换）。 */
+  reasoningOptions?: AgentModel[];
+  /** 默认思考程度 id。 */
+  defaultReasoning?: string;
 }
 
 function uiMetaFor(id: string): AgentUiMeta {
@@ -77,6 +81,8 @@ export function listAgentPresentations(): AgentPresentation[] {
     displayName: def.name,
     models: def.models,
     defaultModel: def.defaultModel,
+    reasoningOptions: def.reasoningOptions,
+    defaultReasoning: def.defaultReasoning,
     ...uiMetaFor(def.id),
   }));
 }
@@ -90,6 +96,8 @@ export function getAgentPresentation(id: string | undefined | null): AgentPresen
     displayName: def.name,
     models: def.models,
     defaultModel: def.defaultModel,
+    reasoningOptions: def.reasoningOptions,
+    defaultReasoning: def.defaultReasoning,
     ...uiMetaFor(def.id),
   };
 }

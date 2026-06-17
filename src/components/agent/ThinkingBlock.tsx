@@ -5,25 +5,29 @@ export function ThinkingBlock({
   text,
   label = '思考过程',
   streaming = false,
+  isLatest = false,
 }: {
   text: string;
   label?: string;
   streaming?: boolean;
+  /**
+   * 是否为「最新」的思考过程：最新的默认展开实时查看；当更新的思考出现、
+   * 本块不再是最新时自动折叠，避免历史推理堆叠占屏。期间用户仍可手动切换。
+   */
+  isLatest?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [autoExpandedFor, setAutoExpandedFor] = useState(false);
+  const [expanded, setExpanded] = useState(isLatest);
+  const prevLatestRef = useRef(isLatest);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  // 流式开始时自动展开一次，之后尊重用户手动折叠
+  // 最新性翻转时同步展开态：成为最新→展开；不再最新→折叠。
+  // 仅在翻转时改写，翻转之间保留用户的手动切换。
   useEffect(() => {
-    if (streaming && !autoExpandedFor) {
-      setExpanded(true);
-      setAutoExpandedFor(true);
+    if (prevLatestRef.current !== isLatest) {
+      setExpanded(isLatest);
+      prevLatestRef.current = isLatest;
     }
-    if (!streaming) {
-      setAutoExpandedFor(false);
-    }
-  }, [streaming, autoExpandedFor]);
+  }, [isLatest]);
 
   // 流式期间自动滚动到底部，跟随最新推理内容
   useEffect(() => {

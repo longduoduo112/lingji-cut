@@ -8,6 +8,13 @@ import type {
   PreflightCheck,
   PromptInputBlock,
 } from '../../electron/acp/types';
+import type { AgentModel } from '../../electron/agent-runtime/types';
+
+/** 动态模型列表结果（与 main 侧 listAgentModels 对齐）。 */
+export interface AgentModelList {
+  models: AgentModel[];
+  source: 'live' | 'fallback';
+}
 
 // ─── 前端使用的消息类型 ────────────────────────────────────
 
@@ -77,6 +84,8 @@ export interface AgentAPI {
   // 设置
   getConfig(): Promise<AgentConfigData>;
   saveConfig(data: AgentConfigData): Promise<void>;
+  /** 立即持久化全局激活 agent（新建会话据此决定 agentType）。 */
+  setActiveAgent(agentId: string): Promise<void>;
   getApiKey(agentId: string): Promise<string>;
   setApiKey(agentId: string, key: string): Promise<void>;
   getPermissionPolicy(): Promise<PermissionPolicy>;
@@ -84,6 +93,8 @@ export interface AgentAPI {
 
   // 预检与安装
   runPreflight(agentId?: string): Promise<PreflightCheck[]>;
+  /** 拉取某 agent 的可选模型列表（pi 走 `pi --list-models`，失败回退兜底）。 */
+  listModels(agentId: string): Promise<AgentModelList>;
   installAgent(version: string): Promise<void>;
   uninstallAgent(): Promise<void>;
   getLatestVersion(): Promise<string | null>;
@@ -99,7 +110,7 @@ export interface AgentAPI {
   sendPromptToConversation(
     conversationId: number,
     contents: PromptInputBlock[],
-    opts?: { model?: string },
+    opts?: { model?: string; reasoning?: string },
   ): Promise<void>;
   cancelConversationTurn(conversationId: number): Promise<void>;
   setConversationMode(conversationId: number, modeId: string): Promise<void>;

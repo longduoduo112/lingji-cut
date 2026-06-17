@@ -466,12 +466,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 contextBridge.exposeInMainWorld('agentAPI', {
   getConfig: () => ipcRenderer.invoke('agent:get-config'),
   saveConfig: (data: unknown) => ipcRenderer.invoke('agent:save-config', data),
+  setActiveAgent: (agentId: string) => ipcRenderer.invoke('agent:set-active-agent', agentId),
   getApiKey: (agentId: string) => ipcRenderer.invoke('agent:get-api-key', agentId),
   setApiKey: (agentId: string, key: string) => ipcRenderer.invoke('agent:set-api-key', agentId, key),
   getPermissionPolicy: () => ipcRenderer.invoke('agent:get-permission-policy'),
   setPermissionPolicy: (policy: string) => ipcRenderer.invoke('agent:set-permission-policy', policy),
 
   runPreflight: (agentId?: string) => ipcRenderer.invoke('agent:run-preflight', agentId),
+  listModels: (agentId: string) => ipcRenderer.invoke('agent:list-models', agentId),
   installAgent: (version: string) => ipcRenderer.invoke('agent:install', version),
   uninstallAgent: () => ipcRenderer.invoke('agent:uninstall'),
   getLatestVersion: () => ipcRenderer.invoke('agent:get-latest-version'),
@@ -479,8 +481,11 @@ contextBridge.exposeInMainWorld('agentAPI', {
   connectRuntime: (input: { conversationId: number; projectDir: string; sessionId?: string | null; agentType?: string }) =>
     ipcRenderer.invoke('agent:connect-runtime', input),
   disconnectRuntime: (conversationId: number) => ipcRenderer.invoke('agent:disconnect-runtime', conversationId),
-  sendPromptToConversation: (conversationId: number, contents: unknown[], opts?: { model?: string }) =>
-    ipcRenderer.invoke('agent:send-prompt-runtime', conversationId, contents, opts),
+  sendPromptToConversation: (
+    conversationId: number,
+    contents: unknown[],
+    opts?: { model?: string; reasoning?: string },
+  ) => ipcRenderer.invoke('agent:send-prompt-runtime', conversationId, contents, opts),
   cancelConversationTurn: (conversationId: number) =>
     ipcRenderer.invoke('agent:cancel-turn-runtime', conversationId),
   setConversationMode: (conversationId: number, modeId: string) =>

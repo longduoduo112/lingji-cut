@@ -11,7 +11,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { RuntimeAgentDef } from './types.js';
+import type { AgentModel, RuntimeAgentDef } from './types.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -69,6 +69,89 @@ export async function detectAgent(
   }
 
   return { installed: true, binPath, version };
+}
+
+// ─── 动态模型列表拉取 ─────────────────────────────────────────────────────────
+
+export type ModelListSource = 'live' | 'fallback';
+
+export interface ModelListResult {
+  models: AgentModel[];
+  /** 'live'：来自 CLI 实时拉取；'fallback'：兜底 / 静态列表。 */
+  source: ModelListSource;
+}
+
+/** clean env：去掉 npm_*（与 session.ts spawn 一致），避免污染 CLI 探测。 */
+function modelExecEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith('npm_')) env[key] = value;
+  }
+  return env;
+}
+
+/**
+ * 拉取某个 agent 的可用模型列表。
+ *
+ * 策略：
+ *   - def 未声明 `listModelsArgs` + `parseModels` → 直接返回兜底（claude/codex 等静态 agent）。
+ *   - 解析不到 bin / 执行异常 / 解析为空 → 返回兜底（fallbackModels ?? models）。
+ *   - 成功解析出非空列表 → source:'live'。
+ *
+ * 部分 CLI（pi）把表格打印到 stderr，故按 `def.modelsOutputStream` 选流；
+ * 即便命令以非零退出码结束，也尝试从 error 的 stdout/stderr 解析（容错）。
+ */
+export async function listAgentModels(
+  bm: BinaryManagerLike,
+  def: RuntimeAgentDef,
+): Promise<ModelListResult> {
+  const fallback: ModelListResult = {
+    models: def.fallbackModels ?? def.models ?? [],
+    source: 'fallback',
+  };
+
+  if (!def.listModelsArgs || !def.parseModels) return fallback;
+
+  // 解析 bin（def.bin → fallbackBins）
+  let binPath: string | null = null;
+  for (const candidate of [def.bin, ...(def.fallbackBins ?? [])]) {
+    const resolved = await bm.resolveBinary(candidate);
+    if (resolved) {
+      binPath = resolved;
+      break;
+    }
+  }
+  if (!binPath) return fallback;
+
+  // 优先解析声明的流；失败再试另一条流（不同 CLI 版本可能把列表打到 stdout 或 stderr）。
+  const parseDef = def.parseModels;
+  const tryParse = (out: { stdout?: unknown; stderr?: unknown }): AgentModel[] | null => {
+    const primary = def.modelsOutputStream === 'stderr' ? out.stderr : out.stdout;
+    const secondary = def.modelsOutputStream === 'stderr' ? out.stdout : out.stderr;
+    for (const raw of [primary, secondary]) {
+      try {
+        const parsed = parseDef(String(raw ?? ''));
+        if (parsed && parsed.length > 0) return parsed;
+      } catch {
+        // 试下一条流
+      }
+    }
+    return null;
+  };
+
+  try {
+    const result = await execFileAsync(binPath, def.listModelsArgs, {
+      timeout: 20_000,
+      maxBuffer: 8 * 1024 * 1024,
+      env: modelExecEnv(),
+    });
+    const parsed = tryParse(result);
+    return parsed ? { models: parsed, source: 'live' } : fallback;
+  } catch (err) {
+    // 非零退出码：execFile 抛错，但 stdout/stderr 可能仍带有列表（容错解析）。
+    const parsed = tryParse(err as { stdout?: unknown; stderr?: unknown });
+    return parsed ? { models: parsed, source: 'live' } : fallback;
+  }
 }
 
 // ─── BinaryManager 适配器 ──────────────────────────────────────────────────

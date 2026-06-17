@@ -15,7 +15,7 @@ export function useConnection(conversationId: number) {
         agentType: input.agentType,
       }),
     disconnect: () => connections.disconnect(conversationId),
-    sendPrompt: (contents: PromptInputBlock[], opts?: { model?: string }) =>
+    sendPrompt: (contents: PromptInputBlock[], opts?: { model?: string; reasoning?: string }) =>
       connections.sendPrompt(conversationId, contents, opts),
     cancelTurn: () => connections.cancelTurn(conversationId),
     setMode: (modeId: string) => connections.setMode(conversationId, modeId),

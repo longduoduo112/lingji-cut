@@ -367,4 +367,26 @@ describe('RuntimeRegistry', () => {
     await expect(registry.setConfigOption(1, 'c', 'v')).resolves.toBeUndefined();
     await expect(registry.respondPermission(1, 'r', 'o')).resolves.toBeUndefined();
   });
+
+  // 回归：默认 createSession 未注入 binaryManager 时，sendPrompt 会立即报
+  // 'AgentSession: missing binaryManager'。注入 binaryManager 后该错误不应出现，
+  // 且 detection 会真正调用 resolveBinary，证明 binaryManager 流入了 AgentSession。
+  it('默认 createSession 注入 binaryManager（回归 missing binaryManager）', async () => {
+    const bm = {
+      resolveBinary: vi.fn().mockResolvedValue(null),
+      ensureNodeInPath: vi.fn(),
+    };
+    const registry = new RuntimeRegistry({ binaryManager: bm as any });
+    attachListeners(registry);
+
+    await registry.connect({ conversationId: 1, agentType: 'pi', projectDir: '/proj' });
+    await registry.sendPrompt(1, [{ type: 'text', text: 'hi' }]);
+
+    const errors = runtimeEvents
+      .filter((e) => e.event.type === 'error')
+      .map((e) => e.event.message as string);
+    expect(errors.some((m) => m.includes('missing binaryManager'))).toBe(false);
+    // binaryManager 已流入：detection 走到了 resolveBinary
+    expect(bm.resolveBinary).toHaveBeenCalled();
+  });
 });

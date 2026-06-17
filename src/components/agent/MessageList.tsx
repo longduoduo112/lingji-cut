@@ -133,6 +133,8 @@ export function MessageList({
                 fallbackAgentId={fallbackAgentId}
                 pendingPermission={attachPermission ? pendingPermission : null}
                 onRespondPermission={onRespondPermission}
+                isLastAssistant={index === lastAssistantIndex}
+                isStreaming={index === lastAssistantIndex && Boolean(isStreaming)}
               />
             </m.div>
           );

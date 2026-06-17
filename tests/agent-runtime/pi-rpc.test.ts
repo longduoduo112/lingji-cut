@@ -319,15 +319,16 @@ describe('createPiRpcSession (smoke tests)', () => {
     const writeCalls: string[] = (stdin.write as ReturnType<typeof vi.fn>).mock.calls.map(
       (args: unknown[]) => args[0] as string,
     );
-    // 只有一条 prompt 命令
+    // 只有一条 prompt 命令，真实协议形状 {id, type:'prompt', message}
     expect(writeCalls).toHaveLength(1);
     const cmd = JSON.parse(writeCalls[0]);
-    expect(cmd.method).toBe('prompt');
-    expect(cmd.params.prompt).toBe('test prompt');
+    expect(cmd.type).toBe('prompt');
+    expect(cmd.message).toBe('test prompt');
+    expect(typeof cmd.id).toBe('number');
   });
 
-  it('writes new_session command then prompt when parentSession is provided', () => {
-    const { child, stdin } = makeFakeChild();
+  it('parentSession：先发 new_session，待 response 回执后才发 prompt（门控）', () => {
+    const { child, stdin, stdout } = makeFakeChild();
 
     createPiRpcSession({
       child,
@@ -336,17 +337,70 @@ describe('createPiRpcSession (smoke tests)', () => {
       onEvent,
     });
 
-    const writeCalls: string[] = (stdin.write as ReturnType<typeof vi.fn>).mock.calls.map(
-      (args: unknown[]) => args[0] as string,
+    const writes = () =>
+      (stdin.write as ReturnType<typeof vi.fn>).mock.calls.map((a: unknown[]) => JSON.parse(a[0] as string));
+
+    // 初始只写 new_session，prompt 未发
+    let cmds = writes();
+    expect(cmds).toHaveLength(1);
+    expect(cmds[0].type).toBe('new_session');
+    expect(cmds[0].parentSession).toBe('sess-abc');
+    const newSessionId = cmds[0].id;
+
+    // pi 回执 new_session 成功 → 此时才发 prompt
+    stdout.emit(
+      'data',
+      Buffer.from(JSON.stringify({ type: 'response', id: newSessionId, success: true }) + '\n'),
     );
-    expect(writeCalls).toHaveLength(2);
+    cmds = writes();
+    expect(cmds).toHaveLength(2);
+    expect(cmds[1].type).toBe('prompt');
+    expect(cmds[1].message).toBe('resume question');
+  });
 
-    const firstCmd = JSON.parse(writeCalls[0]);
-    expect(firstCmd.method).toBe('new_session');
-    expect(firstCmd.params.parentSession).toBe('sess-abc');
+  it('自动应答 extension_ui_request（confirm→confirmed:true），避免 pi 阻塞', () => {
+    const { child, stdin, stdout } = makeFakeChild();
+    createPiRpcSession({ child, prompt: 'do', onEvent });
 
-    const secondCmd = JSON.parse(writeCalls[1]);
-    expect(secondCmd.method).toBe('prompt');
+    stdout.emit(
+      'data',
+      Buffer.from(JSON.stringify({ type: 'extension_ui_request', id: 9, method: 'confirm' }) + '\n'),
+    );
+
+    const writes = (stdin.write as ReturnType<typeof vi.fn>).mock.calls.map(
+      (a: unknown[]) => JSON.parse(a[0] as string),
+    );
+    const reply = writes.find((c: Record<string, unknown>) => c.type === 'extension_ui_response');
+    expect(reply).toBeDefined();
+    expect(reply.id).toBe(9);
+    expect(reply.confirmed).toBe(true);
+  });
+
+  it('abort() 发送 RPC abort 命令', () => {
+    const { child, stdin } = makeFakeChild();
+    const session = createPiRpcSession({ child, prompt: 'go', onEvent });
+    session.abort();
+    const writes = (stdin.write as ReturnType<typeof vi.fn>).mock.calls.map(
+      (a: unknown[]) => JSON.parse(a[0] as string),
+    );
+    expect(writes.some((c: Record<string, unknown>) => c.type === 'abort')).toBe(true);
+  });
+
+  it('routes text_delta via assistantMessageEvent（真实字段名）', () => {
+    const { child, stdout } = makeFakeChild();
+    createPiRpcSession({ child, prompt: 'hi', onEvent });
+    stdout.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({
+          type: 'message_update',
+          assistantMessageEvent: { type: 'text_delta', delta: 'real' },
+        }) + '\n',
+      ),
+    );
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'text_delta', delta: 'real' }),
+    );
   });
 
   it('dispose() removes stdout listeners', () => {

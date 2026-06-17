@@ -58,6 +58,8 @@ export interface AgentSessionStartInput {
   prompt: string;
   cwd?: string;
   model?: string;
+  /** 思考程度（reasoning effort）；透传给 buildArgs。 */
+  reasoning?: string;
   /** 额外环境变量（覆盖 def.env） */
   env?: Record<string, string>;
   /** pi resume：parentSession id */
@@ -91,7 +93,7 @@ export class AgentSession {
   private terminalEmitted = false;
   private cancelled = false;
   /** pi-rpc session（cancel/dispose 时需要） */
-  private piSession: { dispose(): void } | null = null;
+  private piSession: { dispose(): void; abort(): void } | null = null;
 
   constructor(deps?: AgentSessionDeps) {
     this.spawnFn = deps?.spawnFn ?? (nodeSpawn as unknown as SpawnFn);
@@ -139,6 +141,7 @@ export class AgentSession {
       prompt,
       cwd,
       model: model ?? def.defaultModel,
+      reasoning: input.reasoning ?? def.defaultReasoning,
       resumeSessionId: input.resumeSessionId ?? null,
       isResuming: input.isResuming ?? false,
     });
@@ -261,9 +264,15 @@ export class AgentSession {
     this.child?.stdin?.write(text);
   }
 
-  /** 取消会话：kill 子进程（SIGTERM） */
+  /** 取消会话：先发 pi RPC abort（优雅停止当前轮），再移除监听并 SIGTERM 兜底。 */
   cancel(): void {
     this.cancelled = true;
+    // pi-rpc：先 abort 让 pi 解除阻塞 / 收尾；再 dispose 移除监听。
+    try {
+      this.piSession?.abort();
+    } catch {
+      // 容错
+    }
     this.piSession?.dispose();
     this.piSession = null;
     try {

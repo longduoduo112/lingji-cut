@@ -53,7 +53,8 @@ describe('tool_use', () => {
       type: 'tool_call',
       toolCallId: 'call-123',
       title: 'bash',
-      kind: 'other',
+      // 'bash' → 派生为 'execute'（不再硬编码 'other'）
+      kind: 'execute',
       status: 'pending',
       rawInput: JSON.stringify({ command: 'ls -la' }),
     });
@@ -65,7 +66,8 @@ describe('tool_use', () => {
       type: 'tool_call',
       toolCallId: 'call-0',
       title: 'noop',
-      kind: 'other',
+      // 无法归类 → 空字符串（UI 不渲染标签）
+      kind: '',
       status: 'pending',
       rawInput: 'null',
     });
@@ -77,10 +79,23 @@ describe('tool_use', () => {
       type: 'tool_call',
       toolCallId: 'call-1',
       title: 'ping',
-      kind: 'other',
+      kind: '',
       status: 'pending',
       rawInput: 'null',
     });
+  });
+
+  it('空工具名 → title 兜底 Tool，kind 空', () => {
+    const result = mapEvent({ type: 'tool_use', id: 'call-2', name: '', input: null });
+    expect(result).toMatchObject({ type: 'tool_call', title: 'Tool', kind: '' });
+  });
+
+  it('常见工具名派生 kind：Read→read / Write→edit / WebFetch→fetch', () => {
+    const kindOf = (name: string) =>
+      (mapEvent({ type: 'tool_use', id: 'x', name, input: null }) as { kind: string }).kind;
+    expect(kindOf('Read')).toBe('read');
+    expect(kindOf('Write')).toBe('edit');
+    expect(kindOf('WebFetch')).toBe('fetch');
   });
 });
 

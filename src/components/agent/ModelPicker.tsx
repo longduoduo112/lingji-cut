@@ -12,6 +12,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getAgentPresentation } from '../../lib/agent-presentation';
+import { useAgentModels } from '../../lib/use-agent-models';
 import { AgentIcon } from './AgentIcon';
 
 interface ModelPickerProps {
@@ -32,7 +33,8 @@ export function ModelPicker({
   onOpenAgentSettings,
 }: ModelPickerProps): React.ReactElement {
   const presentation = useMemo(() => getAgentPresentation(agentId), [agentId]);
-  const models = presentation.models ?? [];
+  // 动态拉取该 agent 的模型列表（pi 走 `pi --list-models`）；首屏 / 失败回退静态兜底。
+  const { models, loading } = useAgentModels(agentId);
 
   // 当前模型 id：优先受控 value，其次 defaultModel，再次首个模型。
   const currentModelId = value ?? presentation.defaultModel ?? models[0]?.id;
@@ -164,7 +166,16 @@ export function ModelPicker({
             zIndex: 9999,
           }}
         >
-          {models.length === 0 && (
+          {loading && (
+            <div
+              className="model-picker__loading"
+              data-testid="model-picker-loading"
+              style={{ padding: '6px 10px', fontSize: 12, color: 'var(--color-label-secondary, #98989d)' }}
+            >
+              加载模型…
+            </div>
+          )}
+          {!loading && models.length === 0 && (
             <div
               className="model-picker__empty"
               style={{ padding: '6px 10px', fontSize: 12, color: 'var(--color-label-secondary, #98989d)' }}

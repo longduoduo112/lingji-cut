@@ -59,5 +59,16 @@ describe('agent-presentation', () => {
       expect(p.models).toBeDefined();
       expect(p.models!.length).toBeGreaterThan(0);
     });
+
+    it('pi presentation exposes reasoningOptions + defaultReasoning', () => {
+      const p = getAgentPresentation('pi');
+      expect(p.reasoningOptions).toBeDefined();
+      expect(p.reasoningOptions!.length).toBeGreaterThan(0);
+      expect(p.defaultReasoning).toBe('default');
+      for (const o of p.reasoningOptions!) {
+        expect(typeof o.id).toBe('string');
+        expect(typeof o.label).toBe('string');
+      }
+    });
   });
 });

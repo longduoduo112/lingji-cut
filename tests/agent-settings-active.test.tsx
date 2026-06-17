@@ -25,6 +25,7 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
 
 const getConfig = vi.fn();
 const saveConfig = vi.fn(async () => undefined);
+const setActiveAgent = vi.fn(async () => undefined);
 const getApiKey = vi.fn(async () => '');
 const setApiKey = vi.fn(async () => undefined);
 const runPreflight = vi.fn(async () => [{ label: 'CLI', status: 'pass', message: 'ok' }]);
@@ -64,9 +65,11 @@ function baseConfig() {
 beforeEach(() => {
   getConfig.mockResolvedValue(baseConfig());
   saveConfig.mockClear();
+  setActiveAgent.mockClear();
   (window as unknown as { agentAPI: unknown }).agentAPI = {
     getConfig,
     saveConfig,
+    setActiveAgent,
     getApiKey,
     setApiKey,
     runPreflight,
@@ -115,11 +118,12 @@ describe('AgentSettingsTab 全局单选 + 模型下拉', () => {
       await Promise.resolve();
     });
 
-    // 「设为当前」
+    // 「设为当前」→ 应立即落盘（不依赖随后的「保存配置」）
     await act(async () => {
       clickByText(container, '设为当前');
       await Promise.resolve();
     });
+    expect(setActiveAgent).toHaveBeenCalledWith('codex');
 
     // 保存
     await act(async () => {

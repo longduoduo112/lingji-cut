@@ -1,6 +1,6 @@
 ---
 name: lingji-video-edit
-description: 当需要直接编辑灵机剪影项目的视频内容——调整 overlay 时间位置（startMs/durationMs）、进出场动画（motion.enter/exit）、画面坐标、文字/字幕样式、或修改 Motion Card 动画源码（motionCard.tsx）时使用。通过 file-first 直接编辑 project.json 与 ai-cards/<overlayId>/motionCard.tsx，编辑器会实时热重载预览。不用于重新生成封面/卡片配图/配音或导出 MP4。
+description: 当需要直接编辑已有灵机剪影项目的视频内容——调整 overlay 时间位置（startMs/durationMs）、进出场动画（motion.enter/exit）、画面坐标、文字/字幕样式、或修改 Motion Card 动画源码（motionCard.tsx）时使用。通过 file-first 直接编辑 project.json 与 ai-cards/<overlayId>/motionCard.tsx，编辑器会实时热重载预览。不用于从稿件创建项目、重新生成封面/卡片配图/配音或导出 MP4。
 version: 1.0.0
 user-invocable: false
 ---
@@ -8,6 +8,8 @@ user-invocable: false
 # 灵机剪影 · 视频 file-first 编辑
 
 通过直接读写项目文件，修改时间线 overlay 动画/时间/位置/样式，或编辑 Motion Card 动画源码。编辑器有热重载钩子，改完自动刷新预览，无需操作运行中的 App。
+
+若用户要从普通稿件/素材目录一路推进到灵机剪影视频项目，应先使用用户级 `lingji-video-workflow` 总入口；本 skill 只处理已有项目里的视频时间线与 Motion Card 直改。
 
 详细字段契约：[`docs/ai-contract/video-editing.md`](../../../docs/ai-contract/video-editing.md)
 锁/结果协议全文：[`docs/ai-contract/README.md`](../../../docs/ai-contract/README.md)
@@ -30,7 +32,7 @@ user-invocable: false
 
 ```json
 {
-  "owner": "claude-code",
+  "owner": "codex",
   "scope": "video",
   "startedAt": 1718260000000,
   "heartbeat": 1718260000000,

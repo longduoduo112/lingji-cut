@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bot, Eye, EyeOff, RefreshCw, Trash2 } from 'lucide-react';
+import { Bot, RefreshCw, Trash2 } from 'lucide-react';
 import type {
   AgentConfigData,
   AgentEntry,
-  AuthMode,
   PreflightCheck,
-  PermissionPolicy,
 } from '../../../electron/acp/types';
 import {
   getAgentPresentation,
@@ -18,7 +16,6 @@ import {
   ConfirmDialog,
   Divider,
   Field,
-  Input,
   PillGroup,
   SaveButton,
   Select,
@@ -27,19 +24,7 @@ import {
 } from '../../ui';
 import type { SelectOption } from '../../ui';
 import type { PillGroupItem } from '../../ui/patterns/PillGroup';
-import commonStyles from './SettingsCommon.module.css';
 import styles from './AgentSettingsTab.module.css';
-
-const AUTH_MODES: PillGroupItem<AuthMode>[] = [
-  { value: 'subscription', label: '官方订阅 (Max/Pro)' },
-  { value: 'custom_api', label: '自定义 API' },
-];
-
-const PERMISSION_POLICIES: PillGroupItem<PermissionPolicy>[] = [
-  { value: 'auto_approve', label: '自动批准所有操作' },
-  { value: 'tiered', label: '分级信任（读自动，写和终端需确认）' },
-  { value: 'always_ask', label: '每次操作都需确认' },
-];
 
 const AGENT_PRESENTATIONS = listAgentPresentations();
 
@@ -67,7 +52,6 @@ export function AgentSettingsTab() {
   const [config, setConfig] = useState<AgentConfigData | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string>(DEFAULT_AGENT_ID);
   const [apiKey, setApiKey] = useState('');
-  const [showKey, setShowKey] = useState(false);
   const [checks, setChecks] = useState<PreflightCheck[]>([]);
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -118,7 +102,6 @@ export function AgentSettingsTab() {
 
   const handleSelectAgent = useCallback((agentId: string) => {
     setSelectedAgentId(agentId);
-    setShowKey(false);
     if (typeof window.agentAPI === 'undefined') return;
     void window.agentAPI.getApiKey(agentId).then(setApiKey);
     void runChecks(agentId);
@@ -138,10 +121,12 @@ export function AgentSettingsTab() {
     [agent, config, selectedAgentId],
   );
 
-  // 将当前所选 agent 设为全局激活（单选）。
+  // 将当前所选 agent 设为全局激活（单选）。立即落盘，避免用户漏点「保存配置」
+  // 导致新建会话仍用旧的默认 agent（与权限策略的即时保存语义一致）。
   const handleSetActive = useCallback(() => {
     if (!config) return;
     setConfig({ ...config, activeAgentId: selectedAgentId });
+    void window.agentAPI?.setActiveAgent?.(selectedAgentId);
   }, [config, selectedAgentId]);
 
   const handleSave = async () => {
@@ -235,57 +220,15 @@ export function AgentSettingsTab() {
 
       {profile.managed ? (
         <>
-          <Divider label="认证配置" />
-          <PillGroup<AuthMode>
-            items={AUTH_MODES}
-            value={agent.authMode as AuthMode}
-            size="sm"
-            onChange={(mode) => updateAgent({ authMode: mode })}
-          />
-
-          {agent.authMode === 'custom_api' ? (
-            <div className={commonStyles.formStack}>
-              <Field label="API Key">
-                <div className={styles.apiKeyRow}>
-                  <Input
-                    variant={showKey ? 'text' : 'password'}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-ant-..."
-                    size="sm"
-                    wrapperClassName={styles.apiKeyInput}
-                  />
-                  <Button.Icon
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowKey((state) => !state)}
-                    aria-label={showKey ? '隐藏 API Key' : '显示 API Key'}
-                  >
-                    {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </Button.Icon>
-                </div>
-              </Field>
-
-              <Field label="API Base URL">
-                <Input
-                  value={agent.apiBaseUrl}
-                  onChange={(e) => updateAgent({ apiBaseUrl: e.target.value })}
-                  placeholder="https://api.anthropic.com"
-                  size="sm"
-                />
-              </Field>
-
-              <Field label="Model">
-                <Select
-                  options={modelOptions}
-                  value={modelValue}
-                  placeholder="选择模型"
-                  onChange={(e) => updateAgent({ model: e.target.value })}
-                />
-              </Field>
-            </div>
-          ) : null}
+          <Divider label="模型" />
+          <Field label="Model">
+            <Select
+              options={modelOptions}
+              value={modelValue}
+              placeholder="选择模型"
+              onChange={(e) => updateAgent({ model: e.target.value })}
+            />
+          </Field>
         </>
       ) : (
         <>
@@ -311,19 +254,6 @@ export function AgentSettingsTab() {
           className={styles.editorMono}
         />
       </Field>
-
-      <Divider label="权限策略" />
-      <PillGroup<PermissionPolicy>
-        items={PERMISSION_POLICIES}
-        value={config.permissionPolicy}
-        direction="vertical"
-        fullWidth
-        size="sm"
-        onChange={(policy) => {
-          setConfig({ ...config, permissionPolicy: policy });
-          window.agentAPI?.setPermissionPolicy(policy);
-        }}
-      />
 
       <div className={styles.actionsRow}>
         {profile.managed ? (
