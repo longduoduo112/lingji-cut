@@ -70,6 +70,8 @@ export interface MessageInputProps {
   availableModes?: AgentMode[] | null;
   currentModeId?: string | null;
   onModeChange?: (modeId: string) => void;
+  /** 当前 agent 启用的 skills（用于 $ 补全）；空数组不弹菜单。 */
+  skillItems?: { id: string; label: string; description?: string }[];
 }
 
 // ─── 工具函数 ──────────────────────────────────────────────────
@@ -129,6 +131,7 @@ export function MessageInput({
   availableModes,
   currentModeId,
   onModeChange,
+  skillItems,
 }: MessageInputProps) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -192,6 +195,22 @@ export function MessageInput({
       icon: 'file' as const,
     }));
   }, [atMenuOpen, atTriggerPos, text, projectFiles]);
+
+  // ── $ 技能补全 ──
+
+  const [skillMenuOpen, setSkillMenuOpen] = useState(false);
+  const [skillSelectedIdx, setSkillSelectedIdx] = useState(0);
+  const skills = useMemo(() => skillItems ?? [], [skillItems]);
+
+  const filteredSkills = useMemo((): MenuItem[] => {
+    if (!skillMenuOpen || skills.length === 0) return [];
+    const match = text.match(/\$([a-z0-9-]*)$/i);
+    if (!match) return [];
+    const filter = match[1].toLowerCase();
+    return skills
+      .filter((s) => s.id.toLowerCase().startsWith(filter))
+      .map((s) => ({ id: s.id, label: s.label, description: s.description, icon: 'command' as const }));
+  }, [skillMenuOpen, skills, text]);
 
   // ── 自动调整高度 ──
 
@@ -370,6 +389,15 @@ export function MessageInput({
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, [addFileByPath]);
 
+  const handleSkillSelect = useCallback((item: MenuItem) => {
+    // 用 $id 替换光标前最后一个 $partial
+    const current = textRef.current;
+    const replaced = current.replace(/\$([a-z0-9-]*)$/i, `$${item.id} `);
+    setText(replaced === current ? `${current}$${item.id} ` : replaced);
+    setSkillMenuOpen(false);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
   // ── 文本变更（含 / 和 @ 检测）──
 
   const handleTextChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
@@ -385,8 +413,22 @@ export function MessageInput({
     }
     setSlashMenuOpen(false);
 
-    // @ 文件提及检测
     const cursorPos = e.target.selectionStart;
+
+    // $ 技能补全检测（光标前最后一个 token 以 $ 开头）
+    if (skills.length > 0 && cursorPos != null) {
+      const beforeCursor = value.slice(0, cursorPos);
+      if (/(^|\s)\$[a-z0-9-]*$/i.test(beforeCursor)) {
+        setSkillSelectedIdx(0);
+        setSkillMenuOpen(true);
+        setSlashMenuOpen(false);
+        setAtMenuOpen(false);
+        return;
+      }
+    }
+    setSkillMenuOpen(false);
+
+    // @ 文件提及检测
     if (cursorPos != null && projectDir) {
       const beforeCursor = value.slice(0, cursorPos);
       const atMatch = beforeCursor.match(/(^|[\s])@([^\s]*)$/);
@@ -400,7 +442,7 @@ export function MessageInput({
       }
     }
     setAtMenuOpen(false);
-  }, [commands.length, projectDir]);
+  }, [commands.length, projectDir, skills.length]);
 
   // ── 键盘处理 ──
 
@@ -413,6 +455,14 @@ export function MessageInput({
       if (e.key === 'ArrowUp') { e.preventDefault(); setSlashSelectedIdx((i) => i > 0 ? i - 1 : filteredCommands.length - 1); return; }
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); handleSlashSelect(filteredCommands[slashSelectedIdx]); return; }
       if (e.key === 'Escape') { e.preventDefault(); setSlashMenuOpen(false); return; }
+    }
+
+    // $ 技能菜单导航
+    if (skillMenuOpen && filteredSkills.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSkillSelectedIdx((i) => i < filteredSkills.length - 1 ? i + 1 : 0); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSkillSelectedIdx((i) => i > 0 ? i - 1 : filteredSkills.length - 1); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); handleSkillSelect(filteredSkills[skillSelectedIdx]); return; }
+      if (e.key === 'Escape') { e.preventDefault(); setSkillMenuOpen(false); return; }
     }
 
     // @ 文件菜单导航
@@ -433,7 +483,7 @@ export function MessageInput({
       e.preventDefault();
       if (canSend || isPrompting) handleSend();
     }
-  }, [canSend, isPrompting, handleSend, slashMenuOpen, filteredCommands, slashSelectedIdx, handleSlashSelect, atMenuOpen, filteredFiles, atSelectedIdx, handleAtSelect]);
+  }, [canSend, isPrompting, handleSend, slashMenuOpen, filteredCommands, slashSelectedIdx, handleSlashSelect, atMenuOpen, filteredFiles, atSelectedIdx, handleAtSelect, skillMenuOpen, filteredSkills, skillSelectedIdx, handleSkillSelect]);
 
   // ── 选择器数据 ──
 
@@ -481,6 +531,14 @@ export function MessageInput({
             selectedIndex={atSelectedIdx}
             onSelect={handleAtSelect}
             hint="输入 @ 搜索项目文件"
+          />
+        )}
+        {skillMenuOpen && filteredSkills.length > 0 && (
+          <AutocompleteMenu
+            items={filteredSkills}
+            selectedIndex={skillSelectedIdx}
+            onSelect={handleSkillSelect}
+            hint="输入 $ 调用技能"
           />
         )}
 

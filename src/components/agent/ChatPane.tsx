@@ -156,6 +156,28 @@ export function ChatPane({
 
   // 会话级模型选择：默认取该 agent 的 defaultModel。会话切换时重置为新 agent 的默认。
   const agentType = detail?.agentType;
+
+  // 当前 agent 启用且可用的内置 skills，作为 $ 补全候选。
+  const [skillItems, setSkillItems] = useState<{ id: string; label: string; description?: string }[]>([]);
+  useEffect(() => {
+    if (!agentType || typeof window.agentAPI?.listSkills !== 'function') {
+      setSkillItems([]);
+      return;
+    }
+    let alive = true;
+    void window.agentAPI.listSkills(agentType).then((list) => {
+      if (!alive) return;
+      setSkillItems(
+        list
+          .filter((s) => s.enabled && s.status === 'available')
+          .map((s) => ({ id: s.id, label: `$${s.id}`, description: s.displayName })),
+      );
+    });
+    return () => {
+      alive = false;
+    };
+  }, [agentType]);
+
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
   // 会话级思考程度：默认取该 agent 的 defaultReasoning。会话/agent 切换时重置。
   const [selectedReasoning, setSelectedReasoning] = useState<string | undefined>(undefined);
@@ -291,6 +313,7 @@ export function ChatPane({
           reasoningId={selectedReasoning}
           onReasoningChange={setSelectedReasoning}
           onOpenAgentSettings={onOpenAgentSettings}
+          skillItems={skillItems}
         />
         {!explicitActivated ? (
           <div className="text-[10px] text-mac-text-muted/40 px-1">
