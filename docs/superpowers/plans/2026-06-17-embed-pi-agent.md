@@ -43,9 +43,11 @@
 **删除（确认无引用后）：**
 - `electron/agent-runtime/agent-defs/codex.ts`、`agent-defs/claude.ts`。
 - `electron/agent-runtime/parsers/codex-json-event.ts`、`parsers/claude-stream.ts`。
-- 旧 ACP 面板：`electron/acp/connection-registry.ts`、`agent-profiles.ts`、`acp/client.ts`、`acp/session.ts`（**逐一 grep 确认无 live 引用**）。
+- 旧 ACP 面板：`electron/acp/connection-registry.ts`（无 live 引用，已核实）、`agent-profiles.ts`（仅 `AgentSettingsTab` 引用，Task 13 后删）。
+- 对应的孤立测试：`tests/agent-runtime/codex-json-event.test.ts`、`tests/agent-runtime/claude-stream.test.ts`、`tests/acp-connection-registry.test.ts`、`tests/agent-profiles.test.ts`。
 
-**保留（勿删）：** `electron/acp/headless-provider.ts`、`binary-manager.ts`、`fetch-agent-api-models.ts`、`preflight.ts`、`config.ts`。
+**⚠️ 必须保留（勿删，已核实是 #2 HeadlessAcpProvider 的依赖）：**
+`electron/acp/client.ts`、`electron/acp/session.ts`（被 `headless-provider.ts` import：`AcpClient`/`SessionManager`），以及 `headless-provider.ts`、`binary-manager.ts`、`fetch-agent-api-models.ts`、`preflight.ts`、`config.ts`。它们对应的测试 `tests/acp-client.test.ts`、`tests/acp-session.test.ts`、`tests/acp-headless-provider.test.ts` 也保留。
 
 ---
 
@@ -928,38 +930,37 @@ git add electron/agent-runtime tests/agent-runtime
 git commit -m "refactor(agent-runtime): 面板仅保留 pi，移除 codex/claude def 与 parser"
 ```
 
-### Task 10：删除旧 ACP 面板死代码
+### Task 10：删除旧 ACP 面板死代码（仅 connection-registry）
+
+> **已核实：** `acp/client.ts` 与 `acp/session.ts` 被 `headless-provider.ts`（#2，保留）import，**不能删**。本任务只删 `connection-registry.ts` 及其测试。`agent-profiles.ts` 留到 Task 13（仅 `AgentSettingsTab` 引用）。
 
 **Files:**
-- Delete（确认无引用后）：`electron/acp/connection-registry.ts`、`agent-profiles.ts`、`acp/client.ts`、`acp/session.ts`
+- Delete：`electron/acp/connection-registry.ts`、`tests/acp-connection-registry.test.ts`
 
-- [ ] **Step 1: 逐文件确认无 live 引用**
+- [ ] **Step 1: 再次确认 connection-registry 无 live 引用**
 
 Run:
 ```bash
-for f in connection-registry agent-profiles client session; do
-  echo "== acp/$f =="; grep -rn "acp/$f\b\|from '\\./$f'\|from '\\.\\./acp/$f'" electron/ src/ tests/ | grep -v node_modules
-done
+grep -rn "connection-registry\|ConnectionRegistry" electron/ src/ | grep -v node_modules | grep -v "connection-registry.ts:"
 ```
-Expected: 列出所有引用。注意 `AgentSettingsTab.tsx` 对 `agent-profiles` 的 import 在 Phase 5 处理——若此处仍有引用，**先做 Phase 5 Task 13 再回来删 agent-profiles**。`acp/session.ts`、`acp/client.ts` 若仅被 `connection-registry` 引用，可一起删。
+Expected: 仅注释引用（如 `runtime-registry.ts` 顶部注释「取代旧 connection-registry」），无 `import`。若出现真实 import，**停止并上报**。
 
-- [ ] **Step 2: 删除确认无引用的文件**
+- [ ] **Step 2: 删除文件与其测试**
 
 ```bash
-git rm electron/acp/connection-registry.ts electron/acp/client.ts electron/acp/session.ts
-# agent-profiles.ts 待 Phase 5 后再删（见上）
+git rm electron/acp/connection-registry.ts tests/acp-connection-registry.test.ts
 ```
 
-- [ ] **Step 3: 构建期类型检查**
+- [ ] **Step 3: 构建/测试检查**
 
-Run: `npm run build`（或 `npx vitest run`）
-Expected: 无「找不到模块」错误。若有残留引用，回到 Step 1 清理。
+Run: `npx vitest run`
+Expected: 无「找不到模块」错误，套件通过（`acp-client.test.ts`/`acp-session.test.ts` 仍应存在并通过）。
 
 - [ ] **Step 4: 提交**
 
 ```bash
-git add -A electron/acp
-git commit -m "chore(acp): 删除旧 ACP 面板死代码（connection-registry/client/session）"
+git add -A
+git commit -m "chore(acp): 删除已废弃的 connection-registry（client/session 保留给 headless-provider）"
 ```
 
 ---
@@ -1037,11 +1038,10 @@ git commit -m "refactor(agent-ui): 对话面板收敛为单一 pi agent"
 
 - [ ] **Step 3: 现在可安全删除 agent-profiles.ts**
 
-确认 Task 10 Step 1 的引用已清空后：
+确认本任务 Step 1 已移除 `AgentSettingsTab` 对 `agent-profiles` 的 import（已核实 `preflight.ts`/`config.ts` 不依赖它）后：
 ```bash
-git rm electron/acp/agent-profiles.ts
+git rm electron/acp/agent-profiles.ts tests/agent-profiles.test.ts
 ```
-若 `preflight.ts`/`config.ts` 仍 import 它，改为不依赖（preflight 仅对 pi 探测内置入口）。
 
 - [ ] **Step 4: 构建检查**
 
