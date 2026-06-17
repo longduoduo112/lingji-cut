@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const STAGED_PROJECT_ROOTS = new Set(['dist', 'dist-electron', 'src']);
+const STAGED_PROJECT_ROOTS = new Set(['dist', 'dist-electron', 'resources', 'src']);
 const RENDER_RUNTIME_ASAR_UNPACK_DIRS = '{vendor/ffmpeg,node_modules/@remotion,node_modules/esbuild,node_modules/@esbuild,node_modules/@puppeteer,node_modules/puppeteer-core,node_modules/sharp,node_modules/onnxruntime-node,node_modules/ffmpeg-static,node_modules/ffprobe-static}';
 
 // 仅在 renderer（Vite bundle）中使用、主进程从不 require 的包可在此排除，
