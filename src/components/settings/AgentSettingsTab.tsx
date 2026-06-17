@@ -41,11 +41,11 @@ function makeDefaultEntry(agentId: string): AgentEntry {
     enabled: profile.id === DEFAULT_AGENT_ID,
     authMode: 'custom_api',
     apiKey: '',
-    apiBaseUrl: 'https://api.anthropic.com',
-    model: 'claude-sonnet-4-20250514',
+    apiBaseUrl: '',
+    model: profile.defaultModel ?? '',
     envText: '',
     configJson: '{}',
-    version: profile.defaultVersion ?? '0.25.0',
+    version: profile.defaultVersion ?? '',
     sortOrder: 0,
     skills: [{ id: 'lingji-video-workflow', enabled: true }],
   };
@@ -251,7 +251,7 @@ export function AgentSettingsTab() {
         </div>
       </section>
 
-      {profile.managed ? (
+      {modelOptions.length > 0 ? (
         <>
           <Divider label="模型" />
           <Field label="Model">
@@ -263,7 +263,9 @@ export function AgentSettingsTab() {
             />
           </Field>
         </>
-      ) : (
+      ) : null}
+
+      {!profile.managed ? (
         <>
           <Divider label="安装与凭证" />
           {profile.installGuide ? (
@@ -273,7 +275,7 @@ export function AgentSettingsTab() {
             {profile.displayName} 的模型 provider 凭证在 {profile.requiredBinary ?? 'agent'} 侧配置，本应用不代管。
           </p>
         </>
-      )}
+      ) : null}
 
       <Divider label="Skills" />
       {skills.length === 0 ? (

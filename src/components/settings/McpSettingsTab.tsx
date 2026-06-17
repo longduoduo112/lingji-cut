@@ -6,7 +6,6 @@ import styles from './McpSettingsTab.module.css';
 /** 支持注册的 AI 工具列表 */
 const AI_TOOLS = [
   { app: 'claude_code', label: 'Claude Code' },
-  { app: 'codex', label: 'Codex' },
   { app: 'gemini', label: 'Gemini CLI' },
 ] as const;
 
@@ -22,7 +21,6 @@ export function McpSettingsTab() {
   const [status, setStatus] = useState<ServiceStatus | null>(null);
   const [registrations, setRegistrations] = useState<Record<AppId, boolean>>({
     claude_code: false,
-    codex: false,
     gemini: false,
   });
   const [refreshing, setRefreshing] = useState(false);

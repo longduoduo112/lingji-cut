@@ -36,7 +36,7 @@ const skill: ResolvedAgentSkill = {
   rootPath: '/Users/u/.lingji/agent-skills/lingji-video-workflow',
   skillFilePath: '/Users/u/.lingji/agent-skills/lingji-video-workflow/SKILL.md',
   defaultEnabled: true,
-  loadModesByAgent: { claude: ['context_file', 'prompt_injection'] },
+  loadModesByAgent: { pi: ['native', 'prompt_injection'] },
   enabled: true,
   status: 'available',
 };
@@ -51,9 +51,9 @@ const setApiKey = vi.fn(async () => undefined);
 function baseConfig() {
   return {
     permissionPolicy: 'tiered',
-    activeAgentId: 'claude',
+    activeAgentId: 'pi',
     agents: {
-      claude: {
+      pi: {
         enabled: true,
         authMode: 'custom_api',
         apiKey: '',
@@ -118,8 +118,8 @@ describe('AgentSettingsTab Skills section', () => {
     expect(listSkills).toHaveBeenCalled();
     const text = container.textContent ?? '';
     expect(text).toContain('灵机剪影视频工作流');
-    // 加载方式含「上下文文件引导」与「$ 显式注入」（中文标签 map）
-    expect(text).toContain('上下文文件引导');
+    // pi 加载方式含「原生加载」与「$ 显式注入」（中文标签 map）
+    expect(text).toContain('原生加载');
     expect(text).toContain('显式注入');
 
     act(() => root.unmount());
@@ -150,7 +150,7 @@ describe('AgentSettingsTab Skills section', () => {
     const arg = saveConfig.mock.calls.at(-1)![0] as {
       agents: Record<string, { skills?: { id: string; enabled: boolean }[] }>;
     };
-    expect(arg.agents.claude.skills).toContainEqual({
+    expect(arg.agents.pi.skills).toContainEqual({
       id: 'lingji-video-workflow',
       enabled: false,
     });
