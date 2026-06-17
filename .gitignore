@@ -10,5 +10,6 @@ dist-cli/
 .tmp/
 work/
 release/
+resources/pi/
 .DS_Store
 .env
