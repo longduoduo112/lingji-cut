@@ -241,7 +241,7 @@ export interface AcpConnectionsContextValue {
   sendPrompt: (
     conversationId: number,
     contents: PromptInputBlock[],
-    opts?: { model?: string; reasoning?: string },
+    opts?: { model?: string; reasoning?: string; skillIds?: string[] },
   ) => Promise<void>;
   cancelTurn: (conversationId: number) => Promise<void>;
   setMode: (conversationId: number, modeId: string) => Promise<void>;
@@ -554,7 +554,7 @@ export function AcpConnectionsProvider({ children }: AcpConnectionsProviderProps
   async function sendPrompt(
     conversationId: number,
     contents: PromptInputBlock[],
-    opts?: { model?: string; reasoning?: string },
+    opts?: { model?: string; reasoning?: string; skillIds?: string[] },
   ): Promise<void> {
     if (!window.agentAPI) return;
     setActiveConversationId(conversationId);

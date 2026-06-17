@@ -50,7 +50,7 @@ export function useConnectionLifecycle({
 
   async function send(
     contents: PromptInputBlock[],
-    opts?: { model?: string; reasoning?: string },
+    opts?: { model?: string; reasoning?: string; skillIds?: string[] },
   ): Promise<void> {
     await connection.sendPrompt(contents, opts);
   }

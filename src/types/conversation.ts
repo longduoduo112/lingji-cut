@@ -172,7 +172,7 @@ export interface ConnectionLifecycleOptions {
 export interface ConnectionLifecycleResult {
   autoConnectError: string | null;
   selectorsLoading: boolean;
-  send: (contents: PromptInputBlock[], opts?: { model?: string }) => Promise<void>;
+  send: (contents: PromptInputBlock[], opts?: { model?: string; reasoning?: string; skillIds?: string[] }) => Promise<void>;
   cancel: () => Promise<void>;
   disconnect: () => Promise<void>;
   setMode: (modeId: string) => Promise<void>;

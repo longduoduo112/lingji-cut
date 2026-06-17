@@ -20,6 +20,7 @@ import { EmptyState } from '../../ui';
 import { useConversationDetail } from '../../hooks/use-conversation-detail';
 import { useConnectionLifecycle } from '../../hooks/use-connection-lifecycle';
 import type { PromptInputBlock } from '../../../electron/acp/types';
+import { parseSkillTokens } from '../../../electron/agent-skills/inject';
 import { getAgentPresentation } from '../../lib/agent-presentation';
 import { AgentIcon } from './AgentIcon';
 import { MessageList } from './MessageList';
@@ -180,9 +181,16 @@ export function ChatPane({
     async (blocks: PromptInputBlock[]) => {
       if (!conversationId || !projectDir) return;
       await ensureConnected();
-      const opts: { model?: string; reasoning?: string } = {};
+      const opts: { model?: string; reasoning?: string; skillIds?: string[] } = {};
       if (selectedModel) opts.model = selectedModel;
       if (selectedReasoning) opts.reasoning = selectedReasoning;
+      // 解析用户消息里的 $skill-id（main 侧会二次校验启用态）
+      const text = blocks
+        .filter((b): b is PromptInputBlock & { type: 'text' } => b.type === 'text')
+        .map((b) => b.text)
+        .join(' ');
+      const skillIds = parseSkillTokens(text);
+      if (skillIds.length > 0) opts.skillIds = skillIds;
       await connection.send(blocks, Object.keys(opts).length > 0 ? opts : undefined);
     },
     [conversationId, projectDir, ensureConnected, connection, selectedModel, selectedReasoning],
