@@ -7,6 +7,7 @@ import type {
   PermissionPolicy,
   PreflightCheck,
   PromptInputBlock,
+  ResolvedAgentSkill,
 } from '../../electron/acp/types';
 import type { AgentModel } from '../../electron/agent-runtime/types';
 
@@ -107,10 +108,12 @@ export interface AgentAPI {
     agentType?: string;
   }): Promise<void>;
   disconnectRuntime(conversationId: number): Promise<void>;
+  /** 列出某 agent 的内置 skills（设置页 / composer 补全）。 */
+  listSkills(agentId: string): Promise<ResolvedAgentSkill[]>;
   sendPromptToConversation(
     conversationId: number,
     contents: PromptInputBlock[],
-    opts?: { model?: string; reasoning?: string },
+    opts?: { model?: string; reasoning?: string; skillIds?: string[] },
   ): Promise<void>;
   cancelConversationTurn(conversationId: number): Promise<void>;
   setConversationMode(conversationId: number, modeId: string): Promise<void>;

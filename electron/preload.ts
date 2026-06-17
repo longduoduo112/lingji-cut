@@ -481,10 +481,11 @@ contextBridge.exposeInMainWorld('agentAPI', {
   connectRuntime: (input: { conversationId: number; projectDir: string; sessionId?: string | null; agentType?: string }) =>
     ipcRenderer.invoke('agent:connect-runtime', input),
   disconnectRuntime: (conversationId: number) => ipcRenderer.invoke('agent:disconnect-runtime', conversationId),
+  listSkills: (agentId: string) => ipcRenderer.invoke('agent:list-skills', agentId),
   sendPromptToConversation: (
     conversationId: number,
     contents: unknown[],
-    opts?: { model?: string; reasoning?: string },
+    opts?: { model?: string; reasoning?: string; skillIds?: string[] },
   ) => ipcRenderer.invoke('agent:send-prompt-runtime', conversationId, contents, opts),
   cancelConversationTurn: (conversationId: number) =>
     ipcRenderer.invoke('agent:cancel-turn-runtime', conversationId),
