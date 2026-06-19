@@ -26,7 +26,7 @@ function fileActionLabel(file: FileChangedBlockData): string {
   return '编辑';
 }
 
-function changedLineCount(file: FileChangedBlockData): { added: number; removed: number } {
+export function changedLineCount(file: FileChangedBlockData): { added: number; removed: number } {
   const fromDiff = file.diff ? diffLineCount(file.diff) : null;
   if (fromDiff) return fromDiff;
 
