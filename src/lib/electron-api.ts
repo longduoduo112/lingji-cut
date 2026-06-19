@@ -30,8 +30,10 @@ import type {
   UserPromptEntry,
   UserPromptSeed,
 } from './prompts';
+import type { PublishAccount } from '../../electron/publish/types';
+export type { PublishAccount };
 
-export type AppPage = 'welcome' | 'setup' | 'editor' | 'script-workbench' | 'settings' | 'auto-run';
+export type AppPage = 'welcome' | 'setup' | 'editor' | 'script-workbench' | 'settings' | 'auto-run' | 'publish';
 
 export interface FileEntry {
   name: string;
@@ -586,5 +588,18 @@ declare global {
 
 // 引入 AgentAPI 类型声明
 import './agent-api';
+
+// ─── PublishAPI ───────────────────────────────────────────
+
+export interface PublishAPI {
+  listAccounts(): Promise<PublishAccount[]>;
+  deleteAccount(id: string): Promise<void>;
+}
+
+declare global {
+  interface Window {
+    publishAPI: PublishAPI;
+  }
+}
 
 export {};

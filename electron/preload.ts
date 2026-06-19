@@ -659,3 +659,10 @@ contextBridge.exposeInMainWorld('scriptHistoryAPI', {
   delete: (projectId: string, versionId: number) =>
     ipcRenderer.invoke('script-history:delete', projectId, versionId),
 });
+
+// ─── Publish API ──────────────────────────────────────────
+
+contextBridge.exposeInMainWorld('publishAPI', {
+  listAccounts: () => ipcRenderer.invoke('publish:list-accounts'),
+  deleteAccount: (id: string) => ipcRenderer.invoke('publish:delete-account', id),
+});

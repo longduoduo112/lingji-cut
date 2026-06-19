@@ -24,6 +24,7 @@ import { AppErrorBoundary } from './components/AppErrorBoundary';
 import type { ImportProjectResult } from './lib/project-import-types';
 import { prefersReducedMotion } from './ui/lib/animation-config';
 import { WorkspaceTabs } from './components/WorkspaceTabs';
+import { PublishWorkbench } from './components/publish/PublishWorkbench';
 import { getFileNameFromPath, readAudioDurationMs } from './lib/utils';
 import { createDefaultTimeline } from './types';
 import type { AICard, AIAnalysisResult } from './types/ai';
@@ -1061,14 +1062,14 @@ export default function App() {
   }, [currentProjectDir]);
 
   const handleWorkspaceTabSwitch = useCallback(
-    (tab: 'script-workbench' | 'editor') => {
+    (tab: 'script-workbench' | 'editor' | 'publish') => {
       if (tab === page) return;
       setPage(tab);
     },
     [page, setPage],
   );
 
-  const showWorkspaceTabs = page === 'editor' || page === 'script-workbench';
+  const showWorkspaceTabs = page === 'editor' || page === 'script-workbench' || page === 'publish';
   const reducedMotion = prefersReducedMotion();
   const pageTransition = resolvePageTransition({
     fromPage: previousPage,
@@ -1159,7 +1160,7 @@ export default function App() {
       />
       {showWorkspaceTabs && (
         <WorkspaceTabs
-          active={page as 'script-workbench' | 'editor'}
+          active={page as 'script-workbench' | 'editor' | 'publish'}
           onSwitch={handleWorkspaceTabSwitch}
           scriptProgress={scriptProgress}
         />
@@ -1218,6 +1219,9 @@ export default function App() {
                       isActive={page === 'editor'}
                       setPage={setPage}
                     />
+                  </div>
+                  <div style={{ display: page === 'publish' ? 'contents' : 'none' }}>
+                    <PublishWorkbench projectDir={currentProjectDir} />
                   </div>
                 </>
               )}

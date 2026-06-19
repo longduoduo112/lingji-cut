@@ -75,6 +75,7 @@ import { HeadlessAcpProvider, type HeadlessAcpProviderEvent } from './acp/headle
 import { registerConversationIpc } from './conversations/ipc';
 import { registerMcpIpc } from './mcp/ipc';
 import { registerScriptHistoryIpc } from './script-history/ipc';
+import { registerPublishIpc } from './publish/ipc';
 import { LockMonitor } from './ai-edit/lock-watcher';
 import { validateTimeline, type EditError } from '../src/lib/external-edit-validate';
 import { buildEditResult, writeEditResult } from './ai-edit/result-writer';
@@ -2392,6 +2393,7 @@ registerAgentIpc(() => mainWindow);
 registerConversationIpc(() => mainWindow);
 registerMcpIpc(() => mainWindow);
 registerScriptHistoryIpc();
+registerPublishIpc();
 
 // 设置 macOS 系统菜单栏应用名称
 app.setName('灵机剪影');
