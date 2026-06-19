@@ -7,7 +7,7 @@
  */
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { Page } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 import { withContext } from '../engine';
 import type { LoginOptions, PlatformModule, UploadVideoOptions } from '../types';
 
@@ -20,7 +20,9 @@ const TENCENT_MANAGE_URL = 'https://channels.weixin.qq.com/platform/post/list';
 // ─── Cookie requirements (port of _TENCENT_REQUIRED_COOKIE_NAMES) ─────────────
 
 const REQUIRED_COOKIE_NAMES = new Set(['sessionid', 'wxuin']);
-const MIN_COOKIE_COUNT = 4; // matches Python's static pre-flight threshold
+const MIN_COOKIE_COUNT = 6; // _TENCENT_MIN_COOKIE_COUNT in Python source
+/** Parent domains to visit so their cookies are captured in the context before persisting. */
+const PARENT_DOMAIN_URLS = ['https://mp.weixin.qq.com', 'https://www.qq.com'] as const;
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -300,6 +302,114 @@ async function _waitForTencentAuthPage(
     await sleep(pollInterval);
   }
   return false;
+}
+
+// ─── Storage-state persistence ───────────────────────────────────────────────
+
+/**
+ * Port of _wait_for_tencent_cookies_settled.
+ * Polls context.cookies() until the required cookie names appear AND the total
+ * count reaches minCount, or until the deadline is reached.
+ * Never throws — returns whatever cookies exist at deadline (best-effort).
+ */
+async function _waitForTencentCookiesSettled(
+  ctx: BrowserContext,
+  options: { minCount?: number; timeout?: number; pollInterval?: number } = {},
+): Promise<{ name: string }[]> {
+  const { minCount = MIN_COOKIE_COUNT, timeout = 15_000, pollInterval = 500 } = options;
+  const deadline = Date.now() + timeout;
+  let lastCookies: { name: string }[] = [];
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      lastCookies = await ctx.cookies();
+    } catch {
+      lastCookies = [];
+    }
+    const names = new Set(lastCookies.map((c) => c.name));
+    const requiredPresent = [...REQUIRED_COOKIE_NAMES].some((n) => names.has(n));
+    if (requiredPresent && lastCookies.length >= minCount) return lastCookies;
+    if (Date.now() >= deadline) return lastCookies;
+    await sleep(pollInterval);
+  }
+}
+
+/**
+ * Port of _warmup_tencent_parent_domains.
+ * Opens each parent-domain URL in a fresh page so the browser writes
+ * .qq.com / mp.weixin.qq.com cookies into the current context.
+ * Every step is best-effort; failures are silently swallowed.
+ */
+async function _warmupTencentParentDomains(ctx: BrowserContext): Promise<void> {
+  for (const url of PARENT_DOMAIN_URLS) {
+    let warmPage: Page | undefined;
+    try {
+      warmPage = await ctx.newPage();
+      await warmPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+      try {
+        await warmPage.waitForLoadState('networkidle', { timeout: 5_000 });
+      } catch {
+        /* best-effort */
+      }
+    } catch {
+      /* best-effort */
+    } finally {
+      if (warmPage) {
+        try {
+          await warmPage.close();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Port of _persist_tencent_storage_state.
+ * Unified storage-state flush:
+ *   1. Wait for networkidle on the active page (best-effort, 8 s).
+ *   2. Optionally visit parent domains to capture cross-domain cookies.
+ *   3. Poll cookies until key names present + count ≥ minCount, or settleTimeout.
+ *   4. Write storageState to disk.
+ * Returns the final cookie count; logs a warning if below threshold but never throws.
+ */
+async function _persistTencentStorageState(
+  ctx: BrowserContext,
+  page: Page,
+  storageStatePath: string,
+  options: { warmupParents?: boolean; settleTimeout?: number; minCount?: number } = {},
+): Promise<number> {
+  const { warmupParents = true, settleTimeout = 15_000, minCount = MIN_COOKIE_COUNT } = options;
+
+  // 1. Wait for networkidle on the current page (best-effort)
+  try {
+    await page.waitForLoadState('networkidle', { timeout: 8_000 });
+  } catch {
+    /* best-effort */
+  }
+
+  // 2. Visit parent domains to capture cross-domain cookies
+  if (warmupParents) {
+    await _warmupTencentParentDomains(ctx);
+  }
+
+  // 3. Poll until cookies settle (or timeout)
+  const cookies = await _waitForTencentCookiesSettled(ctx, {
+    minCount,
+    timeout: settleTimeout,
+  });
+
+  // 4. Persist to disk
+  await ctx.storageState({ path: storageStatePath });
+
+  if (cookies.length < minCount) {
+    console.warn(
+      `[tencent] 视频号 cookie 落盘时只抓到 ${cookies.length} 条，低于期望阈值 ${minCount}，` +
+        '可能登录态不完整，建议下次登录改用有头模式重试',
+    );
+  }
+  return cookies.length;
 }
 
 // ─── Upload helpers ───────────────────────────────────────────────────────────
@@ -804,10 +914,13 @@ export const tencent: PlatformModule = {
         );
 
         if (result.success) {
-          // Navigate to upload page to trigger parent-domain cookies before persisting
+          // Navigate to upload page so the backend issues its full cookie set,
+          // then visit parent domains and poll until cookies settle before persisting.
           await page.goto(TENCENT_UPLOAD_URL, { waitUntil: 'domcontentloaded', timeout: 90_000 });
-          await sleep(2000);
-          await ctx.storageState({ path: opts.storageStatePath });
+          await _persistTencentStorageState(ctx, page, opts.storageStatePath, {
+            warmupParents: true,
+            settleTimeout: 15_000,
+          });
         }
 
         return result;
@@ -863,7 +976,11 @@ export const tencent: PlatformModule = {
       async (ctx) => {
         const page = await ctx.newPage();
         await uploadTencentVideo(page, opts);
-        await ctx.storageState({ path: opts.storageStatePath });
+        // After publish, visit parent domains and poll until renewed cookies settle.
+        await _persistTencentStorageState(ctx, page, opts.storageStatePath, {
+          warmupParents: true,
+          settleTimeout: 10_000,
+        });
       },
     );
   },
