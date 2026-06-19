@@ -169,7 +169,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-project-metadata', projectDir) as Promise<ProjectMetadata>,
   selectProjectDirectory: () => ipcRenderer.invoke('select-project-directory'),
   selectSetupFile: (kind: 'audio' | 'srt') => ipcRenderer.invoke('select-setup-file', kind),
-  selectMediaFile: (kind: 'audio' | 'video' | 'srt') => ipcRenderer.invoke('select-media-file', kind),
+  selectMediaFile: (kind: 'audio' | 'video' | 'srt' | 'image') => ipcRenderer.invoke('select-media-file', kind),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   addAsset: () => ipcRenderer.invoke('add-asset'),
   scanProjectAssets: (projectDir: string) =>
@@ -698,10 +698,5 @@ contextBridge.exposeInMainWorld('publishAPI', {
     ) => cb(payload);
     ipcRenderer.on('publish:progress', handler);
     return () => ipcRenderer.removeListener('publish:progress', handler);
-  },
-  onPipelineTaskUpdate: (cb: (payload: unknown) => void) => {
-    const handler = (_e: unknown, payload: unknown) => cb(payload);
-    ipcRenderer.on('pipeline:task-update', handler);
-    return () => ipcRenderer.removeListener('pipeline:task-update', handler);
   },
 });

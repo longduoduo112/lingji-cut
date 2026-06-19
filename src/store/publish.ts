@@ -139,7 +139,6 @@ export const usePublishStore = create<PublishState>((set, get) => ({
           filePath,
           shared,
           targets,
-          results: {},
         },
         headless,
       );
@@ -151,6 +150,7 @@ export const usePublishStore = create<PublishState>((set, get) => ({
         .failTask(taskId, err instanceof Error ? err.message : String(err));
     } finally {
       unsubscribe();
+      set({ job: null });
     }
   },
 

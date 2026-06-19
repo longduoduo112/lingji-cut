@@ -1686,7 +1686,7 @@ ipcMain.handle('select-setup-file', async (_event, kind: 'audio' | 'srt') => {
   return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle('select-media-file', async (_event, kind: 'audio' | 'video' | 'srt') => {
+ipcMain.handle('select-media-file', async (_event, kind: 'audio' | 'video' | 'srt' | 'image') => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
@@ -1695,7 +1695,9 @@ ipcMain.handle('select-media-file', async (_event, kind: 'audio' | 'video' | 'sr
         ? [{ name: '音频文件', extensions: AUDIO_EXTENSIONS_FILTER }]
         : kind === 'video'
           ? [{ name: '视频文件', extensions: VIDEO_EXTENSIONS_FILTER }]
-          : [{ name: 'SRT Subtitle', extensions: ['srt'] }],
+          : kind === 'image'
+            ? [{ name: '图片文件', extensions: IMAGE_EXTENSIONS_FILTER }]
+            : [{ name: 'SRT Subtitle', extensions: ['srt'] }],
   });
 
   return result.canceled ? null : result.filePaths[0];

@@ -321,7 +321,7 @@ export interface ElectronAPI {
   getProjectMetadata: (projectDir: string) => Promise<ProjectMetadata>;
   selectProjectDirectory: () => Promise<string | null>;
   selectSetupFile: (kind: ImportKind) => Promise<string | null>;
-  selectMediaFile: (kind: 'audio' | 'video' | 'srt') => Promise<string | null>;
+  selectMediaFile: (kind: 'audio' | 'video' | 'srt' | 'image') => Promise<string | null>;
   getPathForFile: (file: File) => string;
   addAsset: () => Promise<{
     path: string;
@@ -618,7 +618,6 @@ export interface PublishJobInput {
   filePath: string;
   shared: PublishShared;
   targets: PublishTarget[];
-  results: Record<string, { state: string; percent?: number; message?: string }>;
 }
 
 export interface PublishAPI {
@@ -630,7 +629,6 @@ export interface PublishAPI {
   cancel(): Promise<void>;
   onQrcode(cb: (p: { platform: string; accountName: string; png: string }) => void): () => void;
   onProgress(cb: (payload: PublishProgressPayload) => void): () => void;
-  onPipelineTaskUpdate(cb: (payload: unknown) => void): () => void;
 }
 
 declare global {

@@ -138,7 +138,9 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
   const [scheduleType, setScheduleType] = useState<'immediate' | 'scheduled'>('immediate');
   const [scheduleAt, setScheduleAt] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState('');
-  const [isPublishing, setIsPublishing] = useState(false);
+
+  // Derive publishing state from store job — no local state needed
+  const isPublishing = !!job;
 
   useEffect(() => {
     void loadAccounts();
@@ -152,24 +154,13 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
     }
   }, [accounts, selectedAccountId]);
 
-  // Track job running state
-  useEffect(() => {
-    if (job) {
-      setIsPublishing(true);
-    } else {
-      setIsPublishing(false);
-    }
-  }, [job]);
-
   const handlePickFile = async () => {
     const path = await window.electronAPI.selectMediaFile('video');
     if (path) setFilePath(path);
   };
 
   const handlePickThumbnail = async () => {
-    const path = await window.electronAPI.selectMediaFile('video');
-    // Reuse media file picker; user may select an image if filter allows
-    // (for now uses video filter but accepts any path typed in)
+    const path = await window.electronAPI.selectMediaFile('image');
     if (path) setThumbnail(path);
   };
 
@@ -193,15 +184,15 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
           : undefined,
     };
 
-    setIsPublishing(true);
     try {
       await startPublish(filePath, shared, [{ accountId: selectedAccountId }], true);
-    } finally {
-      setIsPublishing(false);
+    } catch {
+      // errors are handled in the store (failTask)
     }
   };
 
-  const jobResults = job ? results : {};
+  // Show results from last run (store clears job on completion but keeps results)
+  const jobResults = results;
   const hasResults = Object.keys(jobResults).length > 0;
 
   return (

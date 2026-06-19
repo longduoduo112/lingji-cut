@@ -1,5 +1,4 @@
 import { ipcMain, app } from 'electron';
-import type { WebContents } from 'electron';
 import { join } from 'node:path';
 import { AccountStore } from './accounts';
 import { getPlatform } from './platforms';
@@ -15,32 +14,6 @@ function getStore(): AccountStore {
 
 // ─── Cancel flag (module-level, simple single-job semantics) ──────────────────
 let cancelled = false;
-
-// ─── Pipeline task-update helper ─────────────────────────────────────────────
-// Emits the same `pipeline:task-update` payload shape as task-progress-bridge.ts
-// so that any renderer-side pipeline bridge consumer can pick it up.
-function emitPipelineTask(
-  sender: WebContents,
-  taskId: string,
-  status: 'running' | 'succeeded' | 'failed',
-  percent: number,
-  phase: string,
-) {
-  try {
-    sender.send('pipeline:task-update', {
-      taskId,
-      kind: 'publish_video',
-      projectPath: '',
-      status,
-      progress: { phase, percent },
-      startedAt: Date.now(),
-      logs: [],
-      bridgeId: `pipeline:${taskId}`,
-    });
-  } catch {
-    // window may be closed
-  }
-}
 
 export function registerPublishIpc(): void {
   ipcMain.handle('publish:list-accounts', () => getStore().list());
@@ -70,19 +43,9 @@ export function registerPublishIpc(): void {
   // ─── publish:run ────────────────────────────────────────────────────────────
   ipcMain.handle('publish:run', async (e, job: PublishJob, headless = true) => {
     cancelled = false;
-    const taskId = `publish-${job.id}`;
-    emitPipelineTask(e.sender, taskId, 'running', 0, '准备发布…');
     try {
       await runPublishJob(job, getStore(), e.sender, () => cancelled, headless);
-      emitPipelineTask(e.sender, taskId, 'succeeded', 100, '发布完成');
     } catch (err) {
-      emitPipelineTask(
-        e.sender,
-        taskId,
-        'failed',
-        0,
-        err instanceof Error ? err.message : String(err),
-      );
       throw err;
     }
   });
