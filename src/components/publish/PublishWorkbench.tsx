@@ -130,16 +130,19 @@ interface AccountOverride {
   title: string;
   desc: string;
   tagsInput: string;
+  bilibiliTid: string; // B站分区 ID（字符串形式，提交时转 number）
 }
 
 function AccountOverridePanel({
   accountId,
+  platform,
   override,
   expanded,
   onToggle,
   onChange,
 }: {
   accountId: string;
+  platform: string;
   override: AccountOverride;
   expanded: boolean;
   onToggle: () => void;
@@ -175,7 +178,7 @@ function AccountOverridePanel({
       >
         {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         文案覆盖
-        {(override.title || override.desc || override.tagsInput) && (
+        {(override.title || override.desc || override.tagsInput || override.bilibiliTid) && (
           <span
             style={{
               fontSize: 10,
@@ -249,6 +252,51 @@ function AccountOverridePanel({
               style={{ fontSize: 12 }}
             />
           </div>
+          {/* B站专属：分区 ID（必填） */}
+          {platform === 'bilibili' && (
+            <div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--color-text-tertiary)',
+                  marginBottom: 3,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                分区 ID（tid，B站必填）
+                <span
+                  style={{
+                    fontSize: 10,
+                    padding: '1px 4px',
+                    borderRadius: 3,
+                    background: 'color-mix(in srgb, var(--color-error, #ef4444) 15%, transparent)',
+                    color: 'var(--color-error, #ef4444)',
+                    fontWeight: 500,
+                  }}
+                >
+                  必填
+                </span>
+              </div>
+              <Input
+                type="number"
+                value={override.bilibiliTid}
+                onChange={(e) => onChange({ ...override, bilibiliTid: e.target.value })}
+                placeholder="例如：21（游戏综合），17（单机联机）"
+                style={{ fontSize: 12 }}
+              />
+              <div
+                style={{
+                  fontSize: 10,
+                  color: 'var(--color-text-tertiary)',
+                  marginTop: 3,
+                }}
+              >
+                常用分区：17 单机联机 / 21 游戏综合 / 124 娱乐 / 182 影视 / 236 知识
+              </div>
+            </div>
+          )}
           <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontStyle: 'italic' }}>
             账号 ID：{accountId}
           </div>
@@ -278,6 +326,7 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
   // Per-account override state
   const [accountOverrides, setAccountOverrides] = useState<Record<string, AccountOverride>>({});
   const [expandedOverrides, setExpandedOverrides] = useState<Record<string, boolean>>({});
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Derive publishing state from store job — no local state needed
   const isPublishing = !!job;
@@ -287,9 +336,18 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
   }, [loadAccounts]);
 
   const toggleAccount = (accId: string) => {
-    setSelectedAccountIds((prev) =>
-      prev.includes(accId) ? prev.filter((id) => id !== accId) : [...prev, accId],
-    );
+    setSelectedAccountIds((prev) => {
+      const next = prev.includes(accId) ? prev.filter((id) => id !== accId) : [...prev, accId];
+      // B站账号首次选中时自动展开 override 面板（tid 必填提示）
+      if (!prev.includes(accId)) {
+        const acc = accounts.find((a) => a.id === accId);
+        if (acc?.platform === 'bilibili') {
+          setExpandedOverrides((exPrev) => ({ ...exPrev, [accId]: true }));
+        }
+      }
+      return next;
+    });
+    setValidationError(null);
   };
 
   const toggleOverrideExpanded = (accId: string) => {
@@ -301,7 +359,7 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
   };
 
   const getOverride = (accId: string): AccountOverride =>
-    accountOverrides[accId] ?? { title: '', desc: '', tagsInput: '' };
+    accountOverrides[accId] ?? { title: '', desc: '', tagsInput: '', bilibiliTid: '' };
 
   const handlePickFile = async () => {
     const path = await window.electronAPI.selectMediaFile('video');
@@ -317,10 +375,37 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
     if (!filePath) return;
     if (selectedAccountIds.length === 0) return;
 
+    setValidationError(null);
+
     const sharedTags = tagsInput
       .split(/[,，]/)
       .map((t) => t.trim())
       .filter(Boolean);
+
+    // ── B站专项校验 ──────────────────────────────────────────────────────────
+    for (const accountId of selectedAccountIds) {
+      const acc = accounts.find((a) => a.id === accountId);
+      if (!acc || acc.platform !== 'bilibili') continue;
+      const ov = getOverride(accountId);
+
+      // tid 必填
+      const tid = parseInt(ov.bilibiliTid.trim(), 10);
+      if (!ov.bilibiliTid.trim() || isNaN(tid) || tid <= 0) {
+        const label = acc.accountName || accountId;
+        setValidationError(`B站账号「${label}」必须填写分区 ID (tid)，请展开"文案覆盖"面板填写`);
+        // 自动展开对应的 override 面板
+        setExpandedOverrides((prev) => ({ ...prev, [accountId]: true }));
+        return;
+      }
+
+      // desc 必填（共享或覆盖二者有其一即可）
+      const effectiveDesc = ov.desc.trim() || desc.trim();
+      if (!effectiveDesc) {
+        const label = acc.accountName || accountId;
+        setValidationError(`B站账号「${label}」必须填写描述（共享描述或该账号的覆盖描述）`);
+        return;
+      }
+    }
 
     const shared = {
       title,
@@ -336,6 +421,7 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
     // Build targets — only include overrides for filled fields
     const targets: PublishTarget[] = selectedAccountIds.map((accountId) => {
       const ov = getOverride(accountId);
+      const acc = accounts.find((a) => a.id === accountId);
       const overrideTags = ov.tagsInput
         .split(/[,，]/)
         .map((t) => t.trim())
@@ -347,7 +433,17 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
       if (overrideTags.length > 0) overrides.tags = overrideTags;
 
       const hasOverrides = Object.keys(overrides).length > 0;
-      return { accountId, ...(hasOverrides ? { overrides } : {}) };
+
+      // B站：附加 bilibili.tid（校验已保证有效）
+      const tid = acc?.platform === 'bilibili' ? parseInt(ov.bilibiliTid.trim(), 10) : NaN;
+      const bilibiliExtra: PublishTarget['bilibili'] =
+        acc?.platform === 'bilibili' && !isNaN(tid) ? { tid } : undefined;
+
+      return {
+        accountId,
+        ...(hasOverrides ? { overrides } : {}),
+        ...(bilibiliExtra ? { bilibili: bilibiliExtra } : {}),
+      };
     });
 
     try {
@@ -586,6 +682,7 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
                       <div style={{ padding: '0 14px 10px' }}>
                         <AccountOverridePanel
                           accountId={acc.id}
+                          platform={acc.platform}
                           override={getOverride(acc.id)}
                           expanded={!!expandedOverrides[acc.id]}
                           onToggle={() => toggleOverrideExpanded(acc.id)}
@@ -628,6 +725,20 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
           {targetCount === 0 && !isPublishing && (
             <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
               请勾选至少一个账号
+            </span>
+          )}
+          {validationError && !isPublishing && (
+            <span
+              style={{
+                fontSize: 12,
+                color: 'var(--color-error, #ef4444)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <X size={12} />
+              {validationError}
             </span>
           )}
         </div>

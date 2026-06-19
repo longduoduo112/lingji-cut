@@ -102,18 +102,19 @@ export interface RunBiliupResult {
  *
  * - `interactive: true`：继承 stdio（登录流程），resolve 时 stdout/stderr 为空字符串。
  * - `interactive: false`（默认）：捕获 stdout/stderr，以 UTF-8 解码后返回。
+ * - `cwd`：可选工作目录；biliup login 会把 qrcode.png 写到 cwd，借此控制落盘位置。
  *
  * 始终 resolve（永不 reject），调用方通过 `code` 分支处理错误。
  */
 export function runBiliup(
   args: string[],
-  opts?: { interactive?: boolean; resourcesRoot?: string },
+  opts?: { interactive?: boolean; resourcesRoot?: string; cwd?: string },
 ): Promise<RunBiliupResult> {
   return new Promise((resolve) => {
     const binaryPath = resolveBiliupPath(opts?.resourcesRoot);
 
     if (opts?.interactive) {
-      const child = spawn(binaryPath, args, { stdio: 'inherit' });
+      const child = spawn(binaryPath, args, { stdio: 'inherit', cwd: opts?.cwd });
       child.on('error', (err) => {
         resolve({ code: 1, stdout: '', stderr: err.message });
       });
@@ -121,7 +122,7 @@ export function runBiliup(
         resolve({ code: code ?? 1, stdout: '', stderr: '' });
       });
     } else {
-      const child = spawn(binaryPath, args);
+      const child = spawn(binaryPath, args, { cwd: opts?.cwd });
       let stdout = '';
       let stderr = '';
 
