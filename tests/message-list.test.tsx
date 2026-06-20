@@ -56,7 +56,7 @@ function makePending(overrides: Partial<PendingPermission> = {}): PendingPermiss
 }
 
 describe('MessageList 混合 turns', () => {
-  it('renders UserMessage and AssistantMessage with agent header', () => {
+  it('renders UserMessage and AssistantMessage body without an agent header', () => {
     const turns = [
       userTurn(1, '帮我读一下文件'),
       assistantTurn(2, '好的，我来读取', 'pi'),
@@ -64,19 +64,20 @@ describe('MessageList 混合 turns', () => {
     const html = renderToStaticMarkup(<MessageList turns={turns} />);
     // UserMessage 文本
     expect(html).toContain('帮我读一下文件');
-    // AssistantMessage 正文 + agent 头
+    // AssistantMessage 正文
     expect(html).toContain('好的，我来读取');
-    expect(html).toContain('aria-label="Pi"');
-    expect(html).toContain('Pi');
+    // 不再渲染 agent 身份头（无 Pi 图标 / 名称）。
+    expect(html).not.toContain('aria-label="Pi"');
   });
 
-  it('passes fallbackAgentId to assistant turns without agentId', () => {
+  it('renders assistant body even when turn has no agentId (fallbackAgentId)', () => {
     const turns = [assistantTurn(1, '正文')];
     delete turns[0].agentId;
     const html = renderToStaticMarkup(
       <MessageList turns={turns} fallbackAgentId="pi" />,
     );
-    expect(html).toContain('aria-label="Pi"');
+    expect(html).toContain('正文');
+    expect(html).not.toContain('aria-label="Pi"');
   });
 });
 

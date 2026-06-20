@@ -16,12 +16,15 @@ export type MainCompositionProps = {
   srtEntries: SrtEntry[];
   /** overlayId → 编译后的卡片 CJS 模块字符串（主进程 esbuild 产出）。 */
   compiledCards?: Record<string, string>;
+  /** 项目目录：预览时供卡片 cardAsset 把相对图片解析为 file://（导出走 staticFile，可省）。 */
+  cardProjectDir?: string;
 };
 
 export const MainComposition = memo(function MainComposition({
   timeline,
   srtEntries,
   compiledCards,
+  cardProjectDir,
 }: MainCompositionProps) {
   const plan = useMemo(
     () => buildRenderPlan(timeline, srtEntries, timeline.fps ?? 30),
@@ -47,6 +50,7 @@ export const MainComposition = memo(function MainComposition({
               zIndex={c.zIndex}
               compiledJs={compiledCards?.[c.overlay.id]}
               cues={c.cues}
+              projectDir={cardProjectDir}
             />
           ) : c.kind === 'text' ? (
             <TextOverlay overlay={c.overlay} zIndex={c.zIndex} durationFrames={c.durationFrames} />
@@ -57,7 +61,7 @@ export const MainComposition = memo(function MainComposition({
           )}
         </Sequence>
       )),
-    [compiledCards, plan.visual],
+    [compiledCards, plan.visual, cardProjectDir],
   );
   const subtitleSequences = useMemo(
     () =>

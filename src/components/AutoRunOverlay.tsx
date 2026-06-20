@@ -25,7 +25,7 @@ const STEP_ORDER: WorkflowStep[] = [
 
 const STEP_LABELS: Record<WorkflowStep, string> = {
   idle: '准备中',
-  douyin_importing: '导入抖音',
+  douyin_importing: '导入素材',
   script_generating: '撰写口播稿',
   tts_generating: '合成语音',
   tts_done: '合成语音',

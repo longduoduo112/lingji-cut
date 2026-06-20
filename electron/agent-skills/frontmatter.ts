@@ -3,6 +3,8 @@ import YAML from 'yaml';
 export interface SkillFrontmatter {
   name: string;
   description: string;
+  /** 内置 skill 版本号（用于启动时强制同步种子→用户目录）。归一为字符串。 */
+  version?: string;
 }
 
 /**
@@ -25,5 +27,11 @@ export function parseFrontmatter(raw: string): SkillFrontmatter | null {
   if (!name) return null;
   const description =
     typeof obj.description === 'string' ? obj.description.trim() : '';
-  return { name, description };
+  const version =
+    typeof obj.version === 'string'
+      ? obj.version.trim()
+      : typeof obj.version === 'number'
+        ? String(obj.version)
+        : undefined;
+  return { name, description, version };
 }

@@ -9,6 +9,7 @@ import {
   type DragEvent,
   type ChangeEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import {
   Send,
@@ -18,7 +19,14 @@ import {
   FileText,
   Image as ImageIcon,
   ChevronDown,
+  Hand,
+  ShieldCheck,
+  AlertTriangle,
+  Sparkles,
+  Check,
+  ChevronRight,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type {
   AcpConfigOption,
   AgentMode,
@@ -71,7 +79,36 @@ export interface MessageInputProps {
   onModeChange?: (modeId: string) => void;
   /** 当前 agent 启用的 skills（用于 $ 补全）；空数组不弹菜单。 */
   skillItems?: { id: string; label: string; description?: string }[];
+  /** 当前审批模式（'always_ask' | 'tiered' | 'auto_approve'）。 */
+  permissionPolicy?: string;
+  /** 审批模式切换回调；提供时才渲染底栏审批 pill。 */
+  onPermissionPolicyChange?: (policy: string) => void;
+  /** 底栏右侧（发送按钮左侧）插槽，用于渲染模型/思考程度选择器等。 */
+  bottomToolbarTrailing?: React.ReactNode;
 }
+
+// ─── 审批模式选项（与 Codex 三态对齐） ──────────────────────────
+
+interface ApprovalOption {
+  id: string;
+  label: string;
+  description: string;
+  Icon: LucideIcon;
+  /** 该模式是否为「宽松/警示」态（pill 用警示色）。 */
+  caution?: boolean;
+}
+
+const APPROVAL_OPTIONS: ApprovalOption[] = [
+  { id: 'always_ask', label: '请求批准', description: '编辑外部文件和使用互联网时始终询问', Icon: Hand },
+  { id: 'tiered', label: '替我审批', description: '仅对检测到的风险操作请求批准', Icon: ShieldCheck },
+  {
+    id: 'auto_approve',
+    label: '完全访问',
+    description: '可不受限制地访问互联网和您电脑上的任何文件',
+    Icon: AlertTriangle,
+    caution: true,
+  },
+];
 
 // ─── 工具函数 ──────────────────────────────────────────────────
 
@@ -131,6 +168,9 @@ export function MessageInput({
   currentModeId,
   onModeChange,
   skillItems,
+  permissionPolicy,
+  onPermissionPolicyChange,
+  bottomToolbarTrailing,
 }: MessageInputProps) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -203,7 +243,8 @@ export function MessageInput({
 
   const filteredSkills = useMemo((): MenuItem[] => {
     if (!skillMenuOpen || skills.length === 0) return [];
-    const match = text.match(/\$([a-z0-9-]*)$/i);
+    // 触发符 $ 或 +：两者等价，选中后统一落地为 $id（见 handleSkillSelect）。
+    const match = text.match(/[$+]([a-z0-9-]*)$/i);
     if (!match) return [];
     const filter = match[1].toLowerCase();
     return skills
@@ -389,11 +430,19 @@ export function MessageInput({
   }, [addFileByPath]);
 
   const handleSkillSelect = useCallback((item: MenuItem) => {
-    // 用 $id 替换光标前最后一个 $partial
+    // 用 $id 替换光标前最后一个 $partial / +partial（统一落地为 $id，保持注入协议不变）
     const current = textRef.current;
-    const replaced = current.replace(/\$([a-z0-9-]*)$/i, `$${item.id} `);
+    const replaced = current.replace(/[$+]([a-z0-9-]*)$/i, `$${item.id} `);
     setText(replaced === current ? `${current}$${item.id} ` : replaced);
     setSkillMenuOpen(false);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
+  // 从「+」菜单 Skill 子列表插入：在光标处补一个 `$id `（复用既有注入协议）。
+  const insertSkillMention = useCallback((id: string) => {
+    const current = textRef.current;
+    const sep = current.length > 0 && !/\s$/.test(current) ? ' ' : '';
+    setText(`${current}${sep}$${id} `);
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, []);
 
@@ -414,10 +463,10 @@ export function MessageInput({
 
     const cursorPos = e.target.selectionStart;
 
-    // $ 技能补全检测（光标前最后一个 token 以 $ 开头）
+    // 技能补全检测（光标前最后一个 token 以 $ 或 + 开头）
     if (skills.length > 0 && cursorPos != null) {
       const beforeCursor = value.slice(0, cursorPos);
-      if (/(^|\s)\$[a-z0-9-]*$/i.test(beforeCursor)) {
+      if (/(^|\s)[$+][a-z0-9-]*$/i.test(beforeCursor)) {
         setSkillSelectedIdx(0);
         setSkillMenuOpen(true);
         setSlashMenuOpen(false);
@@ -619,30 +668,32 @@ export function MessageInput({
         )}
 
         {/* 底部工具栏 */}
-        <div className="flex items-center justify-between gap-2 px-2.5 pb-2">
-          <div className="flex items-center gap-1.5">
-            <ToolButton onClick={() => void handlePickFiles()} disabled={disabled} title="添加文件 (也可拖拽/粘贴)">
-              <Plus size={15} />
-            </ToolButton>
-            <ToolButton
-              onClick={() => {
+        <div className="flex items-center justify-between gap-2 px-2.5 pb-2 pt-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <PlusMenu
+              disabled={disabled}
+              skillItems={skills}
+              onPickFile={() => void handlePickFiles()}
+              onPickImage={() => {
                 const input = document.createElement('input');
                 input.type = 'file'; input.multiple = true; input.accept = 'image/*';
                 input.onchange = () => { void addImageAttachments(Array.from(input.files ?? [])); };
                 input.click();
               }}
-              disabled={disabled}
-              title="添加图片"
-            >
-              <ImageIcon size={14} />
-            </ToolButton>
+              onPickSkill={insertSkillMention}
+            />
+            {onPermissionPolicyChange && (
+              <ApprovalSelector
+                value={permissionPolicy ?? 'tiered'}
+                onChange={onPermissionPolicyChange}
+                disabled={disabled}
+              />
+            )}
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <span className="mr-1 text-[10px] text-mac-text-muted/30 select-none hidden sm:inline">
-              {projectDir ? '@ 提及文件 · / 命令 · ' : ''}Enter 发送
-            </span>
-            <div className="relative h-7 w-7">
+          <div className="flex min-w-0 items-center gap-1.5">
+            {bottomToolbarTrailing}
+            <div className="relative h-7 w-7 shrink-0">
               <AnimatePresence mode="wait" initial={false}>
                 {isPrompting && onCancel ? (
                   <m.button
@@ -719,17 +770,201 @@ export function MessageInput({
 
 // ─── 子组件 ────────────────────────────────────────────────────
 
-/** 工具栏小按钮 */
-function ToolButton({ onClick, disabled, title, children }: {
-  onClick: () => void; disabled?: boolean; title: string; children: React.ReactNode;
+/** 通用上拉菜单行 */
+function MenuRow({ icon, label, description, onClick }: {
+  icon?: React.ReactNode;
+  label: string;
+  description?: string;
+  onClick: () => void;
 }) {
   return (
     <button
-      type="button" onClick={onClick} disabled={disabled} title={title}
-      className="flex h-6 w-6 items-center justify-center rounded-[6px] text-mac-text-muted/60 transition-colors hover:bg-white/8 hover:text-mac-text-muted/80 disabled:opacity-40 disabled:pointer-events-none"
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-mac-text-muted/80 transition-colors hover:bg-white/5"
     >
-      {children}
+      {icon ? <span className="shrink-0 text-mac-text-muted/60">{icon}</span> : null}
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate">{label}</span>
+        {description ? <span className="truncate text-[10px] text-mac-text-muted/40">{description}</span> : null}
+      </span>
     </button>
+  );
+}
+
+/** 「+」内容菜单：添加文件 / 添加照片 / Skill 二级列表（向上展开）。 */
+function PlusMenu({ disabled, skillItems, onPickFile, onPickImage, onPickSkill }: {
+  disabled?: boolean;
+  skillItems: { id: string; label: string; description?: string }[];
+  onPickFile: () => void;
+  onPickImage: () => void;
+  onPickSkill: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [skillOpen, setSkillOpen] = useState(false);
+  // 二级浮层用 portal 渲染到 body，避开左侧时间线面板的 stacking context 遮挡。
+  const [flyoutPos, setFlyoutPos] = useState<{ right: number; bottom: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const skillBtnRef = useRef<HTMLButtonElement>(null);
+  const flyoutRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      // 浮层经 portal 渲染在 ref 之外，需单独豁免，否则点击技能项会先关闭菜单。
+      if (ref.current?.contains(target) || flyoutRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // 主菜单收起时一并收起二级浮层，避免下次打开残留展开态。
+  useEffect(() => {
+    if (!open) setSkillOpen(false);
+  }, [open]);
+
+  const closeAll = () => { setOpen(false); setSkillOpen(false); };
+
+  const toggleSkill = () => {
+    setSkillOpen((v) => {
+      const next = !v;
+      if (next && skillBtnRef.current) {
+        const rect = skillBtnRef.current.getBoundingClientRect();
+        // 浮层右边缘贴在 Skill 行左侧（向左上展开），底部与该行对齐。
+        setFlyoutPos({
+          right: Math.round(window.innerWidth - rect.left + 6),
+          bottom: Math.round(window.innerHeight - rect.bottom),
+        });
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label="添加内容"
+        title="添加文件、照片或 Skill（也可拖拽/粘贴）"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        className="flex h-6 w-6 items-center justify-center rounded-[6px] text-mac-text-muted/60 transition-colors hover:bg-white/8 hover:text-mac-text-muted/80 disabled:opacity-40 disabled:pointer-events-none"
+      >
+        <Plus size={15} />
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-30 mb-1 min-w-[200px] rounded-[8px] border border-mac-border bg-mac-elevated py-1 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+          <MenuRow icon={<FileText size={13} />} label="添加文件" onClick={() => { onPickFile(); closeAll(); }} />
+          <MenuRow icon={<ImageIcon size={13} />} label="添加照片" onClick={() => { onPickImage(); closeAll(); }} />
+          {skillItems.length > 0 && (
+            <>
+              <div className="my-1 h-px bg-mac-border/60" />
+              <div className="relative">
+                <button
+                  ref={skillBtnRef}
+                  type="button"
+                  onClick={toggleSkill}
+                  className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+                    skillOpen ? 'bg-white/5 text-mac-text-muted' : 'text-mac-text-muted/80 hover:bg-white/5'
+                  }`}
+                >
+                  <Sparkles size={13} className="shrink-0 text-mac-text-muted/60" />
+                  <span className="flex-1 truncate">Skill</span>
+                  <ChevronRight size={13} className="shrink-0 text-mac-text-muted/40" />
+                </button>
+                {skillOpen && flyoutPos &&
+                  createPortal(
+                    <div
+                      ref={flyoutRef}
+                      className="fixed z-[9999] min-w-[200px] max-h-[260px] overflow-y-auto rounded-[8px] border border-mac-border bg-mac-elevated py-1 shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+                      style={{ right: flyoutPos.right, bottom: flyoutPos.bottom }}
+                    >
+                      {skillItems.map((s) => (
+                        <MenuRow
+                          key={s.id}
+                          label={s.label}
+                          description={s.description}
+                          onClick={() => { onPickSkill(s.id); closeAll(); }}
+                        />
+                      ))}
+                    </div>,
+                    document.body,
+                  )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 审批模式选择 pill（Codex 风格，向上展开）。 */
+function ApprovalSelector({ value, onChange, disabled }: {
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const active = APPROVAL_OPTIONS.find((o) => o.id === value) ?? APPROVAL_OPTIONS[1];
+  const ActiveIcon = active.Icon;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label="审批模式"
+        title="审批模式"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] transition-colors disabled:opacity-40 ${
+          active.caution
+            ? 'border-mac-red/40 bg-mac-red/8 text-mac-red hover:bg-mac-red/12'
+            : 'border-mac-border/60 bg-white/5 text-mac-text-muted/80 hover:bg-white/8'
+        }`}
+      >
+        <ActiveIcon size={12} className={active.caution ? 'text-mac-red' : 'text-mac-text-muted/70'} />
+        <span className="max-w-[88px] truncate">{active.label}</span>
+        <ChevronDown size={10} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-30 mb-1 w-[280px] rounded-[10px] border border-mac-border bg-mac-elevated p-1 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+          <div className="px-2.5 py-1.5 text-[11px] text-mac-text-muted/50">应如何批准操作?</div>
+          {APPROVAL_OPTIONS.map((opt) => {
+            const Icon = opt.Icon;
+            const selected = opt.id === value;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => { onChange(opt.id); setOpen(false); }}
+                className="flex w-full items-start gap-2 rounded-[8px] px-2.5 py-1.5 text-left transition-colors hover:bg-white/5"
+              >
+                <Icon size={15} className={`mt-0.5 shrink-0 ${opt.caution ? 'text-mac-red' : 'text-mac-text-muted/70'}`} />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-[12px] font-medium text-foreground">{opt.label}</span>
+                  <span className="text-[11px] text-mac-text-muted/50">{opt.description}</span>
+                </span>
+                {selected ? <Check size={14} className="mt-0.5 shrink-0 text-mac-blue" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

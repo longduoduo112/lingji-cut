@@ -151,8 +151,13 @@ export function TimelineAudioClipWaveform({
   useEffect(() => {
     let cancelled = false;
 
-    if (!audioPath || typeof window === 'undefined' || typeof document === 'undefined' || deferLoading) {
+    if (!audioPath || typeof window === 'undefined' || typeof document === 'undefined') {
       setPeaks(null);
+      return;
+    }
+
+    if (deferLoading) {
+      // 播放中：保留已渲染的波形，仅不发起新的解码，避免柱状图消失。
       return;
     }
 
@@ -252,8 +257,13 @@ export function TimelineAudioWaveform({
   useEffect(() => {
     let cancelled = false;
 
-    if (!audioPath || typeof window === 'undefined' || typeof document === 'undefined' || deferLoading) {
+    if (!audioPath || typeof window === 'undefined' || typeof document === 'undefined') {
       setPeaks(null);
+      return;
+    }
+
+    if (deferLoading) {
+      // 播放中：保留已渲染的波形，仅不发起新的解码，避免柱状图消失。
       return;
     }
 

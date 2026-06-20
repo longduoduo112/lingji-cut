@@ -6,11 +6,14 @@ import {
   Film,
   Folder,
   FolderOpen,
+  Image as ImageIcon,
+  Music,
   Settings2,
 } from 'lucide-react';
 import type { CSSProperties, ReactNode, RefObject } from 'react';
 import type { FileEntry } from '../../lib/electron-api';
 import { isVideoImportPreviewFile } from '../../lib/video-import-preview';
+import { isAudioFile, isImageFile } from '../../lib/workbench-file-kind';
 import { useScriptStore } from '../../store/script';
 import { Button, EmptyState, PanelHeader } from '../../ui';
 import { FileTreeTabs } from './FileTreeTabs';
@@ -47,11 +50,15 @@ function buildRelativePath(pathPrefix: string, name: string): string {
   return pathPrefix ? `${pathPrefix}/${name}` : name;
 }
 
-const BINARY_EXT = /\.(png|jpe?g|gif|bmp|ico|webp|svg|mp[34]|wav|ogg|avi|mov|mkv|webm|zip|tar|gz|rar|7z|pdf|doc[x]?|xls[x]?|ppt[x]?|exe|dll|so|dylib|woff2?|ttf|eot)$/i;
+// 真正无法在工作台打开的二进制文件（图片 / 音频已单独支持媒体预览，故不在此列）。
+const BINARY_EXT = /\.(avi|mov|mkv|webm|mp4|zip|tar|gz|rar|7z|pdf|doc[x]?|xls[x]?|ppt[x]?|exe|dll|so|dylib|woff2?|ttf|eot)$/i;
 
 function isOpenableFile(relativePath: string): boolean {
-  // 排除二进制文件和状态文件
+  // 排除状态文件
   if (relativePath === 'script-state.json') return false;
+  // 图片 / 音频以媒体预览方式打开
+  if (isImageFile(relativePath) || isAudioFile(relativePath)) return true;
+  // 其余二进制文件不可打开
   return !BINARY_EXT.test(relativePath);
 }
 
@@ -62,6 +69,14 @@ function getFileIcon(entry: FileEntry): ReactNode {
 
   if (entry.name === 'preview.json') {
     return <Film size={14} strokeWidth={1.8} />;
+  }
+
+  if (isImageFile(entry.name)) {
+    return <ImageIcon size={14} strokeWidth={1.8} />;
+  }
+
+  if (isAudioFile(entry.name)) {
+    return <Music size={14} strokeWidth={1.8} />;
   }
 
   return <FileText size={14} strokeWidth={1.8} />;

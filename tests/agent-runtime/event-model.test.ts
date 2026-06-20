@@ -303,3 +303,28 @@ describe('return type completeness', () => {
     }
   });
 });
+
+// ─── permission_request ───────────────────────────────────────────────────────
+
+describe('permission_request', () => {
+  it('透传 requestId / toolCall / options 到 Renderer 消费形状', () => {
+    const ev = {
+      type: 'permission_request',
+      requestId: '42',
+      toolCall: { title: 'edit src/index.ts', rawInput: '{"path":"src/index.ts"}', kind: 'edit' },
+      options: [
+        { optionId: 'allow_once', name: '仅此次允许', kind: 'allow_once' },
+        { optionId: 'reject', name: '拒绝', kind: 'reject_always' },
+      ],
+    } as unknown as AgentStreamEvent;
+    expect(mapEvent(ev)).toEqual({
+      type: 'permission_request',
+      requestId: '42',
+      toolCall: { title: 'edit src/index.ts', rawInput: '{"path":"src/index.ts"}', kind: 'edit' },
+      options: [
+        { optionId: 'allow_once', name: '仅此次允许', kind: 'allow_once' },
+        { optionId: 'reject', name: '拒绝', kind: 'reject_always' },
+      ],
+    });
+  });
+});

@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
 //
-// AgentSettingsTab 全局单选 agent + 模型下拉 的最小渲染测试（pi-only）：
-// - 唯一 agent（pi）点「设为当前」→ setActiveAgent('pi') 且 saveConfig 入参 activeAgentId=pi。
-// - Model 下拉选择 → 写回 config.agents[pi].model（saveConfig 入参断言）。
+// AgentSettingsTab 瘦身后（pi SDK 模式）的最小渲染测试：
+// - 设置面板不再渲染「设为当前」「Model 下拉」「API Key」等失效项。
+// - Skill 库管理：内置 skill 无删除按钮、用户 skill 有删除按钮。
+// - 「添加 Skill 库…」调用 agentAPI.addSkill，成功后刷新 listSkills。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import type { ResolvedAgentSkill } from '../electron/acp/types';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// 补 ui 库依赖链可能引用的 window.matchMedia（jsdom 默认不实现）。
 if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   window.matchMedia = ((query: string) => ({
     matches: false,
@@ -23,29 +24,44 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   })) as typeof window.matchMedia;
 }
 
+const builtin: ResolvedAgentSkill = {
+  id: 'lingji-video-workflow',
+  displayName: '灵机剪影视频工作流',
+  description: '内置工作流',
+  source: 'builtin',
+  rootPath: '/u/.lingji/agent-skills/lingji-video-workflow',
+  skillFilePath: '/u/.lingji/agent-skills/lingji-video-workflow/SKILL.md',
+  defaultEnabled: true,
+  loadModesByAgent: { pi: ['native', 'prompt_injection'] },
+  enabled: true,
+  status: 'available',
+};
+const userSkill: ResolvedAgentSkill = {
+  id: 'my-skill',
+  displayName: 'My Skill',
+  description: '用户导入',
+  source: 'user',
+  rootPath: '/u/.lingji/agent-skills/my-skill',
+  skillFilePath: '/u/.lingji/agent-skills/my-skill/SKILL.md',
+  defaultEnabled: true,
+  loadModesByAgent: { pi: ['native', 'prompt_injection'] },
+  enabled: true,
+  status: 'available',
+};
+
 const getConfig = vi.fn();
 const saveConfig = vi.fn(async () => undefined);
-const setActiveAgent = vi.fn(async () => undefined);
-const getApiKey = vi.fn(async () => '');
-const setApiKey = vi.fn(async () => undefined);
-const runPreflight = vi.fn(async () => [{ label: 'CLI', status: 'pass', message: 'ok' }]);
-const setPermissionPolicy = vi.fn();
+const listSkills = vi.fn(async () => [builtin, userSkill]);
+const addSkill = vi.fn(async () => ({ canceled: false as const, addedId: 'new-skill' }));
+const removeSkill = vi.fn(async () => ({ ok: true as const }));
 
 function baseConfig() {
-  // activeAgentId 故意留一个 stale 值（非 pi），确保渲染出「设为当前」按钮，
-  // 以便断言激活态持久化（setActiveAgent + saveConfig）。
   return {
     permissionPolicy: 'tiered',
-    activeAgentId: 'stale-agent',
+    activeAgentId: 'pi',
     agents: {
       pi: {
         enabled: true,
-        authMode: 'custom_api',
-        apiKey: '',
-        apiBaseUrl: '',
-        model: '',
-        envText: '',
-        configJson: '{}',
         version: '',
         sortOrder: 0,
         skills: [{ id: 'lingji-video-workflow', enabled: true }],
@@ -57,15 +73,18 @@ function baseConfig() {
 beforeEach(() => {
   getConfig.mockResolvedValue(baseConfig());
   saveConfig.mockClear();
-  setActiveAgent.mockClear();
+  listSkills.mockClear();
+  addSkill.mockClear();
+  removeSkill.mockClear();
   (window as unknown as { agentAPI: unknown }).agentAPI = {
     getConfig,
     saveConfig,
-    setActiveAgent,
-    getApiKey,
-    setApiKey,
-    runPreflight,
-    setPermissionPolicy,
+    listSkills,
+    addSkill,
+    removeSkill,
+    readSkillTree: vi.fn(async () => null),
+    readSkillFile: vi.fn(async () => ({ error: 'x' })),
+    openSkillDir: vi.fn(async () => ({ ok: true as const })),
   };
 });
 
@@ -97,71 +116,61 @@ function clickByText(container: HTMLElement, text: string) {
   el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 }
 
-describe('AgentSettingsTab 全局单选 + 模型下拉', () => {
-  it('唯一 agent（pi）设为当前 → saveConfig 入参 activeAgentId=pi', async () => {
+describe('AgentSettingsTab 瘦身 + Skill 库管理', () => {
+  it('不再渲染「设为当前」与 Model 下拉', async () => {
     const { container, root } = await mount();
-
-    // pi-only：PillGroup 只有 Pi 一项
-    const piPill = Array.from(container.querySelectorAll('button')).find((b) =>
-      (b.textContent ?? '').trim() === 'Pi',
-    );
-    expect(piPill).toBeDefined();
-
-    // 「设为当前」→ 应立即落盘（不依赖随后的「保存配置」）
-    await act(async () => {
-      clickByText(container, '设为当前');
-      await Promise.resolve();
-    });
-    expect(setActiveAgent).toHaveBeenCalledWith('pi');
-
-    // 保存
-    await act(async () => {
-      clickByText(container, '保存配置');
-      await Promise.resolve();
-    });
-
-    expect(saveConfig).toHaveBeenCalled();
-    const arg = saveConfig.mock.calls.at(-1)![0] as { activeAgentId?: string };
-    expect(arg.activeAgentId).toBe('pi');
-
+    const text = container.textContent ?? '';
+    expect(text).not.toContain('设为当前');
+    expect(container.querySelector('button[aria-haspopup="listbox"]')).toBeNull();
     act(() => root.unmount());
     container.remove();
   });
 
-  it('选择模型下拉 → 写回 config.agents[pi].model', async () => {
+  it('内置 skill 无删除按钮，用户 skill 有删除按钮', async () => {
     const { container, root } = await mount();
+    expect(container.querySelector('[aria-label="删除 My Skill"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="删除 灵机剪影视频工作流"]')).toBeNull();
+    act(() => root.unmount());
+    container.remove();
+  });
 
-    // 打开 Model 下拉（trigger button：pi 无 model，显示 defaultModel 标签）
-    const listbox = () => document.querySelector('[role="listbox"]');
-    // 找到 Model Select 的触发按钮：含 ChevronDown 的 listbox trigger，文本含模型名
-    const trigger = Array.from(container.querySelectorAll('button[aria-haspopup="listbox"]'))[0] as
-      | HTMLButtonElement
-      | undefined;
-    expect(trigger).toBeDefined();
+  it('内置 skill 开关常亮且 disabled，用户 skill 开关可切换', async () => {
+    const { container, root } = await mount();
+    const builtinSwitch = container.querySelector<HTMLInputElement>(
+      'input[aria-label="灵机剪影视频工作流 启用开关"]',
+    );
+    const userSwitch = container.querySelector<HTMLInputElement>(
+      'input[aria-label="My Skill 启用开关"]',
+    );
+    expect(builtinSwitch).not.toBeNull();
+    expect(builtinSwitch!.disabled).toBe(true);
+    expect(builtinSwitch!.checked).toBe(true);
+    expect(userSwitch!.disabled).toBe(false);
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it('简介超过 100 字符被截断', async () => {
+    const long = '字'.repeat(200);
+    listSkills.mockResolvedValueOnce([{ ...userSkill, description: long }]);
+    const { container, root } = await mount();
+    const text = container.textContent ?? '';
+    expect(text).toContain('…');
+    expect(text).not.toContain('字'.repeat(101));
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it('点击「添加 Skill 库…」调用 addSkill 并刷新列表', async () => {
+    const { container, root } = await mount();
+    listSkills.mockClear();
     await act(async () => {
-      trigger!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      clickByText(container, '添加 Skill 库');
+      await Promise.resolve();
       await Promise.resolve();
     });
-
-    const option = Array.from(listbox()!.querySelectorAll('[role="option"]')).find((o) =>
-      (o.textContent ?? '').includes('Opus'),
-    ) as HTMLElement;
-    expect(option).toBeDefined();
-    await act(async () => {
-      option.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      clickByText(container, '保存配置');
-      await Promise.resolve();
-    });
-
-    const arg = saveConfig.mock.calls.at(-1)![0] as {
-      agents: Record<string, { model: string }>;
-    };
-    expect(arg.agents.pi.model).toBe('anthropic/claude-opus-4-5');
-
+    expect(addSkill).toHaveBeenCalled();
+    expect(listSkills).toHaveBeenCalled();
     act(() => root.unmount());
     container.remove();
   });

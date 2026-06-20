@@ -38,6 +38,7 @@ describe('package mac staging helpers', () => {
 
   it('stages only runtime project files from the repository root', () => {
     expect(shouldStageProjectPath('dist/index.html')).toBe(true);
+    expect(shouldStageProjectPath('dist-cli/lingji.mjs')).toBe(true);
     expect(shouldStageProjectPath('dist-electron/main.js')).toBe(true);
     expect(shouldStageProjectPath('src/hyperframes/composition.ts')).toBe(true);
 
@@ -68,11 +69,13 @@ describe('package mac staging helpers', () => {
     // 新增 npm 依赖不再需要手动维护白名单——只要出现在 package.json 的 dependencies 中，
     // 除非明确列入 RENDERER_ONLY_PACKAGES 排除，否则都应被 stage。
     expect(shouldStageNodeModulePath('@langchain/google-genai/dist/index.js')).toBe(true);
+    // pi 进程内 SDK：作为 npm 依赖应被 stage（其传递依赖由 closure 递归纳入）。
+    expect(shouldStageNodeModulePath('@earendil-works/pi-coding-agent/dist/index.js')).toBe(true);
   });
 
-  it('unpacks Remotion runtime artifacts from app.asar for packaged exports', () => {
+  it('unpacks runtime artifacts (incl. in-process pi) from app.asar for packaged exports', () => {
     expect(RENDER_RUNTIME_ASAR_UNPACK_DIRS).toBe(
-      '{vendor/ffmpeg,resources/pi,node_modules/@remotion,node_modules/esbuild,node_modules/@esbuild,node_modules/@puppeteer,node_modules/puppeteer-core,node_modules/sharp,node_modules/onnxruntime-node,node_modules/ffmpeg-static,node_modules/ffprobe-static}',
+      '{dist-cli,vendor/ffmpeg,node_modules/@earendil-works,node_modules/@mariozechner,node_modules/@remotion,node_modules/esbuild,node_modules/@esbuild,node_modules/@puppeteer,node_modules/puppeteer-core,node_modules/sharp,node_modules/onnxruntime-node,node_modules/ffmpeg-static,node_modules/ffprobe-static}',
     );
   });
 });

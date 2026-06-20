@@ -4,19 +4,17 @@
  * 复用现有 `MessageInput` 的全部能力（文本输入、斜杠命令、@ 文件提及、
  * 附件/图片、模式/配置选择器、取消、发送），不做重写。
  *
- * 唯一新增能力：在「新建会话尚未绑定 agent」场景下，于输入框上方渲染
- * `<AgentPicker/>`，让用户显式选择 agent（当前 runtime 仅内置 pi）。
- *
- * 设计取舍：保持对外接口与 MessageInput 完全兼容（透传所有 props），
- * 仅扩展三个与 agent 选择相关的新 prop。被 B8 ChatPane 使用；现有
- * ConversationDetailPane 继续直接使用 MessageInput，互不影响。
+ * 能力：
+ *  - 「新建会话尚未绑定 agent」场景下，于输入框上方渲染 `<AgentPicker/>`。
+ *  - 已绑定 agent 时，把「模型 + 思考程度」合并芯片（ModelReasoningPicker）
+ *    注入 MessageInput 底栏右侧插槽（与 + / 审批 pill 同排，不再单列一行）。
+ *    agent 框架名（pi 等）不在此重复展示——已由 AI 面板右上角 ChatHeader 呈现。
  */
 
 import React from 'react';
 import { MessageInput, type MessageInputProps } from './MessageInput';
 import { AgentPicker } from './AgentPicker';
-import { ModelPicker } from './ModelPicker';
-import { ThinkingLevelPicker } from './ThinkingLevelPicker';
+import { ModelReasoningPicker } from './ModelReasoningPicker';
 
 export interface ChatComposerProps extends MessageInputProps {
   /** 是否在输入框上方显示 agent 选择器（仅新建会话/未绑定 agent 时为 true）。 */
@@ -26,12 +24,12 @@ export interface ChatComposerProps extends MessageInputProps {
   /** agent 选择变更回调。 */
   onAgentChange?: (agentId: string) => void;
   /**
-   * 当前 agent id（用于在输入框下方渲染模型选择芯片）。有值时显示 ModelPicker。
+   * 当前 agent id（用于在底栏渲染「模型+思考」合并芯片）。有值时显示 ModelReasoningPicker。
    * 与 selectedAgentId 区分语义：selectedAgentId 用于「新建会话选 agent」场景，
    * agentId 用于「已绑定会话切模型」的常驻芯片。
    */
   agentId?: string;
-  /** 当前模型 id（受控）；缺省时 ModelPicker 用 presentation.defaultModel。 */
+  /** 当前模型 id（受控）；缺省时用 presentation.defaultModel。 */
   modelId?: string;
   /** 模型切换回调。 */
   onModelChange?: (modelId: string) => void;
@@ -39,8 +37,6 @@ export interface ChatComposerProps extends MessageInputProps {
   reasoningId?: string;
   /** 思考程度切换回调。 */
   onReasoningChange?: (reasoningId: string) => void;
-  /** 点击芯片 agent 区进入设置中心切换 agent。 */
-  onOpenAgentSettings?: () => void;
 }
 
 export function ChatComposer({
@@ -52,7 +48,6 @@ export function ChatComposer({
   onModelChange,
   reasoningId,
   onReasoningChange,
-  onOpenAgentSettings,
   ...messageInputProps
 }: ChatComposerProps): React.ReactElement {
   return (
@@ -65,25 +60,21 @@ export function ChatComposer({
           />
         </div>
       )}
-      <MessageInput {...messageInputProps} />
-      {agentId && (
-        <div
-          className="chat-composer__model-picker"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
-        >
-          <ModelPicker
-            agentId={agentId}
-            value={modelId}
-            onChange={(id) => onModelChange?.(id)}
-            onOpenAgentSettings={onOpenAgentSettings}
-          />
-          <ThinkingLevelPicker
-            agentId={agentId}
-            value={reasoningId}
-            onChange={(id) => onReasoningChange?.(id)}
-          />
-        </div>
-      )}
+      <MessageInput
+        {...messageInputProps}
+        bottomToolbarTrailing={
+          agentId ? (
+            <ModelReasoningPicker
+              agentId={agentId}
+              modelValue={modelId}
+              onModelChange={(id) => onModelChange?.(id)}
+              reasoningValue={reasoningId}
+              onReasoningChange={(id) => onReasoningChange?.(id)}
+              disabled={messageInputProps.disabled}
+            />
+          ) : undefined
+        }
+      />
     </div>
   );
 }

@@ -20,7 +20,8 @@ describe('agent-runtime registry', () => {
       expect(def!.id).toBe('pi');
       expect(def!.name).toBe('Pi');
       expect(def!.bin).toBe('pi');
-      expect(def!.streamFormat).toBe('pi-rpc');
+      // pi 现以进程内 SDK 运行（无子进程 streamFormat），标记 inProcess。
+      expect(def!.inProcess).toBe(true);
     });
 
     it('returns null for removed/unknown ids', () => {
@@ -31,33 +32,13 @@ describe('agent-runtime registry', () => {
     });
   });
 
-  describe('pi buildArgs', () => {
-    it('includes --mode rpc flags', () => {
+  describe('pi in-process shape', () => {
+    it('在进程内运行：无 CLI buildArgs / bundledNodeEntry / streamFormat', () => {
       const def = getAgentDef('pi')!;
-      const args = def.buildArgs({ prompt: 'hello' });
-      expect(args).toContain('--mode');
-      expect(args).toContain('rpc');
-    });
-
-    it('includes --session <sessionId> when resumeSessionId provided', () => {
-      const def = getAgentDef('pi')!;
-      const args = def.buildArgs({ prompt: 'hello', resumeSessionId: 'pi-session-abc' });
-      expect(args).toContain('--session');
-      const idx = args.indexOf('--session');
-      expect(args[idx + 1]).toBe('pi-session-abc');
-    });
-
-    it('reasoning 非 default → 透传 --thinking', () => {
-      const def = getAgentDef('pi')!;
-      const args = def.buildArgs({ prompt: 'hi', reasoning: 'high' });
-      expect(args).toContain('--thinking');
-      expect(args[args.indexOf('--thinking') + 1]).toBe('high');
-    });
-
-    it("reasoning='default' → 不透传 --thinking", () => {
-      const def = getAgentDef('pi')!;
-      const args = def.buildArgs({ prompt: 'hi', reasoning: 'default' });
-      expect(args).not.toContain('--thinking');
+      expect(def.inProcess).toBe(true);
+      expect(def.buildArgs).toBeUndefined();
+      expect(def.bundledNodeEntry).toBeUndefined();
+      expect(def.streamFormat).toBeUndefined();
     });
   });
 

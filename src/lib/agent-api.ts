@@ -8,6 +8,8 @@ import type {
   PreflightCheck,
   PromptInputBlock,
   ResolvedAgentSkill,
+  SkillFileContent,
+  SkillTreeNode,
 } from '../../electron/acp/types';
 import type { AgentModel } from '../../electron/agent-runtime/types';
 
@@ -110,6 +112,19 @@ export interface AgentAPI {
   disconnectRuntime(conversationId: number): Promise<void>;
   /** 列出某 agent 的内置 skills（设置页 / composer 补全）。 */
   listSkills(agentId: string): Promise<ResolvedAgentSkill[]>;
+  /** 弹目录选择器导入用户 skill 库；取消返回 {canceled:true}。 */
+  addSkill(): Promise<{ canceled: true } | { canceled: false; addedId?: string; error?: string }>;
+  /** 删除用户导入的 skill（内置不可删，返回 {ok:false,error} 表示失败）。 */
+  removeSkill(skillId: string): Promise<{ ok: boolean; error?: string }>;
+  /** 读取 skill 目录树（详情模态用）；失败返回 null。 */
+  readSkillTree(skillId: string): Promise<SkillTreeNode | null>;
+  /** 读取 skill 内单文件（已做大小 / 二进制保护）；失败返回 {error}。 */
+  readSkillFile(
+    skillId: string,
+    relPath: string,
+  ): Promise<SkillFileContent | { error: string }>;
+  /** 在 Finder 打开 skill 目录；不传 id 打开 skill 库根目录。 */
+  openSkillDir(skillId?: string): Promise<{ ok: boolean; error?: string }>;
   sendPromptToConversation(
     conversationId: number,
     contents: PromptInputBlock[],

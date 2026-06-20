@@ -198,6 +198,79 @@ export interface AIAnalysisResult {
 /** LM Studio 默认 OpenAI 兼容端点 */
 export const LMSTUDIO_DEFAULT_BASE_URL = 'http://localhost:1234/v1';
 
+export type PiProviderApi =
+  | 'openai-completions'
+  | 'openai-responses'
+  | 'anthropic-messages'
+  | 'google-generative-ai';
+
+export type PiModelInputType = 'text' | 'image';
+export type PiMaxTokensField = 'max_tokens' | 'max_completion_tokens';
+export type PiThinkingFormat =
+  | 'openai'
+  | 'openrouter'
+  | 'deepseek'
+  | 'together'
+  | 'zai'
+  | 'qwen'
+  | 'qwen-chat-template';
+export type PiThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type PiThinkingLevelMap = Partial<Record<PiThinkingLevel, string | null>>;
+
+export interface PiModelCost {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+export interface PiModelCompat {
+  supportsStore?: boolean;
+  supportsDeveloperRole?: boolean;
+  supportsReasoningEffort?: boolean;
+  supportsUsageInStreaming?: boolean;
+  maxTokensField?: PiMaxTokensField;
+  requiresToolResultName?: boolean;
+  requiresAssistantAfterToolResult?: boolean;
+  requiresThinkingAsText?: boolean;
+  requiresReasoningContentOnAssistantMessages?: boolean;
+  thinkingFormat?: PiThinkingFormat;
+  cacheControlFormat?: 'anthropic';
+  supportsStrictMode?: boolean;
+  supportsLongCacheRetention?: boolean;
+  supportsEagerToolInputStreaming?: boolean;
+  sendSessionAffinityHeaders?: boolean;
+  supportsCacheControlOnTools?: boolean;
+  forceAdaptiveThinking?: boolean;
+  allowEmptySignature?: boolean;
+}
+
+export interface PiModelProjectionOptions {
+  input?: PiModelInputType[];
+  contextWindow?: number;
+  maxTokens?: number;
+  cost?: Partial<PiModelCost>;
+  thinkingLevelMap?: PiThinkingLevelMap;
+}
+
+export interface PiProviderProjectionOptions {
+  /**
+   * pi 内置 provider id。设置后 pi 直接使用内置 provider/model 定义，
+   * App 只负责把 API Key 写入 auth.json；models.json 不再重复投影。
+   */
+  builtinProviderId?: string;
+  /** 覆盖投影到 pi models.json 的 api 类型；留空按 LLMProvider.type 推断 */
+  api?: PiProviderApi;
+  /** 为非标准 provider 自动追加 Authorization: Bearer <apiKey> */
+  authHeader?: boolean;
+  /** pi models.json provider.headers，支持 pi 的 $ENV / !command 取值语法 */
+  headers?: Record<string, string>;
+  /** provider/model 兼容性开关，投影到每个 pi model 的 compat */
+  compat?: PiModelCompat;
+  /** 应用于当前 Provider 下所有模型的 pi model 默认参数 */
+  model?: PiModelProjectionOptions;
+}
+
 /** 单个 LLM Provider 配置 */
 export interface LLMProvider {
   id: string;
@@ -214,6 +287,8 @@ export interface LLMProvider {
    * enableThinking=false 时忽略本字段（直接 thinking.type='disabled'）。
    */
   thinkingBudgetTokens?: number;
+  /** 内置 pi agent 的 provider / model 投影参数，不影响当前 LangChain 调用路径 */
+  pi?: PiProviderProjectionOptions;
 }
 
 export type TTSProviderType = 'minimax' | 'xiaomi_mimo' | 'custom_openai_audio';

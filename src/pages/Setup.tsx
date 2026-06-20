@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { m } from 'framer-motion';
-import { Plus, FileText, Music, Video, FolderOpen, FolderSearch, FolderInput, CheckCircle2, AlertCircle, Link, Loader2 } from 'lucide-react';
+import { Plus, FileText, Music, Video, FileVideo, FolderOpen, FolderSearch, FolderInput, CheckCircle2, AlertCircle, Link, Loader2, Upload } from 'lucide-react';
 import { springs } from '../ui/lib/motion';
 import { getFileNameFromPath } from '../lib/utils';
 import type { RecentProjectEntry } from '../lib/electron-api';
+import type { VideoImportSourceInput } from '../lib/video-import-types';
 import {
   Alert,
   Button,
@@ -51,11 +52,11 @@ interface SetupProps {
     modelBinding: AutoModeModelBinding | null,
   ) => Promise<void>;
   onOpenSettings: () => void;
-  /** 抖音导入完成回调：传入父目录、标题、原始链接、是否一键成稿、自动模式参数、写稿模型绑定 */
-  onDouyinImport: (
+  /** 媒体导入完成回调：传入父目录、标题、导入源（抖音链接 / 本地视频 / 本地音频）、是否一键成稿、自动模式参数、写稿模型绑定 */
+  onMediaImport: (
     parentDir: string,
     title: string,
-    douyinUrl: string,
+    source: VideoImportSourceInput,
     autoMode: boolean,
     autoParams: AutoWorkflowParams,
     modelBinding: AutoModeModelBinding | null,
@@ -80,7 +81,7 @@ export function Setup({
   onRemoveRecentProject,
   onImportScript,
   onOpenSettings,
-  onDouyinImport,
+  onMediaImport,
   onImportProject,
 }: SetupProps) {
   // ── 音频导入弹窗状态 ──
@@ -103,6 +104,14 @@ export function Setup({
   const [douyinParentDir, setDouyinParentDir] = useState<string | null>(null);
   const [douyinError, setDouyinError] = useState<string | null>(null);
   const [douyinCreating, setDouyinCreating] = useState(false);
+
+  // ── 本地视频导入弹窗状态 ──
+  const [localVideoDialogOpen, setLocalVideoDialogOpen] = useState(false);
+  const [localVideoPath, setLocalVideoPath] = useState<string | null>(null);
+  const [localVideoTitle, setLocalVideoTitle] = useState('');
+  const [localVideoParentDir, setLocalVideoParentDir] = useState<string | null>(null);
+  const [localVideoError, setLocalVideoError] = useState<string | null>(null);
+  const [localVideoCreating, setLocalVideoCreating] = useState(false);
 
   // ── 一键成稿 (AutoModeSection) 下拉选项与默认值 ──
   // selectedTemplate / selectedRole 来自 script store；voice 默认值需异步从磁盘读取 AISettings
@@ -176,6 +185,20 @@ export function Setup({
       setDouyinModelBinding(autoModeOptions.defaultModelBinding);
     }
   }, [douyinDialogOpen, autoModeOptions.defaults, autoModeOptions.defaultModelBinding]);
+
+  // ── 本地视频弹窗的一键成稿状态 ──
+  const [localVideoAutoMode, setLocalVideoAutoMode] = useState(false);
+  const [localVideoAutoParams, setLocalVideoAutoParams] = useState<AutoWorkflowParams>(autoModeOptions.defaults);
+  const [localVideoModelBinding, setLocalVideoModelBinding] = useState<AutoModeModelBinding | null>(
+    autoModeOptions.defaultModelBinding,
+  );
+  useEffect(() => {
+    if (!localVideoDialogOpen) {
+      setLocalVideoAutoMode(false);
+      setLocalVideoAutoParams(autoModeOptions.defaults);
+      setLocalVideoModelBinding(autoModeOptions.defaultModelBinding);
+    }
+  }, [localVideoDialogOpen, autoModeOptions.defaults, autoModeOptions.defaultModelBinding]);
 
   const canImport = useMemo(
     () => Boolean(selectedAudio && selectedSrt && !busy),
@@ -260,10 +283,10 @@ export function Setup({
     setDouyinError(null);
 
     try {
-      await onDouyinImport(
+      await onMediaImport(
         douyinParentDir,
         douyinTitle,
-        douyinUrl.trim(),
+        { sourceType: 'douyin', url: douyinUrl.trim() },
         douyinAutoMode,
         douyinAutoParams,
         douyinAutoMode ? douyinModelBinding : null,
@@ -274,9 +297,63 @@ export function Setup({
     } finally {
       setDouyinCreating(false);
     }
-  }, [douyinTitle, douyinParentDir, douyinUrl, douyinAutoMode, douyinAutoParams, douyinModelBinding, onDouyinImport]);
+  }, [douyinTitle, douyinParentDir, douyinUrl, douyinAutoMode, douyinAutoParams, douyinModelBinding, onMediaImport]);
 
   const canCreateDouyinProject = Boolean(douyinTitle && douyinParentDir && !douyinCreating);
+
+  // ── 本地视频导入弹窗操作 ──
+  const handleOpenLocalVideoDialog = useCallback(() => {
+    setLocalVideoPath(null);
+    setLocalVideoTitle('');
+    setLocalVideoParentDir(null);
+    setLocalVideoError(null);
+    setLocalVideoCreating(false);
+    setLocalVideoDialogOpen(true);
+  }, []);
+
+  /** 选择本地视频文件，并以文件名（去扩展名）推导默认工程名 */
+  const handleSelectLocalVideoFile = useCallback(async () => {
+    const selected = await window.electronAPI.selectMediaFile('video');
+    if (!selected) return;
+    setLocalVideoPath(selected);
+    setLocalVideoError(null);
+    const stem = getFileNameFromPath(selected).replace(/\.[^.]+$/, '').trim();
+    setLocalVideoTitle((prev) => (prev.trim() ? prev : stem || '本地视频'));
+  }, []);
+
+  /** 选择项目存放的父目录 */
+  const handleSelectLocalVideoDir = useCallback(async () => {
+    const dir = await window.electronAPI.selectProjectDirectory();
+    if (dir) setLocalVideoParentDir(dir);
+  }, []);
+
+  /** 确认创建项目：在父目录下建立以工程名命名的文件夹，携带本地视频路径自动触发复制+转录（跳过下载） */
+  const handleLocalVideoConfirm = useCallback(async () => {
+    const title = localVideoTitle.trim();
+    if (!localVideoPath || !title || !localVideoParentDir) return;
+    setLocalVideoCreating(true);
+    setLocalVideoError(null);
+
+    try {
+      await onMediaImport(
+        localVideoParentDir,
+        title,
+        { sourceType: 'local_video', filePath: localVideoPath },
+        localVideoAutoMode,
+        localVideoAutoParams,
+        localVideoAutoMode ? localVideoModelBinding : null,
+      );
+      setLocalVideoDialogOpen(false);
+    } catch (err) {
+      setLocalVideoError(err instanceof Error ? err.message : '创建项目失败');
+    } finally {
+      setLocalVideoCreating(false);
+    }
+  }, [localVideoPath, localVideoTitle, localVideoParentDir, localVideoAutoMode, localVideoAutoParams, localVideoModelBinding, onMediaImport]);
+
+  const canCreateLocalVideoProject = Boolean(
+    localVideoPath && localVideoTitle.trim() && localVideoParentDir && !localVideoCreating,
+  );
 
   const handleSelectDirectory = useCallback(async () => {
     const dir = await window.electronAPI.selectProjectDirectory();
@@ -364,6 +441,17 @@ export function Setup({
               <Video size={22} strokeWidth={1.5} />
             </div>
             <span className={styles.quickItemLabel}>抖音导入</span>
+          </button>
+          {/* 本地视频导入入口：选视频文件 → 创建项目（跳过下载，直接复制+转录） */}
+          <button
+            type="button"
+            className={styles.quickItem}
+            onClick={handleOpenLocalVideoDialog}
+          >
+            <div className={styles.quickItemIcon}>
+              <FileVideo size={22} strokeWidth={1.5} />
+            </div>
+            <span className={styles.quickItemLabel}>本地视频</span>
           </button>
           {/* 导入项目入口：识别跨机器复制过来的项目目录并修复素材路径 */}
           <button
@@ -643,6 +731,107 @@ export function Setup({
               onClick={() => void handleDouyinConfirm()}
             >
               {douyinCreating ? '创建中...' : '创建项目并开始创作'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 本地视频导入弹窗：选视频文件 → 编辑工程名 → 选目录 → 创建项目（跳过下载） ── */}
+      <Dialog open={localVideoDialogOpen} onOpenChange={setLocalVideoDialogOpen}>
+        <DialogContent size="md">
+          <DialogClose />
+          <DialogHeader>
+            <DialogTitle>本地视频导入</DialogTitle>
+            <DialogDescription>
+              选择本地视频文件，自动复制并转录为新项目的素材（无需下载）
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            {/* 选择视频文件 */}
+            <Field label="视频文件">
+              <button
+                type="button"
+                className={styles.dirPickerButton}
+                onClick={() => void handleSelectLocalVideoFile()}
+              >
+                {localVideoPath ? <FileVideo size={20} strokeWidth={1.5} /> : <Upload size={20} strokeWidth={1.5} />}
+                <span className={styles.dirPickerText}>
+                  {localVideoPath ? getFileNameFromPath(localVideoPath) : '选择视频文件'}
+                </span>
+              </button>
+            </Field>
+
+            {/* 工程名（默认取文件名，可编辑） */}
+            {localVideoPath && (
+              <div style={{ marginTop: 'var(--space-6)' }}>
+                <Field label="工程名">
+                  <Input
+                    type="text"
+                    value={localVideoTitle}
+                    onChange={(e) => setLocalVideoTitle(e.target.value)}
+                    placeholder="项目文件夹名称"
+                  />
+                </Field>
+              </div>
+            )}
+
+            {/* 选择项目存放目录 */}
+            {localVideoPath && (
+              <button
+                type="button"
+                className={styles.dirPickerButton}
+                onClick={() => void handleSelectLocalVideoDir()}
+                style={{ marginTop: 'var(--space-6)' }}
+              >
+                <FolderSearch size={20} strokeWidth={1.5} />
+                <span className={styles.dirPickerText}>
+                  {localVideoParentDir ? localVideoParentDir : '选择项目存放目录'}
+                </span>
+              </button>
+            )}
+
+            {/* 预览最终项目路径 */}
+            {localVideoPath && localVideoTitle.trim() && localVideoParentDir && (
+              <div className={styles.douyinProjectPath}>
+                <FolderOpen size={14} strokeWidth={1.5} />
+                <span>项目将创建在：{localVideoParentDir}/{localVideoTitle.trim()}</span>
+              </div>
+            )}
+
+            {/* 一键成稿（自动写稿、TTS、卡片、封面，跳过审稿） */}
+            {localVideoPath && (
+              <div style={{ marginTop: 'var(--space-6)' }}>
+                <AutoModeSection
+                  enabled={localVideoAutoMode}
+                  onToggle={setLocalVideoAutoMode}
+                  params={localVideoAutoParams}
+                  onChangeParams={setLocalVideoAutoParams}
+                  roleOptions={autoModeOptions.roles}
+                  voiceOptions={autoModeOptions.voices}
+                  modelOptions={autoModeOptions.models}
+                  modelBinding={localVideoModelBinding}
+                  onChangeModelBinding={setLocalVideoModelBinding}
+                />
+              </div>
+            )}
+
+            {/* 错误提示 */}
+            {localVideoError && (
+              <div style={{ marginTop: 'var(--space-6)' }}>
+                <Alert variant="error">{localVideoError}</Alert>
+              </div>
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">取消</Button>
+            </DialogClose>
+            <Button
+              variant="primary"
+              disabled={!canCreateLocalVideoProject}
+              onClick={() => void handleLocalVideoConfirm()}
+            >
+              {localVideoCreating ? '创建中...' : '创建项目并开始创作'}
             </Button>
           </DialogFooter>
         </DialogContent>

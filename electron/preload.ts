@@ -15,6 +15,9 @@ import type { AICard, AISegment, AISettings, PromptBindingMap } from '../src/typ
 import type { ConversationAPI } from '../src/types/conversation';
 import type { VideoImportRequest } from '../src/lib/video-import-types';
 import type { VideoImportTaskSnapshot } from './video-import/types';
+import type { PipelineTask } from './pipeline/types';
+
+type PipelineTaskUpdate = PipelineTask & { bridgeId: string };
 
 contextBridge.exposeInMainWorld('electronAPI', {
   parseSrtFile: (filePath: string) => ipcRenderer.invoke('parse-srt-file', filePath),
@@ -92,8 +95,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     projectDir?: string;
     projectBindings?: PromptBindingMap | null;
   }) => ipcRenderer.invoke('generate-card-from-subtitles', args),
-  compileMotionCards: (cards: { overlayId: string; tsx: string }[]) =>
-    ipcRenderer.invoke('remotion:compile-cards', cards) as Promise<Record<string, string>>,
+  compileMotionCards: (args: {
+    cards: { overlayId: string; tsx: string }[];
+    projectDir?: string | null;
+  }) =>
+    ipcRenderer.invoke('remotion:compile-cards', args) as Promise<Record<string, string>>,
   regenerateCoverPrompt: (args: {
     entries: SrtEntry[];
     settings: AISettings;
@@ -200,6 +206,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('pipeline:project-updated', handler);
     return () => ipcRenderer.removeListener('pipeline:project-updated', handler);
   },
+  onPipelineTaskUpdate: (callback: (task: PipelineTaskUpdate) => void) => {
+    const handler = (_event: unknown, task: PipelineTaskUpdate) => callback(task);
+    ipcRenderer.on('pipeline:task-update', handler);
+    return () => ipcRenderer.removeListener('pipeline:task-update', handler);
+  },
+  cancelPipelineTask: (taskId: string) =>
+    ipcRenderer.invoke('pipeline:cancel-task', taskId) as Promise<void>,
   onMenuAction: (callback: (event: MenuEvent) => void) => {
     const handler = (_event: unknown, event: MenuEvent) => callback(event);
     ipcRenderer.on('menu-action', handler);
@@ -215,6 +228,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleDevTools: () => ipcRenderer.invoke('toggle-devtools'),
   showItemInFolder: (filePath: string) => ipcRenderer.send('show-item-in-folder', filePath),
   openExternal: (url: string) => ipcRenderer.send('open-external', url),
+  openPath: (filePath: string) =>
+    ipcRenderer.invoke('open-path', filePath) as Promise<{ ok: boolean; error?: string }>,
+  quickLookFile: (filePath: string) =>
+    ipcRenderer.invoke('quick-look-file', filePath) as Promise<{ ok: boolean; error?: string }>,
   saveScriptFile: (projectDir: string, filename: string, content: string) =>
     ipcRenderer.invoke('save-script-file', projectDir, filename, content),
   loadScriptFile: (projectDir: string, filename: string) =>
@@ -482,6 +499,12 @@ contextBridge.exposeInMainWorld('agentAPI', {
     ipcRenderer.invoke('agent:connect-runtime', input),
   disconnectRuntime: (conversationId: number) => ipcRenderer.invoke('agent:disconnect-runtime', conversationId),
   listSkills: (agentId: string) => ipcRenderer.invoke('agent:list-skills', agentId),
+  addSkill: () => ipcRenderer.invoke('agent:add-skill'),
+  removeSkill: (skillId: string) => ipcRenderer.invoke('agent:remove-skill', skillId),
+  readSkillTree: (skillId: string) => ipcRenderer.invoke('agent:read-skill-tree', skillId),
+  readSkillFile: (skillId: string, relPath: string) =>
+    ipcRenderer.invoke('agent:read-skill-file', skillId, relPath),
+  openSkillDir: (skillId?: string) => ipcRenderer.invoke('agent:open-skill-dir', skillId),
   sendPromptToConversation: (
     conversationId: number,
     contents: unknown[],

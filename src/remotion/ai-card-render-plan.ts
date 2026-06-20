@@ -27,10 +27,14 @@ export function resolveAICardRenderPlan(
     return { kind: 'placeholder' };
   }
 
-  // Motion 卡：需有有效 tsx + 编译产物，否则降级占位（与旧逻辑一致）。
+  // Motion 卡：预览/导出真正执行的是 compiledJs。打包态或磁盘态有时只保留
+  // tsxPath，inline tsx 未及时 hydrate；这种情况下只要编译产物已到位就应交给 CardHost。
   if (card.renderMode === 'motion-card') {
     const tsx = card.motionCard?.tsx;
-    if (!tsx?.trim() || !compiledJs || !hasRenderableJsx(tsx)) {
+    if (!compiledJs) {
+      return { kind: 'placeholder' };
+    }
+    if (tsx?.trim() && !hasRenderableJsx(tsx)) {
       return { kind: 'placeholder' };
     }
     return { kind: 'card-host' };

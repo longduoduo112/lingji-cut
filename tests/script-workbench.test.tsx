@@ -155,7 +155,7 @@ describe('ScriptWorkbench', () => {
     );
 
     expect(source).toContain('DouyinImportDialog');
-    expect(source).toContain('handleImportDouyin');
+    expect(source).toContain('handleImportMediaSource');
   });
 
   it('routes standard video preview json files into a custom preview pane', () => {

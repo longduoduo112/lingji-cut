@@ -41,7 +41,20 @@ export type AgentStreamEvent =
   | { type: 'usage'; inputTokens?: number; outputTokens?: number; costUsd?: number; durationMs?: number }
   | { type: 'turn_end'; stopReason?: string }
   | { type: 'error'; message: string; raw?: string }
+  | {
+      type: 'permission_request';
+      requestId: string;
+      toolCall: unknown;
+      options: PermissionRequestOption[];
+    }
   | { type: 'raw'; line: string };
+
+/** 权限卡片选项；字段与 Renderer 侧 PendingPermission.options 对齐。 */
+export interface PermissionRequestOption {
+  optionId: string;
+  name: string;
+  kind: string;
+}
 
 // ─── Renderer 消费事件（applyRuntimeEvent 入参层） ────────────────────────────
 
@@ -92,7 +105,14 @@ export type RuntimeEventOut =
    */
   | { type: 'usage'; used: number; size: number }
   /** case 'session_started': payload.sessionId（用于持久化 externalId） */
-  | { type: 'session_started'; sessionId: string };
+  | { type: 'session_started'; sessionId: string }
+  /** case 'permission_request': payload.requestId, .toolCall, .options */
+  | {
+      type: 'permission_request';
+      requestId: string;
+      toolCall: unknown;
+      options: PermissionRequestOption[];
+    };
 
 // ─── 工具分类 ─────────────────────────────────────────────────────────────────
 
@@ -173,6 +193,15 @@ export function toRuntimeEvent(ev: AgentStreamEvent): RuntimeEventOut | null {
     case 'error':
       // applyRuntimeEvent case 'error'
       return { type: 'error', message: ev.message };
+
+    case 'permission_request':
+      // applyRuntimeEvent case 'permission_request': payload.requestId/.toolCall/.options
+      return {
+        type: 'permission_request',
+        requestId: ev.requestId,
+        toolCall: ev.toolCall,
+        options: ev.options,
+      };
 
     case 'usage':
       // applyRuntimeEvent case 'usage': { used: number; size: number }

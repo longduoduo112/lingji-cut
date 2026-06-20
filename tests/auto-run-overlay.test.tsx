@@ -148,7 +148,7 @@ describe('AutoRunOverlay', () => {
  * AutoRunController 源码契约校验
  *
  * 说明：完整渲染 AutoRunController 需要 mock 多个 store / IPC（pendingAutoParams、
- * pendingDouyinUrl、videoImportProgress、useAIVideoWorkflow.start、loadScriptFile 等），
+ * pendingMediaImport、videoImportProgress、useAIVideoWorkflow.start、loadScriptFile 等），
  * 投入产出比低，端到端行为放在 Task 14 手动 E2E 回归覆盖。
  * 这里只做源码契约 smoke：确认胶水的关键调用都连上了。
  */
@@ -170,9 +170,9 @@ describe('AutoRunController wiring (source contract)', () => {
     expect(source).toMatch(/getProjectDir\b/);
   });
 
-  it('reads pendingAutoParams + pendingDouyinUrl and exposes setPage prop', () => {
+  it('reads pendingAutoParams + pendingMediaImport and exposes setPage prop', () => {
     expect(source).toMatch(/pendingAutoParams/);
-    expect(source).toMatch(/pendingDouyinUrl/);
+    expect(source).toMatch(/pendingMediaImport/);
     expect(source).toMatch(/setPage:\s*\(next:\s*AppPage\)\s*=>\s*void/);
   });
 
@@ -190,9 +190,9 @@ describe('AutoRunController wiring (source contract)', () => {
     expect(source).toMatch(/startFromStep:\s*'script_generating'/);
   });
 
-  it('douyin branch waits for douyinImportStatus === "done" before starting', () => {
-    expect(source).toContain("source === 'douyin'");
-    expect(source).toContain("douyinImportStatus === 'done'");
+  it('media branch waits for mediaImportStatus === "done" before starting', () => {
+    expect(source).toContain("source === 'media'");
+    expect(source).toContain("mediaImportStatus === 'done'");
   });
 
   it('navigates to editor on done and to script-workbench on cancel', () => {

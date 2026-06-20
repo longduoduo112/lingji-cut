@@ -167,9 +167,9 @@ describe('ChatPane 渲染会话', () => {
     expect(html).toContain('data-testid="conversation-dropdown-trigger"');
     // header 含 agent 只读标记（点击进设置）。
     expect(html).toContain('data-testid="chat-header-agent"');
-    // composer 含模型芯片（agentId=pi → ModelPicker）。
+    // composer 含「模型+思考」合并芯片（agentId=pi → ModelReasoningPicker）。
     expect(html).toContain('data-agent-id="pi"');
-    expect(html).toContain('data-testid="model-picker-agent"');
+    expect(html).toContain('data-testid="model-reasoning-chip"');
   });
 
   it('shows resumable marker when externalId exists, otherwise new session', () => {

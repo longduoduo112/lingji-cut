@@ -20,6 +20,7 @@ import type {
   VideoImportRequest,
 } from './video-import-types';
 import type { VideoImportTaskSnapshot } from '../../electron/video-import/types';
+import type { PipelineTask } from '../../electron/pipeline/types';
 import type {
   PromptKind,
   PromptKindMeta,
@@ -254,7 +255,10 @@ export interface ElectronAPI {
     projectBindings?: PromptBindingMap | null;
   }) => Promise<AICard>;
   /** 把 motion 卡片 TSX 批量编译为可执行 CJS（overlayId → js）。 */
-  compileMotionCards: (cards: { overlayId: string; tsx: string }[]) => Promise<Record<string, string>>;
+  compileMotionCards: (args: {
+    cards: { overlayId: string; tsx: string }[];
+    projectDir?: string | null;
+  }) => Promise<Record<string, string>>;
   regenerateCoverPrompt: (args: {
     entries: SrtEntry[];
     settings: AISettings;
@@ -345,11 +349,21 @@ export interface ElectronAPI {
   onProjectUpdated: (
     callback: (payload: { projectPath: string; sections: string[] }) => void,
   ) => () => void;
+  /** 订阅 MCP/pipeline 任务进度（导出/TTS/分析/封面/卡片/Motion）。 */
+  onPipelineTaskUpdate: (
+    callback: (task: PipelineTask & { bridgeId: string }) => void,
+  ) => () => void;
+  /** 取消 MCP/pipeline 任务。 */
+  cancelPipelineTask: (taskId: string) => Promise<void>;
   onMenuAction: (callback: (event: MenuEvent) => void) => () => void;
   onAppLog: (callback: (entry: AppLogEntry) => void) => () => void;
   toggleDevTools: () => Promise<void>;
   showItemInFolder: (filePath: string) => void;
   openExternal: (url: string) => void;
+  /** 用系统默认 App 打开文件，返回成功标记。 */
+  openPath: (filePath: string) => Promise<{ ok: boolean; error?: string }>;
+  /** macOS 调用 Quick Look 预览；非 macOS 降级为默认 App 打开。 */
+  quickLookFile: (filePath: string) => Promise<{ ok: boolean; error?: string }>;
   // Script workbench
   saveScriptFile: (projectDir: string, filename: string, content: string) => Promise<void>;
   loadScriptFile: (projectDir: string, filename: string) => Promise<string | null>;

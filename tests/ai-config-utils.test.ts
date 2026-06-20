@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createAIConfigSnapshot,
   hasUnsavedAIConfigChanges,
+  normalizeProviderDrafts,
   normalizeProviderSelection,
   validateProviderDraft,
 } from '../src/components/settings/ai-config-utils';
@@ -120,6 +121,94 @@ describe('ai-config-utils', () => {
         }),
       ),
     ).toBe(true);
+  });
+
+  it('normalizes pi projection settings and includes them in snapshots', () => {
+    const provider = createProvider({
+      pi: {
+        api: 'openai-responses',
+        authHeader: true,
+        headers: {
+          ' x-proxy-key ': ' $PROXY_KEY ',
+          empty: '',
+        },
+        compat: {
+          supportsDeveloperRole: true,
+          supportsReasoningEffort: false,
+          maxTokensField: 'max_completion_tokens',
+          thinkingFormat: 'qwen',
+        },
+        model: {
+          input: ['text', 'image'],
+          contextWindow: 262144.8,
+          maxTokens: 32768,
+          cost: { input: 1.2, output: 3.4 },
+          thinkingLevelMap: { low: null, high: ' high ', xhigh: 'max' },
+        },
+      },
+    });
+
+    const normalized = normalizeProviderDrafts([provider])[0];
+    expect(normalized.pi).toEqual({
+      api: 'openai-responses',
+      authHeader: true,
+      headers: { 'x-proxy-key': '$PROXY_KEY' },
+      compat: {
+        supportsDeveloperRole: true,
+        supportsReasoningEffort: false,
+        maxTokensField: 'max_completion_tokens',
+        thinkingFormat: 'qwen',
+      },
+      model: {
+        input: ['text', 'image'],
+        contextWindow: 262144,
+        maxTokens: 32768,
+        cost: { input: 1.2, output: 3.4 },
+        thinkingLevelMap: { low: null, high: 'high', xhigh: 'max' },
+      },
+    });
+
+    const baseSnapshot = createAIConfigSnapshot({
+      providers: [createProvider()],
+      defaultProviderId: 'provider-1',
+      defaultModel: 'gpt-4.1',
+      jimengApiUrl: '',
+      jimengSessionId: '',
+      jimengModel: '',
+    });
+    const piSnapshot = createAIConfigSnapshot({
+      providers: [provider],
+      defaultProviderId: 'provider-1',
+      defaultModel: 'gpt-4.1',
+      jimengApiUrl: '',
+      jimengSessionId: '',
+      jimengModel: '',
+    });
+
+    expect(hasUnsavedAIConfigChanges(baseSnapshot, piSnapshot)).toBe(true);
+  });
+
+  it('expands pi built-in provider drafts from the preset metadata', () => {
+    const normalized = normalizeProviderDrafts([
+      createProvider({
+        name: '   ',
+        type: 'openai_compatible',
+        baseUrl: '',
+        apiKey: ' sk-live ',
+        models: [],
+        pi: { builtinProviderId: 'openai' },
+      }),
+    ])[0];
+
+    expect(normalized).toMatchObject({
+      name: 'OpenAI',
+      type: 'openai_compatible',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-live',
+      models: ['gpt-5.5', 'gpt-5.5-pro', 'gpt-5.4', 'gpt-5.4-mini'],
+      pi: { builtinProviderId: 'openai' },
+    });
+    expect(validateProviderDraft(normalized)).toEqual({});
   });
 
   it('treats LM Studio providers as not requiring base URL or API key', () => {

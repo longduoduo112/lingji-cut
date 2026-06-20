@@ -50,24 +50,28 @@ export async function runPreflight(
     });
   }
 
-  // 3. Agent CLI 探测（detection）
+  // 3. Agent 探测：in-process agent（pi）内置于应用，恒可用，无需 CLI 探测。
   if (def) {
     const agentLabel = def.bin;
-    const detection = await detectAgent(def, createDetectionDeps(binaryManager));
-    if (detection.installed) {
-      const versionSuffix = detection.version ? ` ${detection.version}` : '';
-      checks.push({
-        label: agentLabel,
-        status: 'pass',
-        message: `${detection.binPath ?? '已安装'}${versionSuffix}`,
-      });
+    if (def.inProcess) {
+      checks.push({ label: agentLabel, status: 'pass', message: '内置（无需安装）' });
     } else {
-      checks.push({
-        label: agentLabel,
-        status: 'fail',
-        message: `未找到 ${agentLabel}，请确认已安装并在 PATH 中`,
-        fixAction: 'install',
-      });
+      const detection = await detectAgent(def, createDetectionDeps(binaryManager));
+      if (detection.installed) {
+        const versionSuffix = detection.version ? ` ${detection.version}` : '';
+        checks.push({
+          label: agentLabel,
+          status: 'pass',
+          message: `${detection.binPath ?? '已安装'}${versionSuffix}`,
+        });
+      } else {
+        checks.push({
+          label: agentLabel,
+          status: 'fail',
+          message: `未找到 ${agentLabel}，请确认已安装并在 PATH 中`,
+          fixAction: 'install',
+        });
+      }
     }
 
     // 4. API Key（仅 custom_api 模式提示；subscription/默认不阻断）

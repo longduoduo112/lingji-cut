@@ -19,6 +19,7 @@ import { springs, durations, easings } from '../../ui/lib/motion';
 import { EmptyState } from '../../ui';
 import { UserMessage } from './UserMessage';
 import { AssistantMessage, PermissionPrompt } from './AssistantMessage';
+import { SessionFileSummaryPanel } from './SessionFileSummaryPanel';
 import type { ConversationTurn, PendingPermission } from '../../types/conversation';
 
 const enterTransition = { transition: springs.smooth };
@@ -36,6 +37,8 @@ export interface MessageListProps {
   fallbackAgentId?: string;
   /** 是否处于流式输出中（用于自动置底判定，可选） */
   isStreaming?: boolean;
+  /** 用于把相对文件路径解析为绝对路径（会话结束文件结果集）。 */
+  projectDir?: string | null;
 }
 
 /** 从 user turn 的 blocks 中拼出可读文本（与 ConversationDetailPane 一致）。 */
@@ -52,6 +55,7 @@ export function MessageList({
   onRespondPermission,
   fallbackAgentId,
   isStreaming,
+  projectDir,
 }: MessageListProps): React.ReactElement {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // 用户是否“贴底”。初始为 true，用户上滚后置 false，回到底部再置 true。
@@ -140,6 +144,11 @@ export function MessageList({
           );
         })}
       </AnimatePresence>
+
+      {/* 会话结束（非 streaming）后，在末尾汇总本次改动的全部文件（无文件时组件自身返回 null）。 */}
+      {!isStreaming ? (
+        <SessionFileSummaryPanel turns={turns} projectDir={projectDir} />
+      ) : null}
 
       {/* 没有 assistant turn 可挂载时，在列表末尾单独渲染权限卡，避免授权请求丢失。 */}
       {pendingPermission && !hasAssistantTurn ? (

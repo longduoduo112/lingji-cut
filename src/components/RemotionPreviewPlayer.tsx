@@ -55,8 +55,8 @@ const RemotionPreviewPlayerInner = forwardRef<RemotionPreviewHandle, RemotionPre
     const previewAudioSources = useMemo(() => getPreviewAudioSources(plan.audio), [plan.audio]);
     const previewAudioSourcesKey = previewAudioSources.join('\0');
     const inputProps = useMemo(
-      () => ({ timeline: renderTimeline, srtEntries, compiledCards }),
-      [renderTimeline, srtEntries, compiledCards],
+      () => ({ timeline: renderTimeline, srtEntries, compiledCards, cardProjectDir: projectDir ?? undefined }),
+      [renderTimeline, srtEntries, compiledCards, projectDir],
     );
     const playerStyle = useMemo(
       () => ({ width: '100%', height: '100%', background: 'var(--color-preview-bg)' }),
@@ -71,8 +71,20 @@ const RemotionPreviewPlayerInner = forwardRef<RemotionPreviewHandle, RemotionPre
       }
       const compile = window.electronAPI?.compileMotionCards;
       if (!compile) return;
-      void compile(cardSources).then((map) => {
-        if (!cancelled) setCompiledCards(map);
+      void compile({ cards: cardSources, projectDir }).then((map) => {
+        if (cancelled) return;
+        const compiledCount = Object.keys(map).length;
+        if (compiledCount < cardSources.length) {
+          console.warn(
+            `[lingji motion-card] 预览编译缺失：${compiledCount}/${cardSources.length}`,
+          );
+        }
+        setCompiledCards(map);
+      }).catch((error) => {
+        if (!cancelled) {
+          console.error('[lingji motion-card] 预览编译失败', error);
+          setCompiledCards({});
+        }
       });
       return () => {
         cancelled = true;

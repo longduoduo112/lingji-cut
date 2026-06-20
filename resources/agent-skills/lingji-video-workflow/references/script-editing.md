@@ -33,7 +33,7 @@ Delete the lock after writing. Script edits do not produce `.lingji/edit-result.
 
 - Saving `script.md` externally reloads the script workspace and creates a version history entry with source `external`.
 - Saving `original.md` externally reloads the corresponding workspace tab.
-- If audio/subtitles should reflect a changed script, the user or MCP/App pipeline must rerun TTS/subtitle generation.
+- If audio/subtitles should reflect a changed script, rerun generation via the CLI: `node "$LINGJI_CLI" audio gen --wait` then `node "$LINGJI_CLI" subtitle analyze --wait` (see `cli-workflow.md`).
 
 ## Direct Edit Steps
 

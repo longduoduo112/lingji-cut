@@ -55,14 +55,10 @@ function legacyIdFor(newId: string): string | null {
 }
 
 function makeDefaultEntry(sortOrder: number): AgentEntry {
+  // pi SDK 化后只保留运行期真正需要的字段（启用态、版本、排序、skill 开关）；
+  // 凭证 / 模型不再逐 agent 配置（走 AISettings.llmProviders 投影）。
   return {
     enabled: false,
-    authMode: 'subscription',
-    apiKey: '',
-    apiBaseUrl: '',
-    model: '',
-    envText: '',
-    configJson: '',
     version: '',
     sortOrder,
     skills: [{ id: BUILTIN_SKILL_ID, enabled: true }],

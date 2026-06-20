@@ -972,7 +972,7 @@ export function buildSegmentCardPrompt(
     // 同值的浓缩上下文，避免破坏存量模板，同时不再发送整篇全文。
     fullTranscript: programContext,
     sandboxReference:
-      'Remotion 单文件 TSX 组件（export default）；从 "remotion" 引入 useCurrentFrame/useVideoConfig/interpolate/spring/Easing/AbsoluteFill/Sequence，输出到 motionCard.tsx；动画必须是 useCurrentFrame() 的纯函数；禁止 fetch/setTimeout/Math.random/new Date 等非确定性 API。',
+      'Remotion 单文件 TSX 组件（export default）；从 "remotion" 引入 useCurrentFrame/useVideoConfig/interpolate/spring/Easing/AbsoluteFill/Sequence/Img，输出到 motionCard.tsx；动画必须是 useCurrentFrame() 的纯函数；禁止 fetch/setTimeout/Math.random/new Date 等非确定性 API。图片资源：用全局函数 cardAsset(\'assets/文件名\')（项目相对路径，文件须已存在于项目 assets/ 目录）解析后传给 <Img src={cardAsset(\'assets/x.png\')} />；严禁内联大体积 base64 data URI、严禁绝对路径、严禁 staticFile() 传绝对路径。',
   });
 }
 

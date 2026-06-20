@@ -24,15 +24,21 @@ export interface RuntimeAgentDef {
   name: string;
   bin: string;
   /**
-   * 内置 Node 入口（相对 staged 根的路径，如 'resources/pi/dist/cli.js'）。
-   * 声明后：探测/spawn/列模型不再走 PATH 二进制，而用 Electron 自带 Node 运行此入口。
-   * bin 字段仍保留作为日志/兜底显示。
+   * 进程内 agent：直接在主进程用 SDK 跑（无子进程 / 无需安装探测）。
+   * pi 已切换为 in-process（@earendil-works/pi-coding-agent SDK），preflight 视其恒可用。
+   */
+  inProcess?: boolean;
+  /**
+   * @deprecated 旧内置 Node 入口（子进程时代用，如 'resources/pi/dist/cli.js'）。
+   * in-process 后不再使用。
    */
   bundledNodeEntry?: string;
   fallbackBins?: string[];
   versionArgs: string[];
-  buildArgs: (ctx: BuildArgsCtx) => string[];
-  streamFormat: StreamFormat;
+  /** @deprecated 子进程 CLI 参数组装；in-process agent 不再使用。 */
+  buildArgs?: (ctx: BuildArgsCtx) => string[];
+  /** @deprecated 子进程流式协议；in-process agent 不再使用。 */
+  streamFormat?: StreamFormat;
   resumesSessionViaCli?: boolean;
   env?: Record<string, string>;
   defaultModel?: string;

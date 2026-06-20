@@ -3,11 +3,12 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { app } from 'electron';
 import type { ExportConfig } from '../../src/lib/export-settings';
 import type { SrtEntry, TimelineData } from '../../src/types';
 import { parseSrt } from '../../src/lib/srt-parser';
-import { compileCards } from './compile-card-node';
+import { compileCards, type CompiledCard } from './compile-card-node';
 import { getRemotionBundle } from './bundle';
 import { renderRemotionVideo } from './render';
 import { collectMotionCards } from '../../src/remotion/collect-cards';
@@ -15,6 +16,7 @@ import { hydrateTimelineCards } from '../../src/lib/motion-card-externalize';
 import { prepareTimelineForHyperframes, type HyperframesAssetDescriptor } from '../../src/hyperframes/assets';
 import {
   collectMotionCardAssets,
+  externalizeMotionCardDataUris,
   rewriteMotionCardAssetReferences,
 } from './motion-card-assets';
 
@@ -81,7 +83,10 @@ export interface RenderVideoArgs {
 
 export async function renderVideoHeadless(
   args: RenderVideoArgs,
-  opts: { onProgress?: (fraction: number) => void } = {},
+  opts: {
+    onProgress?: (fraction: number) => void;
+    onMotionCardCompileErrors?: (errors: CompiledCard[], total: number) => void;
+  } = {},
 ): Promise<{ outputPath: string }> {
   const onProgress = opts.onProgress ?? (() => {});
 
@@ -128,15 +133,42 @@ export async function renderVideoHeadless(
       }
     },
   });
+  // 把卡片内联的大体积 base64 图片外置成 publicDir 下的真实文件，避免 60MB+ 的
+  // inputProps 经 structuredClone 撑爆无头 Chrome（DataCloneError / 进程被 kill）。
+  // 收集阶段同步攒 bytes，循环后统一落盘。卡片里替换为 cardAsset('card-assets/...')，
+  // 由 CardHost 在导出环境解析为 staticFile。
+  const externalizedCardAssets = new Map<string, Buffer>();
   for (const overlay of hydratedTimeline.overlays) {
     const motionCard = overlay.aiCardData?.motionCard;
     if (motionCard?.tsx) {
-      motionCard.tsx = rewriteMotionCardAssetReferences(motionCard.tsx);
+      const externalized = externalizeMotionCardDataUris(motionCard.tsx, {
+        write: (bytes, ext) => {
+          const hash = crypto.createHash('sha1').update(bytes).digest('hex').slice(0, 16);
+          const rel = `card-assets/${hash}.${ext}`;
+          if (!externalizedCardAssets.has(rel)) externalizedCardAssets.set(rel, bytes);
+          return rel;
+        },
+      });
+      motionCard.tsx = rewriteMotionCardAssetReferences(externalized);
     }
+  }
+  await Promise.all(
+    [...externalizedCardAssets.entries()].map(async ([rel, bytes]) => {
+      const target = path.join(publicDir, rel);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, bytes);
+    }),
+  );
+  if (isDev && externalizedCardAssets.size > 0) {
+    console.log(
+      `${renderLogPrefix} 外置卡片内联图片 ${externalizedCardAssets.size} 个 → ${publicDir}/card-assets`,
+    );
   }
   // 编译 motion 卡片 TSX → CJS，随 inputProps 传入 Remotion，由 CardHost 在无头 Chrome 内求值。
   const cardSources = collectMotionCards(hydratedTimeline);
-  const compiledCards = await compileCards(cardSources);
+  const compiledCards = await compileCards(cardSources, {
+    onCompileErrors: opts.onMotionCardCompileErrors,
+  });
   const remotionEntry = path.join(app.getAppPath(), 'src', 'remotion', 'index.ts');
 
   if (isDev) {

@@ -14,7 +14,6 @@
 import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { Button } from '../../ui';
-import { AgentIcon } from './AgentIcon';
 import { CopyButton } from './CopyButton';
 import { TextBlock } from './TextBlock';
 import { ThinkingBlock } from './ThinkingBlock';
@@ -169,17 +168,6 @@ function copyableText(turn: ConversationTurn): string {
     .trim();
 }
 
-/** agentId → 展示名映射，作为 turn.agentName 缺失时的回退。 */
-function agentNameFromId(agentId: string): string {
-  const normalized = agentId.toLowerCase().replace(/-acp$/, '');
-  switch (normalized) {
-    case 'pi':
-      return 'Pi';
-    default:
-      return '助手';
-  }
-}
-
 /** 从 ACP 传来的 toolCall 负载里尽力提取可读描述（与 ConversationDetailPane 保持一致）。 */
 export function describeToolCall(toolCall: unknown): { title: string; detail?: string } {
   if (!toolCall || typeof toolCall !== 'object') {
@@ -277,37 +265,24 @@ export interface AssistantMessageProps {
 
 function AssistantMessageInner({
   turn,
-  fallbackAgentId,
   pendingPermission,
   onRespondPermission,
   isLastAssistant,
   isStreaming,
 }: AssistantMessageProps): React.ReactElement {
-  const agentId = turn.agentId ?? fallbackAgentId ?? 'agent';
-  const agentName = turn.agentName ?? agentNameFromId(agentId);
   const copyText = copyableText(turn);
+  // 仅在该条消息「生成完成」后展示复制按钮（流式输出中的最新一条先不展示）。
+  const showCopy = Boolean(copyText) && !(isLastAssistant && isStreaming);
 
   return (
     // group：用于在 hover 时提亮复制按钮。
     // userSelect:text + cursor:auto：显式允许鼠标拖拽选中消息文本并手动复制，
     // 不受外层可能继承的 user-select:none 影响。
+    // 不再渲染 agent 身份头（pi 等标识由 AI 面板右上角呈现，正文开头无需重复）。
     <div
       className="group flex flex-col gap-2 max-w-[95%]"
       style={{ userSelect: 'text', WebkitUserSelect: 'text', cursor: 'auto' }}
     >
-      {/* agent 身份头 + 复制按钮 */}
-      <div className="flex items-center gap-2 text-[11px] font-medium text-mac-text-muted/70">
-        <AgentIcon agentId={agentId} size={16} />
-        <span>{agentName}</span>
-        {copyText ? (
-          <CopyButton
-            text={copyText}
-            label="复制回复"
-            className="ml-auto opacity-60 group-hover:opacity-100 focus-visible:opacity-100"
-          />
-        ) : null}
-      </div>
-
       {/* block 分发（连续同名 tool_call 聚合为 ToolGroupBlock） */}
       {renderBlocks(turn.blocks, { isLastAssistant, isStreaming })}
 
@@ -319,6 +294,17 @@ function AssistantMessageInner({
             onRespondPermission?.(pendingPermission.requestId, optionId)
           }
         />
+      ) : null}
+
+      {/* 复制按钮：消息底部，左对齐，hover 提亮 */}
+      {showCopy ? (
+        <div className="flex items-center">
+          <CopyButton
+            text={copyText}
+            label="复制回复"
+            className="opacity-50 group-hover:opacity-100 focus-visible:opacity-100"
+          />
+        </div>
       ) : null}
     </div>
   );

@@ -72,7 +72,7 @@
 }
 
 .dialogContent {
-  max-width: min(640px, 96vw);
+  max-width: min(720px, calc(100vw - 32px));
   width: 100%;
 }
 
@@ -80,6 +80,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  overscroll-behavior: contain;
 }
 
 .hintText {
@@ -161,6 +162,28 @@
   color: var(--color-system-red);
 }
 
+.dialogFooterInner {
+  width: 100%;
+}
+
+.advancedToggle {
+  align-self: flex-start;
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-accent, var(--color-text-primary));
+  font: inherit;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.advancedToggle:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .fetchError {
   margin: 0;
   font-size: var(--font-size-md);
@@ -205,6 +228,49 @@
   justify-content: flex-end;
 }
 
+.piPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-panel-muted) 58%, transparent);
+}
+
+.piPanelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.piPanelTitle {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-lg);
+  line-height: var(--line-height-tight);
+  font-weight: 650;
+  color: var(--color-text-primary);
+}
+
+.piPanelHint {
+  margin: 0;
+  font-size: var(--font-size-md);
+  color: var(--color-text-tertiary);
+}
+
+.piGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.piSwitchGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
 @media (max-width: 640px) {
   .providerHeader {
     flex-direction: column;
@@ -222,5 +288,10 @@
 
   .addProviderButton {
     width: 100%;
+  }
+
+  .piGrid,
+  .piSwitchGrid {
+    grid-template-columns: 1fr;
   }
 }

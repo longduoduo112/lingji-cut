@@ -280,30 +280,13 @@ describe('AssistantMessage block 分发', () => {
   });
 });
 
-describe('AssistantMessage agent 头', () => {
-  it('renders Pi icon/name when turn.agentId is pi', () => {
+describe('AssistantMessage 无 agent 身份头', () => {
+  it('does not render an agent icon/name header before the body', () => {
     const html = renderToStaticMarkup(
       <AssistantMessage turn={makeTurn({ agentId: 'pi' })} />,
     );
-    expect(html).toContain('aria-label="Pi"');
-    expect(html).toContain('Pi');
-  });
-
-  it('prefers turn.agentName over agentId mapping', () => {
-    const html = renderToStaticMarkup(
-      <AssistantMessage turn={makeTurn({ agentId: 'pi', agentName: '我的助手' })} />,
-    );
-    expect(html).toContain('我的助手');
-  });
-
-  it('falls back to fallbackAgentId when turn has no agentId', () => {
-    const turn = makeTurn();
-    delete turn.agentId;
-    const html = renderToStaticMarkup(
-      <AssistantMessage turn={turn} fallbackAgentId="pi" />,
-    );
-    expect(html).toContain('aria-label="Pi"');
-    expect(html).toContain('Pi');
+    // agent 框架名（pi）已由 AI 面板右上角呈现，正文开头不再重复。
+    expect(html).not.toContain('aria-label="Pi"');
   });
 });
 
@@ -321,6 +304,14 @@ describe('AssistantMessage 复制按钮 + 文本可选中', () => {
       blocks: [{ type: 'thinking', text: '只有思考没有正文' }],
     });
     const html = renderToStaticMarkup(<AssistantMessage turn={turn} />);
+    expect(html).not.toContain('aria-label="复制回复"');
+  });
+
+  it('hides copy button while the latest message is still streaming', () => {
+    const html = renderToStaticMarkup(
+      <AssistantMessage turn={makeTurn()} isLastAssistant isStreaming />,
+    );
+    // 生成完成前（流式中的最新一条）不展示复制按钮。
     expect(html).not.toContain('aria-label="复制回复"');
   });
 

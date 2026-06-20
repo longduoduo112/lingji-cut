@@ -1,7 +1,19 @@
 import { useState } from 'react';
-import { LMSTUDIO_DEFAULT_BASE_URL, type LLMProvider } from '../../types/ai';
+import {
+  LMSTUDIO_DEFAULT_BASE_URL,
+  type LLMProvider,
+  type PiProviderApi,
+  type PiThinkingFormat,
+} from '../../types/ai';
 import { CLAUDE_CODE_ACP_DEFAULT_MODEL } from '../../lib/llm/claude-code-acp-model';
 import { fetchProviderModels } from '../../lib/llm/fetch-models';
+import {
+  CUSTOM_PROVIDER_PRESET_ID,
+  PI_PROVIDER_PRESETS,
+  applyPiProviderPreset,
+  findPiProviderPresetByBuiltinId,
+  getPiBuiltinProviderId,
+} from '../../lib/llm/pi-provider-presets';
 import { testProviderModel } from '../../lib/llm/test-provider';
 import {
   Badge,
@@ -18,6 +30,8 @@ import {
   ModalFooter,
   Select,
   Switch,
+  Textarea,
+  DialogFooter,
 } from '../../ui';
 import type { SelectOption } from '../../ui';
 import { normalizeProviderDraft, validateProviderDraft } from './ai-config-utils';
@@ -37,22 +51,129 @@ const PROVIDER_TYPE_OPTIONS: SelectOption[] = [
   { value: 'claude_code_acp', label: 'Claude Code ACP' },
 ];
 
+const QUICK_PROVIDER_OPTIONS: SelectOption[] = [
+  ...PI_PROVIDER_PRESETS.map((preset) => ({
+    value: preset.id,
+    label: preset.label,
+  })),
+  { value: CUSTOM_PROVIDER_PRESET_ID, label: '自定义 Provider' },
+];
+
+const PI_API_OPTIONS: SelectOption[] = [
+  { value: '', label: '自动匹配 Provider 类型' },
+  { value: 'openai-completions', label: 'OpenAI Chat Completions' },
+  { value: 'openai-responses', label: 'OpenAI Responses' },
+  { value: 'anthropic-messages', label: 'Anthropic Messages' },
+  { value: 'google-generative-ai', label: 'Google Generative AI' },
+];
+
+const PI_MAX_TOKENS_FIELD_OPTIONS: SelectOption[] = [
+  { value: 'max_tokens', label: 'max_tokens' },
+  { value: 'max_completion_tokens', label: 'max_completion_tokens' },
+];
+
+const PI_THINKING_FORMAT_OPTIONS: SelectOption[] = [
+  { value: '', label: '默认' },
+  { value: 'openai', label: 'OpenAI reasoning_effort' },
+  { value: 'openrouter', label: 'OpenRouter reasoning' },
+  { value: 'deepseek', label: 'DeepSeek thinking' },
+  { value: 'together', label: 'Together reasoning' },
+  { value: 'zai', label: 'ZAI thinking' },
+  { value: 'qwen', label: 'Qwen enable_thinking' },
+  { value: 'qwen-chat-template', label: 'Qwen chat template' },
+];
+
 const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
 const MINIMAX_ANTHROPIC_DEFAULT_BASE_URL = 'https://api.minimaxi.com/anthropic';
 /** MiniMax 思考深度默认值（token），与 model.ts 下限保持一致 */
 const MINIMAX_DEFAULT_THINKING_BUDGET = 1024;
+const DEFAULT_PI_CONTEXT_WINDOW = 128000;
+const DEFAULT_PI_MAX_TOKENS = 8192;
+
+function updatePiSettings(
+  provider: LLMProvider,
+  updater: (pi: NonNullable<LLMProvider['pi']>) => NonNullable<LLMProvider['pi']>,
+): LLMProvider {
+  const nextPi = updater(provider.pi ?? {});
+  return { ...provider, pi: Object.keys(nextPi).length > 0 ? nextPi : undefined };
+}
+
+function updatePiCompat(
+  provider: LLMProvider,
+  updater: (
+    compat: NonNullable<NonNullable<LLMProvider['pi']>['compat']>,
+  ) => NonNullable<NonNullable<LLMProvider['pi']>['compat']>,
+): LLMProvider {
+  return updatePiSettings(provider, (pi) => {
+    const nextCompat = updater(pi.compat ?? {});
+    const nextPi = { ...pi };
+    if (Object.keys(nextCompat).length > 0) nextPi.compat = nextCompat;
+    else delete nextPi.compat;
+    return nextPi;
+  });
+}
+
+function updatePiModel(
+  provider: LLMProvider,
+  updater: (
+    model: NonNullable<NonNullable<LLMProvider['pi']>['model']>,
+  ) => NonNullable<NonNullable<LLMProvider['pi']>['model']>,
+): LLMProvider {
+  return updatePiSettings(provider, (pi) => {
+    const nextModel = updater(pi.model ?? {});
+    const nextPi = { ...pi };
+    if (Object.keys(nextModel).length > 0) nextPi.model = nextModel;
+    else delete nextPi.model;
+    return nextPi;
+  });
+}
+
+function parseHeadersText(text: string): Record<string, string> | undefined {
+  const headers: Record<string, string> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const sep = trimmed.indexOf(':');
+    if (sep <= 0) continue;
+    const key = trimmed.slice(0, sep).trim();
+    const value = trimmed.slice(sep + 1).trim();
+    if (key && value) headers[key] = value;
+  }
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
+function formatHeadersText(headers: Record<string, string> | undefined): string {
+  return Object.entries(headers ?? {})
+    .map(([key, value]) => `${key}: ${value}`)
+    .join('\n');
+}
 
 /** 空白 Provider 表单 */
 function emptyProvider(): LLMProvider {
-  return {
-    id: genId(),
-    name: '',
-    type: 'openai_compatible',
-    baseUrl: '',
-    apiKey: '',
-    models: [],
-    enableThinking: true,
-  };
+  return applyPiProviderPreset(
+    {
+      id: genId(),
+      name: '',
+      type: 'openai_compatible',
+      baseUrl: '',
+      apiKey: '',
+      models: [],
+      enableThinking: true,
+    },
+    PI_PROVIDER_PRESETS[0],
+  );
+}
+
+function inferPresetId(provider: LLMProvider): string {
+  const fromPi = findPiProviderPresetByBuiltinId(getPiBuiltinProviderId(provider));
+  if (fromPi) return fromPi.id;
+  if (provider.pi) return CUSTOM_PROVIDER_PRESET_ID;
+  const baseUrl = provider.baseUrl.trim().replace(/\/+$/, '');
+  const byShape = PI_PROVIDER_PRESETS.find((preset) => {
+    const presetBaseUrl = preset.baseUrl.trim().replace(/\/+$/, '');
+    return preset.type === provider.type && presetBaseUrl === baseUrl;
+  });
+  return byShape?.id ?? CUSTOM_PROVIDER_PRESET_ID;
 }
 
 // ─── 子组件：Provider 编辑弹窗 ────────────────────────────────────────────
@@ -82,10 +203,20 @@ function truncateErrorMessage(message: string): string {
 }
 
 function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
-  const [form, setForm] = useState<LLMProvider>({
-    ...initial,
-    enableThinking: initial.enableThinking ?? true,
+  const initialPresetId = inferPresetId(initial);
+  const [form, setForm] = useState<LLMProvider>(() => {
+    const base = {
+      ...initial,
+      enableThinking: initial.enableThinking ?? true,
+    };
+    const preset = PI_PROVIDER_PRESETS.find((item) => item.id === initialPresetId);
+    return preset ? applyPiProviderPreset(base, preset) : base;
   });
+  const [piHeadersText, setPiHeadersText] = useState(formatHeadersText(initial.pi?.headers));
+  const [presetId, setPresetId] = useState(initialPresetId);
+  const [showAdvanced, setShowAdvanced] = useState(
+    () => initialPresetId === CUSTOM_PROVIDER_PRESET_ID,
+  );
   const [setAsDefault, setSetAsDefault] = useState(isDefault);
   const [newModel, setNewModel] = useState('');
   const [errors, setErrors] = useState<ReturnType<typeof validateProviderDraft>>({});
@@ -93,6 +224,8 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
   const [modelTests, setModelTests] = useState<Record<string, ModelTestState>>({});
   const title = initial.name ? '编辑 Provider' : '添加 Provider';
   const isClaudeCodeAcp = form.type === 'claude_code_acp';
+  const selectedPreset = PI_PROVIDER_PRESETS.find((preset) => preset.id === presetId) ?? null;
+  const isQuickPreset = Boolean(selectedPreset && selectedPreset.id !== CUSTOM_PROVIDER_PRESET_ID);
 
   const updateModelTest = (model: string, state: ModelTestState) =>
     setModelTests((prev) => ({ ...prev, [model]: state }));
@@ -129,6 +262,48 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
     if (errorKey) {
       clearFieldError(errorKey);
     }
+  };
+
+  const handlePresetChange = (value: string) => {
+    setPresetId(value);
+    setModelTests({});
+    setPicker({ status: 'idle' });
+    clearFieldError('name');
+    clearFieldError('baseUrl');
+    clearFieldError('apiKey');
+    clearFieldError('models');
+
+    if (value === CUSTOM_PROVIDER_PRESET_ID) {
+      setShowAdvanced(true);
+      setForm((f) => {
+        const nextPi = { ...(f.pi ?? {}) };
+        delete nextPi.builtinProviderId;
+        return {
+          ...f,
+          pi: Object.keys(nextPi).length > 0 ? nextPi : undefined,
+        };
+      });
+      return;
+    }
+
+    const preset = PI_PROVIDER_PRESETS.find((item) => item.id === value);
+    if (!preset) return;
+    setForm((f) => {
+      const next = applyPiProviderPreset(
+        {
+          ...f,
+          name: preset.providerName,
+          baseUrl: preset.baseUrl,
+          models: preset.models,
+          enableThinking: preset.enableThinking,
+        },
+        preset,
+      );
+      if (!preset.apiKeyRequired && !next.apiKey.trim()) {
+        next.apiKey = '';
+      }
+      return next;
+    });
   };
 
   const addModel = () => {
@@ -209,10 +384,17 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
 
   const handleConfirm = () => {
     const pendingModel = newModel.trim();
-    const nextForm =
+    const withPendingModel =
       pendingModel && !form.models.includes(pendingModel)
         ? { ...form, models: [...form.models, pendingModel] }
         : form;
+    const parsedHeaders = parseHeadersText(piHeadersText);
+    const nextForm = updatePiSettings(withPendingModel, (pi) => {
+      const nextPi = { ...pi };
+      if (parsedHeaders) nextPi.headers = parsedHeaders;
+      else delete nextPi.headers;
+      return nextPi;
+    });
 
     const nextErrors = validateProviderDraft(nextForm);
     setErrors(nextErrors);
@@ -238,6 +420,21 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <DialogBody className={styles.dialogBody}>
+          <Field
+            label="快速配置"
+            hint={
+              selectedPreset
+                ? selectedPreset.description
+                : 'Pi 已内置常见 provider；选厂商后通常只需要填写 API Key。'
+            }
+          >
+            <Select
+              value={presetId}
+              options={QUICK_PROVIDER_OPTIONS}
+              onChange={(e) => handlePresetChange(e.target.value)}
+            />
+          </Field>
+
           <Field label="名称" required error={errors.name}>
             <Input
               value={form.name}
@@ -248,102 +445,149 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
             />
           </Field>
 
-          <Field label="类型">
-            <Select
-              value={form.type}
-              options={PROVIDER_TYPE_OPTIONS}
-              onChange={(e) => {
-                const nextType = e.target.value as LLMProvider['type'];
-                setForm((f) => {
-                  // 切换到 LM Studio 时，base URL 留空则填默认；apiKey 留空允许保留
-                  const next: LLMProvider = { ...f, type: nextType };
-                  if (nextType === 'lmstudio' && !next.baseUrl.trim()) {
-                    next.baseUrl = LMSTUDIO_DEFAULT_BASE_URL;
-                  }
-                  if (nextType === 'minimax' && !next.baseUrl.trim()) {
-                    next.baseUrl = MINIMAX_ANTHROPIC_DEFAULT_BASE_URL;
-                  }
-                  if (nextType === 'claude_code_acp') {
-                    next.baseUrl = '';
-                    next.apiKey = '';
-                    if (next.models.length === 0) {
-                      next.models = [CLAUDE_CODE_ACP_DEFAULT_MODEL];
-                    }
-                    if (!next.name.trim()) {
-                      next.name = 'Claude Code ACP';
-                    }
-                  }
-                  return next;
-                });
-                clearFieldError('baseUrl');
-                clearFieldError('apiKey');
-                clearFieldError('models');
-              }}
-            />
-          </Field>
+          {isQuickPreset && !isClaudeCodeAcp ? (
+            <Field
+              label="API Key"
+              required={selectedPreset?.apiKeyRequired ?? true}
+              error={errors.apiKey}
+            >
+              <Input
+                variant="password"
+                value={form.apiKey}
+                onChange={(e) => {
+                  set('apiKey', e.target.value, 'apiKey');
+                  setModelTests({});
+                }}
+                placeholder={selectedPreset?.apiKeyPlaceholder ?? 'sk-...'}
+                size="sm"
+                aria-invalid={Boolean(errors.apiKey)}
+              />
+            </Field>
+          ) : null}
 
-          {!isClaudeCodeAcp ? (
+          <button
+            type="button"
+            className={styles.advancedToggle}
+            onClick={() => setShowAdvanced((open) => !open)}
+          >
+            {showAdvanced ? '收起高级配置' : '展开高级配置'}
+          </button>
+
+          {showAdvanced ? (
             <>
-              <Field
-                label="Base URL"
-                required={form.type !== 'gemini' && form.type !== 'lmstudio'}
-                error={errors.baseUrl}
-                hint={
-                  form.type === 'gemini'
-                    ? `留空使用 Google 官方端点（${GEMINI_DEFAULT_BASE_URL}）`
-                    : form.type === 'lmstudio'
-                      ? `LM Studio 默认本地端点为 ${LMSTUDIO_DEFAULT_BASE_URL}`
-                      : form.type === 'minimax'
-                        ? `MiniMax Anthropic 兼容端点，留空用默认（${MINIMAX_ANTHROPIC_DEFAULT_BASE_URL}）`
-                        : undefined
-                }
-              >
-                <Input
-                  value={form.baseUrl}
+              <Field label="类型">
+                <Select
+                  value={form.type}
+                  options={PROVIDER_TYPE_OPTIONS}
                   onChange={(e) => {
-                    set('baseUrl', e.target.value, 'baseUrl');
-                    setModelTests({});
+                  const nextType = e.target.value as LLMProvider['type'];
+                    setPresetId(CUSTOM_PROVIDER_PRESET_ID);
+                    setForm((f) => {
+                      // 切换到 LM Studio 时，base URL 留空则填默认；apiKey 留空允许保留
+                      const next: LLMProvider = { ...f, type: nextType };
+                      const nextPi = { ...(next.pi ?? {}) };
+                      delete nextPi.builtinProviderId;
+                      next.pi = Object.keys(nextPi).length > 0 ? nextPi : undefined;
+                      if (nextType === 'lmstudio' && !next.baseUrl.trim()) {
+                        next.baseUrl = LMSTUDIO_DEFAULT_BASE_URL;
+                      }
+                      if (nextType === 'minimax' && !next.baseUrl.trim()) {
+                        next.baseUrl = MINIMAX_ANTHROPIC_DEFAULT_BASE_URL;
+                      }
+                      if (nextType === 'claude_code_acp') {
+                        next.baseUrl = '';
+                        next.apiKey = '';
+                        if (next.models.length === 0) {
+                          next.models = [CLAUDE_CODE_ACP_DEFAULT_MODEL];
+                        }
+                        if (!next.name.trim()) {
+                          next.name = 'Claude Code ACP';
+                        }
+                      }
+                      return next;
+                    });
+                    clearFieldError('baseUrl');
+                    clearFieldError('apiKey');
+                    clearFieldError('models');
                   }}
-                  placeholder={
-                    form.type === 'gemini'
-                      ? GEMINI_DEFAULT_BASE_URL
-                      : form.type === 'lmstudio'
-                        ? LMSTUDIO_DEFAULT_BASE_URL
-                        : form.type === 'minimax'
-                          ? MINIMAX_ANTHROPIC_DEFAULT_BASE_URL
-                          : 'https://api.openai.com/v1'
-                  }
-                  size="sm"
-                  aria-invalid={Boolean(errors.baseUrl)}
                 />
               </Field>
 
-              <Field
-                label="API Key"
-                required={form.type !== 'lmstudio'}
-                error={errors.apiKey}
-                hint={form.type === 'lmstudio' ? 'LM Studio 默认无需 API Key，可留空' : undefined}
-              >
-                <Input
-                  variant="password"
-                  value={form.apiKey}
-                  onChange={(e) => {
-                    set('apiKey', e.target.value, 'apiKey');
-                    setModelTests({});
-                  }}
-                  placeholder={form.type === 'lmstudio' ? '可留空' : 'sk-...'}
-                  size="sm"
-                  aria-invalid={Boolean(errors.apiKey)}
-                />
-              </Field>
+              {!isClaudeCodeAcp ? (
+                <>
+                  <Field
+                    label="Base URL"
+                    required={form.type !== 'gemini' && form.type !== 'lmstudio'}
+                    error={errors.baseUrl}
+                    hint={
+                      form.type === 'gemini'
+                        ? `留空使用 Google 官方端点（${GEMINI_DEFAULT_BASE_URL}）`
+                        : form.type === 'lmstudio'
+                          ? `LM Studio 默认本地端点为 ${LMSTUDIO_DEFAULT_BASE_URL}`
+                          : form.type === 'minimax'
+                            ? `MiniMax Anthropic 兼容端点，留空用默认（${MINIMAX_ANTHROPIC_DEFAULT_BASE_URL}）`
+                            : undefined
+                    }
+                  >
+                    <Input
+                      value={form.baseUrl}
+                      onChange={(e) => {
+                        set('baseUrl', e.target.value, 'baseUrl');
+                        setModelTests({});
+                      }}
+                      placeholder={
+                        form.type === 'gemini'
+                          ? GEMINI_DEFAULT_BASE_URL
+                          : form.type === 'lmstudio'
+                            ? LMSTUDIO_DEFAULT_BASE_URL
+                            : form.type === 'minimax'
+                              ? MINIMAX_ANTHROPIC_DEFAULT_BASE_URL
+                              : 'https://api.openai.com/v1'
+                      }
+                      size="sm"
+                      aria-invalid={Boolean(errors.baseUrl)}
+                    />
+                  </Field>
+
+                  {!isQuickPreset ? (
+                    <Field
+                      label="API Key"
+                      required={form.type !== 'lmstudio'}
+                      error={errors.apiKey}
+                      hint={form.type === 'lmstudio' ? 'LM Studio 默认无需 API Key，可留空' : undefined}
+                    >
+                      <Input
+                        variant="password"
+                        value={form.apiKey}
+                        onChange={(e) => {
+                          set('apiKey', e.target.value, 'apiKey');
+                          setModelTests({});
+                        }}
+                        placeholder={form.type === 'lmstudio' ? '可留空' : 'sk-...'}
+                        size="sm"
+                        aria-invalid={Boolean(errors.apiKey)}
+                      />
+                    </Field>
+                  ) : null}
+                </>
+              ) : (
+                <p className={styles.hintText}>
+                  复用 Claude Code 设置中的认证、安装和版本配置，不需要 Base URL 或 API Key。
+                </p>
+              )}
             </>
-          ) : (
-            <p className={styles.hintText}>
-              复用 Claude Code 设置中的认证、安装和版本配置，不需要 Base URL 或 API Key。
-            </p>
-          )}
+          ) : null}
 
-          <Field label="模型列表" required error={errors.models}>
+          <Field
+            label={isQuickPreset ? '默认模型' : '模型列表'}
+            required
+            error={errors.models}
+            hint={
+              isQuickPreset
+                ? '已按 Pi 内置 provider 预填常用模型；需要更多模型时可展开高级配置添加。'
+                : undefined
+            }
+          >
             {form.models.length > 0 ? (
               <div className={styles.modelList}>
                 {form.models.map((m, idx) => {
@@ -390,6 +634,7 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
                           size="sm"
                           className={styles.removeModelButton}
                           onClick={() => removeModel(idx)}
+                          disabled={!showAdvanced && isQuickPreset}
                         >
                           移除
                         </Button>
@@ -401,36 +646,38 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
             ) : (
               <p className={styles.hintText}>暂未添加模型</p>
             )}
-            <div className={styles.modelInputRow}>
-              <Input
-                value={newModel}
-                onChange={(e) => setNewModel(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addModel();
-                  }
-                }}
-                placeholder="输入模型名后按 Enter 或点击添加"
-                size="sm"
-                wrapperClassName={styles.modelInput}
-                aria-invalid={Boolean(errors.models)}
-              />
-              <Button type="button" variant="secondary" size="sm" onClick={addModel}>
-                添加
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  void handleFetchModels();
-                }}
-                disabled={picker.status === 'loading'}
-              >
-                {picker.status === 'loading' ? '拉取中…' : '拉取模型列表'}
-              </Button>
-            </div>
+            {showAdvanced ? (
+              <div className={styles.modelInputRow}>
+                <Input
+                  value={newModel}
+                  onChange={(e) => setNewModel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addModel();
+                    }
+                  }}
+                  placeholder="输入模型名后按 Enter 或点击添加"
+                  size="sm"
+                  wrapperClassName={styles.modelInput}
+                  aria-invalid={Boolean(errors.models)}
+                />
+                <Button type="button" variant="secondary" size="sm" onClick={addModel}>
+                  添加
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    void handleFetchModels();
+                  }}
+                  disabled={picker.status === 'loading'}
+                >
+                  {picker.status === 'loading' ? '拉取中…' : '拉取模型列表'}
+                </Button>
+              </div>
+            ) : null}
 
             {picker.status === 'error' ? (
               <p className={styles.fetchError}>{picker.message}</p>
@@ -532,6 +779,188 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
             </Field>
           ) : null}
 
+          {showAdvanced && !isClaudeCodeAcp && !isQuickPreset ? (
+            <div className={styles.piPanel}>
+              <div className={styles.piPanelHeader}>
+                <div>
+                  <h3 className={styles.piPanelTitle}>Pi agent 参数</h3>
+                  <p className={styles.piPanelHint}>
+                    仅影响内置 pi agent 的 models.json 投影，不改变剪辑流水线当前 LLM 调用。
+                  </p>
+                </div>
+              </div>
+
+              <div className={styles.piGrid}>
+                <Field label="Pi API">
+                  <Select
+                    value={form.pi?.api ?? ''}
+                    options={PI_API_OPTIONS}
+                    onChange={(e) => {
+                      const value = e.target.value as PiProviderApi | '';
+                      setForm((f) =>
+                        updatePiSettings(f, (pi) => {
+                          const nextPi = { ...pi };
+                          if (value) nextPi.api = value;
+                          else delete nextPi.api;
+                          return nextPi;
+                        }),
+                      );
+                    }}
+                  />
+                </Field>
+
+                <Field label="最大输出 tokens">
+                  <Input
+                    variant="number"
+                    min={1}
+                    step={1024}
+                    value={String(form.pi?.model?.maxTokens ?? DEFAULT_PI_MAX_TOKENS)}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      setForm((f) =>
+                        updatePiModel(f, (model) => ({
+                          ...model,
+                          maxTokens: Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined,
+                        })),
+                      );
+                    }}
+                    size="sm"
+                  />
+                </Field>
+
+                <Field label="上下文窗口 tokens">
+                  <Input
+                    variant="number"
+                    min={1}
+                    step={8192}
+                    value={String(form.pi?.model?.contextWindow ?? DEFAULT_PI_CONTEXT_WINDOW)}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      setForm((f) =>
+                        updatePiModel(f, (model) => ({
+                          ...model,
+                          contextWindow: Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined,
+                        })),
+                      );
+                    }}
+                    size="sm"
+                  />
+                </Field>
+
+                <Field label="max tokens 字段">
+                  <Select
+                    value={form.pi?.compat?.maxTokensField ?? 'max_tokens'}
+                    options={PI_MAX_TOKENS_FIELD_OPTIONS}
+                    onChange={(e) => {
+                      const value = e.target.value as 'max_tokens' | 'max_completion_tokens';
+                      setForm((f) =>
+                        updatePiCompat(f, (compat) => ({ ...compat, maxTokensField: value })),
+                      );
+                    }}
+                  />
+                </Field>
+
+                <Field label="thinking 格式">
+                  <Select
+                    value={form.pi?.compat?.thinkingFormat ?? ''}
+                    options={PI_THINKING_FORMAT_OPTIONS}
+                    onChange={(e) => {
+                      const value = e.target.value as PiThinkingFormat | '';
+                      setForm((f) =>
+                        updatePiCompat(f, (compat) => {
+                          const nextCompat = { ...compat };
+                          if (value) nextCompat.thinkingFormat = value;
+                          else delete nextCompat.thinkingFormat;
+                          return nextCompat;
+                        }),
+                      );
+                    }}
+                  />
+                </Field>
+              </div>
+
+              <div className={styles.piSwitchGrid}>
+                <Switch
+                  checked={Boolean(form.pi?.authHeader)}
+                  onChange={(checked) => {
+                    setForm((f) =>
+                      updatePiSettings(f, (pi) => {
+                        const nextPi = { ...pi };
+                        if (checked) nextPi.authHeader = true;
+                        else delete nextPi.authHeader;
+                        return nextPi;
+                      }),
+                    );
+                  }}
+                  label="自动添加 Authorization Bearer"
+                />
+                <Switch
+                  checked={form.pi?.compat?.supportsDeveloperRole ?? false}
+                  onChange={(checked) => {
+                    setForm((f) =>
+                      updatePiCompat(f, (compat) => ({
+                        ...compat,
+                        supportsDeveloperRole: checked,
+                      })),
+                    );
+                  }}
+                  label="支持 developer role"
+                />
+                <Switch
+                  checked={form.pi?.compat?.supportsReasoningEffort ?? Boolean(form.enableThinking)}
+                  onChange={(checked) => {
+                    setForm((f) =>
+                      updatePiCompat(f, (compat) => ({
+                        ...compat,
+                        supportsReasoningEffort: checked,
+                      })),
+                    );
+                  }}
+                  label="支持 reasoning_effort"
+                />
+                <Switch
+                  checked={form.pi?.compat?.supportsUsageInStreaming ?? true}
+                  onChange={(checked) => {
+                    setForm((f) =>
+                      updatePiCompat(f, (compat) => ({
+                        ...compat,
+                        supportsUsageInStreaming: checked,
+                      })),
+                    );
+                  }}
+                  label="流式返回 usage"
+                />
+                <Switch
+                  checked={form.pi?.model?.input?.includes('image') ?? false}
+                  onChange={(checked) => {
+                    setForm((f) =>
+                      updatePiModel(f, (model) => {
+                        const nextModel = { ...model };
+                        if (checked) nextModel.input = ['text', 'image'];
+                        else delete nextModel.input;
+                        return nextModel;
+                      }),
+                    );
+                  }}
+                  label="模型支持图片输入"
+                />
+              </div>
+
+              <Field
+                label="Pi 自定义 Headers"
+                hint="每行一个 header，格式为 Header-Name: value；value 可使用 pi 支持的 $ENV_VAR 或 !command。"
+              >
+                <Textarea
+                  value={piHeadersText}
+                  onChange={(e) => setPiHeadersText(e.target.value)}
+                  placeholder="x-api-key: $MY_PROXY_KEY"
+                  rows={3}
+                  resize="vertical"
+                />
+              </Field>
+            </div>
+          ) : null}
+
           <Checkbox
             label="设为默认 Provider"
             checked={setAsDefault}
@@ -539,18 +968,21 @@ function ProviderDialog({ initial, isDefault, onSave, onCancel }: DialogProps) {
             size="sm"
             className={styles.defaultCheckbox}
           />
-
-          <ModalFooter
-            onCancel={onCancel}
-            onConfirm={handleConfirm}
-            confirmLabel="保存"
-            extra={
-              Object.keys(errors).length > 0 ? (
-                <span className={styles.footerError}>请先补全 Provider 的必填项</span>
-              ) : null
-            }
-          />
         </DialogBody>
+        <DialogFooter>
+          <div className={styles.dialogFooterInner}>
+            <ModalFooter
+              onCancel={onCancel}
+              onConfirm={handleConfirm}
+              confirmLabel="保存"
+              extra={
+                Object.keys(errors).length > 0 ? (
+                  <span className={styles.footerError}>请先补全 Provider 的必填项</span>
+                ) : null
+              }
+            />
+          </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -662,6 +1094,15 @@ export function ProviderListSection({ providers, defaultProviderId, onChange }: 
                 ) : (
                   <span className={styles.providerHint}>未配置模型</span>
                 )}
+
+                {p.pi ? (
+                  <span className={styles.providerHint}>
+                    Pi：{p.pi.builtinProviderId ? `内置 ${p.pi.builtinProviderId}` : (p.pi.api ?? '自动 API')}
+                    {p.pi.model?.contextWindow ? ` · ${p.pi.model.contextWindow} ctx` : ''}
+                    {p.pi.model?.maxTokens ? ` · ${p.pi.model.maxTokens} max` : ''}
+                    {p.pi.model?.input?.includes('image') ? ' · image input' : ''}
+                  </span>
+                ) : null}
               </div>
             ))}
           </div>

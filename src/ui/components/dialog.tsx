@@ -112,7 +112,7 @@ function DialogContent({ children, className, size = "md", glass: _glass = false
 			role="dialog"
 			aria-modal="true"
 			className={cn(
-				"relative w-full rounded-[14px] border border-mac-border bg-mac-elevated shadow-[0_20px_60px_rgba(0,0,0,0.66)]",
+				"relative flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-[14px] border border-mac-border bg-mac-elevated shadow-[0_20px_60px_rgba(0,0,0,0.66)]",
 				sizeClasses[size],
 				className
 			)}
@@ -130,7 +130,7 @@ function DialogContent({ children, className, size = "md", glass: _glass = false
 						initial="hidden"
 						animate="visible"
 						exit="exit"
-						className="fixed inset-0 flex items-center justify-center bg-black/60 p-4 overflow-y-auto"
+						className="fixed inset-0 flex items-center justify-center overflow-hidden bg-black/60 p-4"
 						style={{ zIndex: 9999 }}
 						onClick={(e) => {
 							if (e.target === e.currentTarget) {
@@ -152,7 +152,7 @@ function DialogContent({ children, className, size = "md", glass: _glass = false
 
 		return (
 			<div
-				className="fixed inset-0 flex items-center justify-center bg-black/60 p-4 overflow-y-auto"
+				className="fixed inset-0 flex items-center justify-center overflow-hidden bg-black/60 p-4"
 				style={{ zIndex: 9999 }}
 			>
 				{dialogPanel}
@@ -172,7 +172,7 @@ interface DialogHeaderProps {
 
 function DialogHeader({ children, className }: DialogHeaderProps) {
 	return (
-		<div className={cn("px-6 pt-6 pb-4 border-b border-mac-separator", className)}>
+		<div className={cn("shrink-0 px-6 pt-6 pb-4 border-b border-mac-separator", className)}>
 			{children}
 		</div>
 	);
@@ -210,7 +210,7 @@ interface DialogBodyProps {
 }
 
 function DialogBody({ children, className }: DialogBodyProps) {
-	return <div className={cn("px-6 py-4", className)}>{children}</div>;
+	return <div className={cn("min-h-0 flex-1 overflow-y-auto px-6 py-4", className)}>{children}</div>;
 }
 
 interface DialogFooterProps {
@@ -220,7 +220,7 @@ interface DialogFooterProps {
 
 function DialogFooter({ children, className }: DialogFooterProps) {
 	return (
-		<div className={cn("flex items-center justify-end gap-2.5 px-6 py-4 border-t border-mac-separator", className)}>
+		<div className={cn("shrink-0 flex items-center justify-end gap-2.5 px-6 py-4 border-t border-mac-separator", className)}>
 			{children}
 		</div>
 	);

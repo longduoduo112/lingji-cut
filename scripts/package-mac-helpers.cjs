@@ -1,8 +1,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const STAGED_PROJECT_ROOTS = new Set(['dist', 'dist-electron', 'resources', 'src']);
-const RENDER_RUNTIME_ASAR_UNPACK_DIRS = '{vendor/ffmpeg,resources/pi,node_modules/@remotion,node_modules/esbuild,node_modules/@esbuild,node_modules/@puppeteer,node_modules/puppeteer-core,node_modules/sharp,node_modules/onnxruntime-node,node_modules/ffmpeg-static,node_modules/ffprobe-static}';
+const STAGED_PROJECT_ROOTS = new Set(['dist', 'dist-cli', 'dist-electron', 'resources', 'src']);
+// dist-cli 必须 asar-unpack：lingji CLI（注入给 agent 的 LINGJI_CLI）由真实 node 进程
+// 直接执行，无法读 asar 内文件，须落在 app.asar.unpacked。
+// pi（@earendil-works/*）以进程内 SDK 运行；整棵子树需 asar-unpack——其中含
+// 原生 .node（@mariozechner/clipboard-*，嵌套与顶层皆有）与按需读取的包内资源，
+// 这些无法从 asar 内 require/读取，须落在 app.asar.unpacked。
+const RENDER_RUNTIME_ASAR_UNPACK_DIRS = '{dist-cli,vendor/ffmpeg,node_modules/@earendil-works,node_modules/@mariozechner,node_modules/@remotion,node_modules/esbuild,node_modules/@esbuild,node_modules/@puppeteer,node_modules/puppeteer-core,node_modules/sharp,node_modules/onnxruntime-node,node_modules/ffmpeg-static,node_modules/ffprobe-static}';
 
 // 仅在 renderer（Vite bundle）中使用、主进程从不 require 的包可在此排除，
 // 以减小 .app 体积。漏排不会导致启动崩溃，只会让 app 变大。

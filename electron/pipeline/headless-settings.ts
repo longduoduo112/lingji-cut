@@ -43,7 +43,7 @@ export async function loadHeadlessProjectBindings(projectDir: string): Promise<P
 }
 
 /** 复制自 src/store/ai.ts buildDefaultAISettings 的默认字面量（store 不可 main 导入） */
-function defaultAISettings(): AISettings {
+export function defaultAISettings(): AISettings {
   return {
     llmProviders: [],
     defaultProviderId: null,

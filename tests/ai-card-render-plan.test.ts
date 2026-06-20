@@ -63,6 +63,19 @@ describe('resolveAICardRenderPlan', () => {
     expect(plan).toEqual({ kind: 'card-host' });
   });
 
+  it('renders a motion card with compiled output even when only tsxPath is present', () => {
+    const plan = resolveAICardRenderPlan(
+      card({
+        cardType: 'motion',
+        renderMode: 'motion-card',
+        content: '',
+        motionCard: { tsxPath: 'ai-cards/card-1/motionCard.tsx' } as never,
+      }),
+      'compiled-js',
+    );
+    expect(plan).toEqual({ kind: 'card-host' });
+  });
+
   it('falls back to a placeholder for a motion card that is missing its compiled output', () => {
     const plan = resolveAICardRenderPlan(
       card({

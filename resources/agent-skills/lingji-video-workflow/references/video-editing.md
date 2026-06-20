@@ -103,3 +103,26 @@ Hard constraints:
 - Prefer Remotion frame-driven animation with `useCurrentFrame()`, `useVideoConfig()`, `interpolate`, `spring`, `AbsoluteFill`, and `Sequence`.
 - Keep the component pure: no side effects, no external network requests, no timers.
 
+### Images inside a Motion Card
+
+Reference project images through the injected global `cardAsset(relativePath)` — never with absolute paths, `staticFile()` on an absolute path, or large inline `base64` data URIs (these break export: `staticFile() does not support absolute paths`, or multi-MB cards that crash the headless render with out-of-memory).
+
+- Put the image file under the project, e.g. `<projectDir>/assets/<name>.png`, then reference it with a **project-relative** path.
+- Wrap it with `cardAsset`, which resolves to `file://` in preview and to the materialized bundle path on export:
+
+```tsx
+import { AbsoluteFill, Img, useCurrentFrame } from 'remotion';
+
+export default function Card() {
+  return (
+    <AbsoluteFill>
+      <Img src={cardAsset('assets/codex-visuals/eu-factory.png')} style={{ width: '100%' }} />
+    </AbsoluteFill>
+  );
+}
+```
+
+- `cardAsset` is provided by the host runtime; do not import or redefine it.
+- The referenced file must already exist on disk under the project before export.
+- Tiny inline SVG/icon data URIs (< ~8KB) are tolerated, but prefer `cardAsset` for any real photo/illustration.
+

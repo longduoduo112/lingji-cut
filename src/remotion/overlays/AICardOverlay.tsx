@@ -12,12 +12,15 @@ export function AICardOverlay({
   zIndex,
   compiledJs,
   cues,
+  projectDir,
 }: {
   overlay: OverlayItem;
   zIndex: number;
   compiledJs?: string;
   /** 逐句字幕节拍（相对卡片 frame 0 的起始帧），注入卡片组件控制揭示。 */
   cues?: number[];
+  /** 项目目录：预览时供卡片 cardAsset 解析相对图片为 file://。 */
+  projectDir?: string;
 }) {
   const card = overlay.aiCardData;
   const isRendering = useIsRendering();
@@ -71,7 +74,7 @@ export function AICardOverlay({
 
   return (
     <AbsoluteFill style={wrapper}>
-      <CardHost overlayId={overlay.id} compiledJs={compiledJs ?? ''} cues={cues} />
+      <CardHost overlayId={overlay.id} compiledJs={compiledJs ?? ''} cues={cues} projectDir={projectDir} />
     </AbsoluteFill>
   );
 }

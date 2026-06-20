@@ -51,6 +51,9 @@ import {
   isVideoImportPreviewFile,
   parseVideoImportPreviewDocument,
 } from '../lib/video-import-preview';
+import { isAudioFile, isImageFile, isMediaPreviewFile } from '../lib/workbench-file-kind';
+import { toFileSrc } from '../lib/utils';
+import { MediaPreviewPlayer } from '../components/script/MediaPreviewPlayer';
 import type {
   VideoImportRequest,
   VideoImportSourceInput,
@@ -146,8 +149,8 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
     setLastVideoImport,
     clearVideoImportState,
     historyPreview,
-    pendingDouyinUrl,
-    setPendingDouyinUrl,
+    pendingMediaImport,
+    setPendingMediaImport,
     pendingImportedScript,
     setPendingImportedScript,
   } = useScriptStore();
@@ -240,6 +243,17 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
   const activeFileIsVideoPreview = Boolean(
     activeFile && isVideoImportPreviewFile(activeFile),
   );
+
+  const activeFileIsImage = Boolean(activeFile && isImageFile(activeFile));
+  const activeFileIsAudio = Boolean(activeFile && isAudioFile(activeFile));
+
+  // 图片 / 音频的本地文件 URL（projectDir 为绝对路径）
+  const activeMediaSrc = useMemo(() => {
+    if (!projectDir || !activeFile || !(activeFileIsImage || activeFileIsAudio)) {
+      return '';
+    }
+    return toFileSrc(`${projectDir}/${activeFile}`);
+  }, [projectDir, activeFile, activeFileIsImage, activeFileIsAudio]);
 
   const activePreviewPending = Boolean(
     activeFileIsVideoPreview && !(activeFile! in extraFileContents),
@@ -567,6 +581,12 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
       } else if (file === 'script.md') {
         const content = await window.electronAPI.loadScriptFile(projectDir, file);
         if (content !== null) setScriptText(content);
+      } else if (isMediaPreviewFile(file)) {
+        // 图片 / 音频：不读文本内容，仅登记一个占位以保留标签页；
+        // 主区域直接按文件路径渲染 <img> / 音频播放器。
+        if (!(file in useScriptStore.getState().extraFileContents)) {
+          setExtraFileContent(file, '');
+        }
       } else if (
         isVideoImportPreviewFile(file) ||
         !(file in useScriptStore.getState().extraFileContents)
@@ -813,16 +833,6 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
       setVideoImportProgress,
       waitForVideoImport,
     ],
-  );
-
-  const handleImportDouyin = useCallback(
-    async (url?: string) => {
-      await handleImportMediaSource({
-        sourceType: 'douyin',
-        url: url?.trim() ?? '',
-      });
-    },
-    [handleImportMediaSource],
   );
 
   const handleOpenImportPreview = useCallback(() => {
@@ -1422,16 +1432,16 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
     handleSave,
   ]);
 
-  // ── 从欢迎页带入的抖音链接：自动触发下载 + 转录，无需用户二次操作 ──
+  // ── 从欢迎页带入的导入源（抖音 / 本地视频 / 本地音频）：自动触发导入 + 转录，无需用户二次操作 ──
   useEffect(() => {
-    if (!pendingDouyinUrl) return;
-    const url = pendingDouyinUrl;
+    if (!pendingMediaImport) return;
+    const source = pendingMediaImport;
     // 立即清除，避免重复触发
-    setPendingDouyinUrl(null);
+    setPendingMediaImport(null);
     // 打开导入弹窗并自动开始导入
     setDouyinImportOpen(true);
-    void handleImportDouyin(url);
-  }, [pendingDouyinUrl, setPendingDouyinUrl, handleImportDouyin]);
+    void handleImportMediaSource(source);
+  }, [pendingMediaImport, setPendingMediaImport, handleImportMediaSource]);
 
   // ── 从欢迎页带入的导入文稿：写入 original.md 后自动起飞 AI 写稿 ──
   useEffect(() => {
@@ -1838,6 +1848,43 @@ export function ScriptWorkbench({ onBack, onNavigateToEditor, setPage }: ScriptW
                           </div>
                         </div>
                       )
+                    ) : activeFileIsImage ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          width: '100%',
+                          height: '100%',
+                          padding: 24,
+                          overflow: 'auto',
+                          background: 'var(--color-bg-secondary)',
+                        }}
+                      >
+                        <img
+                          src={activeMediaSrc}
+                          alt={activeFile ?? ''}
+                          style={{
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            objectFit: 'contain',
+                            borderRadius: 8,
+                          }}
+                        />
+                      </div>
+                    ) : activeFileIsAudio ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          width: '100%',
+                          height: '100%',
+                          padding: 24,
+                        }}
+                      >
+                        <MediaPreviewPlayer src={activeMediaSrc} isAudio />
+                      </div>
                     ) : (
                       <>
                         <ScriptEditor

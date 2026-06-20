@@ -22,6 +22,7 @@ import { AutoRunController } from './components/AutoRunController';
 import { ImportProjectDialog } from './components/ImportProjectDialog';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import type { ImportProjectResult } from './lib/project-import-types';
+import type { VideoImportSourceInput } from './lib/video-import-types';
 import { prefersReducedMotion } from './ui/lib/animation-config';
 import { WorkspaceTabs } from './components/WorkspaceTabs';
 import { getFileNameFromPath, readAudioDurationMs } from './lib/utils';
@@ -32,6 +33,11 @@ import type { ProjectData } from './lib/project-persistence';
 import { handleExternalEdit } from './lib/external-edit-sync';
 import { useAiEditStore } from './store/ai-edit';
 import { useScriptStore } from './store/script';
+import { useTaskProgressStore } from './store/task-progress';
+import {
+  createPipelineProgressBridge,
+  type PipelineTaskSnapshot,
+} from './lib/pipeline-progress-bridge';
 import { getRoleById } from './lib/script-templates';
 import { SCRIPT_TEMPLATE_SEEDS } from './lib/prompts/script-template-defaults';
 import { userPromptBindingKey } from './lib/prompts';
@@ -542,6 +548,29 @@ export default function App() {
     return unsubscribe;
   }, [reloadProjectSections]);
 
+  // MCP/pipeline 任务（含内置 pi 触发的导出/TTS/分析/封面/卡片/Motion）进度联动：
+  // 主进程 attachTaskProgressBridge 把任务发到 `pipeline:task-update`，这里映射进
+  // 底部统一进度系统。视频导入走另一条 `video-import-progress` 通道，已有各自的桥。
+  useEffect(() => {
+    if (!window.electronAPI?.onPipelineTaskUpdate) return;
+    const bridge = createPipelineProgressBridge({
+      subscribe: (cb) =>
+        window.electronAPI!.onPipelineTaskUpdate((task) =>
+          cb(task as unknown as PipelineTaskSnapshot),
+        ),
+      startTask: (input) => useTaskProgressStore.getState().startTask(input),
+      updateTask: (id, patch) => useTaskProgressStore.getState().updateTask(id, patch),
+      completeTask: (id) => useTaskProgressStore.getState().completeTask(id),
+      failTask: (id, error) => useTaskProgressStore.getState().failTask(id, error),
+      removeTask: (id) => useTaskProgressStore.getState().removeTask(id),
+      hasTask: (id) => useTaskProgressStore.getState().tasks.has(id),
+      cancel: (taskId) => {
+        void window.electronAPI!.cancelPipelineTask?.(taskId);
+      },
+    });
+    return () => bridge.dispose();
+  }, []);
+
   // AI file-first：订阅外部文件变更（file-changed）与会话锁态（ai-edit-lock-changed）。
   // - project.json 变更 → 重载并替换 timeline
   // - motionCard.tsx 变更 → 替换该卡内存源码触发预览重编译
@@ -727,14 +756,14 @@ export default function App() {
   );
 
   /**
-   * 抖音导入回调：在指定父目录下创建以视频标题命名的项目文件夹，
-   * 初始化空白脚本项目状态，保存抖音链接到 store，
-   * 导航到脚本工作台后自动触发完整的视频下载+转录流程。
+   * 媒体导入回调：在指定父目录下创建以标题命名的项目文件夹，
+   * 初始化空白脚本项目状态，保存待导入源（抖音链接 / 本地视频 / 本地音频）到 store，
+   * 导航到脚本工作台后自动触发导入 + 转录流程。
    */
-  const handleDouyinImport = useCallback(async (
+  const handleMediaImport = useCallback(async (
     parentDir: string,
     title: string,
-    douyinUrl: string,
+    source: VideoImportSourceInput,
     autoMode: boolean,
     autoParams: AutoWorkflowParams,
     modelBinding: { providerId: string; model: string } | null,
@@ -744,8 +773,8 @@ export default function App() {
     clearCurrentProject();
     useScriptStore.getState().clearProjectSession();
     useScriptStore.getState().restoreState(createBlankScriptProjectState(projectDir));
-    // 设置待处理的抖音链接，进入工作台后自动触发导入
-    useScriptStore.getState().setPendingDouyinUrl(douyinUrl);
+    // 设置待处理导入源，进入工作台后自动触发导入
+    useScriptStore.getState().setPendingMediaImport(source);
 
     setTimeline(createDefaultTimeline());
     setSrtEntries([]);
@@ -769,8 +798,8 @@ export default function App() {
         );
       }
       useAIStore.getState().setPendingAutoParams(autoParams);
-      // 注意：pendingDouyinUrl 不在这里清理，由 AutoRunController（Task 10/11）
-      // 在抖音下载启动后自行清掉，避免 ScriptWorkbench 后续误消费
+      // 注意：pendingMediaImport 不在这里清理，由 AutoRunController（Task 10/11）
+      // 在导入启动后自行清掉，避免 ScriptWorkbench 后续误消费
       setPage('auto-run');
       return;
     }
@@ -1190,7 +1219,7 @@ export default function App() {
                   onRemoveRecentProject={handleRemoveRecentProject}
                   onImportScript={handleImportScript}
                   onOpenSettings={() => setPage('settings')}
-                  onDouyinImport={handleDouyinImport}
+                  onMediaImport={handleMediaImport}
                   onImportProject={handleOpenImportProject}
                 />
               ) : page === 'settings' ? (

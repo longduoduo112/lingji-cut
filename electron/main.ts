@@ -4,7 +4,7 @@ import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { FSWatcher } from 'chokidar';
 import type { MenuContext, MenuEvent, ProjectMetadata } from '../src/lib/electron-api';
@@ -89,6 +89,7 @@ import {
 } from './telemetry/auto-run-logger';
 import { startMcpServer, stopMcpServer } from './mcp/server';
 import { loadProjectFile, saveProjectSection } from './project-file';
+import { materializePreviewMotionCardDataUris } from './remotion/motion-card-assets';
 import {
   scanProjectDirectory,
   importProject,
@@ -519,9 +520,38 @@ ipcMain.handle('get-audio-duration', async (_event, filePath: string) => {
 
 ipcMain.handle(
   'remotion:compile-cards',
-  async (_event, cards: { overlayId: string; tsx: string }[]) => {
+  async (
+    _event,
+    args:
+      | { cards: { overlayId: string; tsx: string }[]; projectDir?: string | null }
+      | { overlayId: string; tsx: string }[],
+  ) => {
+    const payload = Array.isArray(args) ? { cards: args, projectDir: null } : args;
+    const cards = payload.cards;
     if (!Array.isArray(cards) || cards.length === 0) return {};
-    return compileCards(cards);
+    const projectDir = payload.projectDir?.trim() ? payload.projectDir : null;
+    const normalizedCards = projectDir
+      ? await Promise.all(
+          cards.map(async (card) => ({
+            ...card,
+            tsx: await materializePreviewMotionCardDataUris(card.tsx, {
+              projectDir,
+              overlayId: card.overlayId,
+            }),
+          })),
+        )
+      : cards;
+    return compileCards(normalizedCards, {
+      onCompileErrors: (errors, total) => {
+        const firstError = errors[0];
+        writeAppLog(
+          'warn',
+          'motion-card',
+          `预览编译失败 ${errors.length}/${total}，首个失败卡片=${firstError?.overlayId ?? '<unknown>'}`,
+          firstError?.error,
+        );
+      },
+    });
   },
 );
 
@@ -1927,6 +1957,12 @@ ipcMain.handle('get-video-import-status', async (_event, importId: string) => {
   return videoImportService.getImportStatus(importId);
 });
 
+// 渲染端取消 MCP/pipeline 任务（底部进度条的取消按钮）。进度推送走
+// attachTaskProgressBridge 的 `pipeline:task-update`；取消走这条反向通道。
+ipcMain.handle('pipeline:cancel-task', async (_event, taskId: string) => {
+  await getPipelineService().cancelTask(taskId);
+});
+
 ipcMain.handle('start-watching', async (_event, dir: string) => {
   await fileWatcher?.close();
 
@@ -2313,6 +2349,33 @@ ipcMain.on('open-external', (_event, url: string) => {
   shell.openExternal(url);
 });
 
+ipcMain.handle('open-path', async (_event, filePath: string): Promise<{ ok: boolean; error?: string }> => {
+  try {
+    const error = await shell.openPath(filePath);
+    if (error) return { ok: false, error };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+ipcMain.handle('quick-look-file', async (_event, filePath: string): Promise<{ ok: boolean; error?: string }> => {
+  if (process.platform === 'darwin') {
+    try {
+      // qlmanage -p 调出 macOS 原生快速预览；detached + unref 不阻塞主进程。
+      const child = spawn('qlmanage', ['-p', filePath], { detached: true, stdio: 'ignore' });
+      child.on('error', () => {});
+      child.unref();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  // 非 macOS 降级为默认 App 打开。
+  const error = await shell.openPath(filePath);
+  return error ? { ok: false, error } : { ok: true };
+});
+
 // ── 最近项目管理 ──
 
 ipcMain.handle('load-recent-projects', async () => {
@@ -2359,6 +2422,15 @@ ipcMain.handle('refresh-recent-projects', async () => {
 ipcMain.handle('render-video', async (_event, args: RenderVideoArgs) => {
   return renderVideoHeadless(args, {
     onProgress: (f) => mainWindow?.webContents.send('render-progress', f),
+    onMotionCardCompileErrors: (errors, total) => {
+      const firstError = errors[0];
+      writeAppLog(
+        'warn',
+        'motion-card',
+        `导出编译失败 ${errors.length}/${total}，首个失败卡片=${firstError?.overlayId ?? '<unknown>'}`,
+        firstError?.error,
+      );
+    },
   });
 });
 

@@ -20,6 +20,15 @@ describe('parseFrontmatter', () => {
     expect(fm?.description).toContain('line two');
   });
 
+  it('解析 version（数字或字符串归一为字符串）', () => {
+    expect(parseFrontmatter('---\nname: s\nversion: 2\n---\n')?.version).toBe('2');
+    expect(parseFrontmatter('---\nname: s\nversion: "1.3.0"\n---\n')?.version).toBe('1.3.0');
+  });
+
+  it('无 version 时为 undefined', () => {
+    expect(parseFrontmatter('---\nname: s\n---\n')?.version).toBeUndefined();
+  });
+
   it('无 frontmatter 返回 null', () => {
     expect(parseFrontmatter('# just a title\n')).toBeNull();
   });

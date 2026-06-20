@@ -79,6 +79,8 @@ export interface RuntimeEventPayload {
 export interface AgentSessionLike {
   start(input: AgentSessionStartInput): Promise<void>;
   cancel(): void;
+  /** 响应一次挂起的审批请求（pi 路径有实现；其它协议可缺省）。 */
+  respondPermission?(requestId: string, optionId: string): void;
 }
 
 interface RuntimeContextEntry {
@@ -232,6 +234,8 @@ export class RuntimeRegistry extends EventEmitter {
         reasoning: entry.reasoning ?? entry.def.defaultReasoning,
         env: entry.env,
         skills: entry.skills,
+        // live getter：审批策略运行时可热切，confirm 门控时读最新值。
+        getPermissionPolicy: () => this.permissionPolicy,
         // Pi 恢复历史会话走 CLI `--session`；RPC `new_session(parentSession)` 是新建派生会话。
         parentSession: entry.def.id === 'pi' ? null : entry.snapshot.sessionId,
         resumeSessionId: entry.snapshot.sessionId,
@@ -287,9 +291,8 @@ export class RuntimeRegistry extends EventEmitter {
   }
 
   /**
-   * 记录权限策略（供后续新连接使用）。
-   * 多协议首版 CLI 无运行时权限协商，故仅记录，不向活跃会话下发。
-   * TODO(A10+): 若 CLI 支持权限策略参数，在 sendPrompt 起轮时透传。
+   * 设置审批策略。sendPrompt 起轮时以 live getter 透传给 pi-rpc，
+   * 故运行时切换对活跃会话即时生效（confirm 门控读最新值）。
    */
   setPermissionPolicy(policy: string): void {
     this.permissionPolicy = policy;
@@ -310,13 +313,14 @@ export class RuntimeRegistry extends EventEmitter {
     // TODO(A10+): 多协议暂不支持 config option。
   }
 
-  /** 兼容旧 ipc：多协议首版无交互式 permission 协商，noop。 */
+  /** 把用户对审批卡片的响应委派给该会话的活跃轮（pi-rpc 写回 extension_ui_response）。 */
   async respondPermission(
-    _conversationId: number,
-    _requestId: string,
-    _optionId: string,
+    conversationId: number,
+    requestId: string,
+    optionId: string,
   ): Promise<void> {
-    // TODO(A10+): 多协议暂不支持交互式 permission 响应。
+    const entry = this.contexts.get(conversationId);
+    entry?.activeSession?.respondPermission?.(requestId, optionId);
   }
 
   // ── 内部 ──────────────────────────────────────────────────────────────────

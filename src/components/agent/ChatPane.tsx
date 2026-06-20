@@ -178,6 +178,23 @@ export function ChatPane({
     };
   }, [agentType]);
 
+  // 全局审批模式（agent-config.permissionPolicy）。底栏 pill 读写，运行时即时同步。
+  const [permissionPolicy, setPermissionPolicy] = useState<string>('tiered');
+  useEffect(() => {
+    if (typeof window.agentAPI?.getPermissionPolicy !== 'function') return;
+    let alive = true;
+    void window.agentAPI.getPermissionPolicy().then((p) => {
+      if (alive && p) setPermissionPolicy(p);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const handlePermissionPolicyChange = useCallback((policy: string) => {
+    setPermissionPolicy(policy);
+    void window.agentAPI?.setPermissionPolicy?.(policy as never);
+  }, []);
+
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
   // 会话级思考程度：默认取该 agent 的 defaultReasoning。会话/agent 切换时重置。
   const [selectedReasoning, setSelectedReasoning] = useState<string | undefined>(undefined);
@@ -279,6 +296,7 @@ export function ChatPane({
         }
         fallbackAgentId={detail?.agentType}
         isStreaming={isPrompting}
+        projectDir={projectDir}
       />
 
       <div className="px-3 py-3 border-t border-mac-separator shrink-0 flex flex-col gap-1.5">
@@ -312,8 +330,9 @@ export function ChatPane({
           onModelChange={setSelectedModel}
           reasoningId={selectedReasoning}
           onReasoningChange={setSelectedReasoning}
-          onOpenAgentSettings={onOpenAgentSettings}
           skillItems={skillItems}
+          permissionPolicy={permissionPolicy}
+          onPermissionPolicyChange={handlePermissionPolicyChange}
         />
         {!explicitActivated ? (
           <div className="text-[10px] text-mac-text-muted/40 px-1">

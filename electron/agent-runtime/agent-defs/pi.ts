@@ -57,23 +57,24 @@ const PI_FALLBACK_MODELS: AgentModel[] = [
 ];
 
 // TODO: Verify Pi CLI flags and rpc mode invocation against real binary
+/**
+ * pi 现以进程内 SDK（@earendil-works/pi-coding-agent）运行（见 pi-inprocess.ts），
+ * 不再 spawn CLI。故 def 去掉子进程相关字段（bundledNodeEntry / buildArgs /
+ * streamFormat / --list-models 等），仅保留 UI 展示与 in-process 运行所需元数据：
+ *   - model / reasoning 选项；model 实际列表由 buildPiModelOptions 按 App provider
+ *     投影动态生成（见 acp/ipc.ts agent:list-models）。
+ *   - inProcess: true → preflight 视其恒可用，无需安装探测。
+ */
 export const piAgentDef = {
   id: 'pi',
   name: 'Pi',
   bin: 'pi',
-  bundledNodeEntry: 'resources/pi/dist/cli.js',
+  inProcess: true,
   versionArgs: ['--version'],
-  streamFormat: 'pi-rpc',
-  resumesSessionViaCli: true,
   defaultModel: 'default',
-  // 静态展示列表（首屏 / 非 electron 环境），与兜底列表一致。
+  // 静态展示列表（首屏 / 非 electron 环境）；运行时由 provider 投影覆盖。
   models: PI_FALLBACK_MODELS,
-  // 动态拉取元数据：`pi --list-models` 把表格打印到 stderr。
-  fallbackModels: PI_FALLBACK_MODELS,
-  listModelsArgs: ['--list-models'],
-  modelsOutputStream: 'stderr',
-  parseModels: parsePiModels,
-  // 思考程度：映射到 pi 的 --thinking 档位。'default' 表示跟随 CLI 配置。
+  // 思考程度：映射到 pi 的 thinkingLevel 档位。'default' 表示跟随配置。
   defaultReasoning: 'default',
   reasoningOptions: [
     { id: 'default', label: '默认' },
@@ -84,25 +85,4 @@ export const piAgentDef = {
     { id: 'high', label: '高' },
     { id: 'xhigh', label: '极高' },
   ],
-  // pi --model 接受 "sonnet" / "anthropic/claude-sonnet-4-5" / "openai/gpt-5:high"
-  // 等模式，原样透传即可；'default' 表示跟随 CLI 配置，不传 --model。
-  buildArgs: (ctx) => {
-    const args = ['--mode', 'rpc'];
-    if (ctx.resumeSessionId) {
-      args.push('--session', ctx.resumeSessionId);
-    }
-    if (ctx.model && ctx.model !== 'default') {
-      args.push('--model', ctx.model);
-    }
-    if (ctx.reasoning && ctx.reasoning !== 'default') {
-      args.push('--thinking', ctx.reasoning);
-    }
-    // 启用的内置 skill：pi 原生 --skill <path>（可重复）
-    for (const skill of ctx.skills ?? []) {
-      if (skill.enabled && skill.status === 'available') {
-        args.push('--skill', skill.rootPath);
-      }
-    }
-    return args;
-  },
 } satisfies RuntimeAgentDef;

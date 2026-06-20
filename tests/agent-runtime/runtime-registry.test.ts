@@ -63,6 +63,11 @@ class FakeSession {
   cancel(): void {
     this.cancelCalls += 1;
   }
+
+  respondCalls: Array<[string, string]> = [];
+  respondPermission(requestId: string, optionId: string): void {
+    this.respondCalls.push([requestId, optionId]);
+  }
 }
 
 function makeRegistry(): {
@@ -423,5 +428,32 @@ describe('RuntimeRegistry', () => {
     // 默认工厂 new AgentSession({ binaryManager }) 已携带传入的 bm。
     expect(hoisted.capturedDeps).not.toBeNull();
     expect(hoisted.capturedDeps.binaryManager).toBe(bm);
+  });
+});
+
+describe('RuntimeRegistry 审批策略透传与响应', () => {
+  it('sendPrompt 把 live getPermissionPolicy 透传给 session.start', async () => {
+    const { registry, sessions } = makeRegistry();
+    registry.setPermissionPolicy('always_ask');
+    await registry.connect({ ...baseConnect });
+    await registry.sendPrompt(1, [{ type: 'text', text: 'hi' }]);
+    const getter = sessions[0].lastInput?.getPermissionPolicy;
+    expect(typeof getter).toBe('function');
+    expect(getter?.()).toBe('always_ask');
+    // live：策略变化后 getter 反映最新值
+    registry.setPermissionPolicy('auto_approve');
+    expect(getter?.()).toBe('auto_approve');
+  });
+
+  it('respondPermission 委派到活跃会话的 respondPermission', async () => {
+    const { registry } = makeRegistry();
+    // 让该轮挂起，使 activeSession 在 respondPermission 时仍存活。
+    const target = new FakeSession();
+    target.pending = true;
+    (registry as any).createSession = () => target;
+    await registry.connect({ ...baseConnect });
+    void registry.sendPrompt(1, [{ type: 'text', text: 'hi' }]);
+    await registry.respondPermission(1, 'req-9', 'allow_once');
+    expect(target.respondCalls).toEqual([['req-9', 'allow_once']]);
   });
 });

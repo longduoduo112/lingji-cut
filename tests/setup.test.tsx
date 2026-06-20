@@ -14,13 +14,15 @@ describe('Setup', () => {
         onOpenRecentProject={async () => undefined}
         onImportScript={async () => undefined}
         onOpenSettings={() => undefined}
-        onDouyinImport={async () => undefined}
+        onMediaImport={async () => undefined}
       />,
     );
 
     expect(html).toContain('开始创作');
     expect(html).toContain('导入文稿');
     expect(html).toContain('导入音频');
+    expect(html).toContain('抖音导入');
+    expect(html).toContain('本地视频');
     expect(html).not.toContain('所有文件均在本地处理');
   });
 
@@ -35,7 +37,7 @@ describe('Setup', () => {
         onOpenRecentProject={async () => undefined}
         onImportScript={async () => undefined}
         onOpenSettings={() => undefined}
-        onDouyinImport={async () => undefined}
+        onMediaImport={async () => undefined}
       />,
     );
 
@@ -60,7 +62,7 @@ describe('Setup', () => {
         onOpenRecentProject={async () => undefined}
         onImportScript={async () => undefined}
         onOpenSettings={() => undefined}
-        onDouyinImport={async () => undefined}
+        onMediaImport={async () => undefined}
       />,
     );
 

@@ -41,10 +41,23 @@ const skill: ResolvedAgentSkill = {
   status: 'available',
 };
 
+const userSkill: ResolvedAgentSkill = {
+  id: 'my-skill',
+  displayName: 'My Skill',
+  description: '用户技能说明',
+  source: 'user',
+  rootPath: '/Users/u/.lingji/agent-skills/my-skill',
+  skillFilePath: '/Users/u/.lingji/agent-skills/my-skill/SKILL.md',
+  defaultEnabled: true,
+  loadModesByAgent: { pi: ['native', 'prompt_injection'] },
+  enabled: true,
+  status: 'available',
+};
+
 const getConfig = vi.fn();
 const getApiKey = vi.fn(async () => '');
 const runPreflight = vi.fn(async () => [] as unknown[]);
-const listSkills = vi.fn(async () => [skill]);
+const listSkills = vi.fn(async () => [skill, userSkill]);
 const saveConfig = vi.fn(async () => undefined);
 const setApiKey = vi.fn(async () => undefined);
 
@@ -80,6 +93,9 @@ beforeEach(() => {
     listSkills,
     saveConfig,
     setApiKey,
+    readSkillTree: vi.fn(async () => null),
+    readSkillFile: vi.fn(async () => ({ error: 'x' })),
+    openSkillDir: vi.fn(async () => ({ ok: true as const })),
   };
 });
 
@@ -112,35 +128,37 @@ function clickByText(container: HTMLElement, text: string) {
 }
 
 describe('AgentSettingsTab Skills section', () => {
-  it('展示内置 skill 名称与加载方式', async () => {
+  it('展示内置 skill 名称与「内置·常驻」徽章', async () => {
     const { container, root } = await mount();
 
     expect(listSkills).toHaveBeenCalled();
     const text = container.textContent ?? '';
     expect(text).toContain('灵机剪影视频工作流');
-    // pi 加载方式含「原生加载」与「$ 显式注入」（中文标签 map）
-    expect(text).toContain('原生加载');
-    expect(text).toContain('显式注入');
+    expect(text).toContain('内置·常驻');
 
     act(() => root.unmount());
     container.remove();
   });
 
-  it('切换开关翻转 aria-checked 并写回 config.skills', async () => {
+  it('切换用户 skill 开关写回 config.skills（内置不可切换）', async () => {
     const { container, root } = await mount();
 
-    const toggle = container.querySelector('[role="switch"]') as HTMLButtonElement | null;
+    // 用户 skill 开关：可切换；新 Switch 为 checkbox input。
+    const toggle = container.querySelector<HTMLInputElement>(
+      'input[aria-label="My Skill 启用开关"]',
+    );
     expect(toggle).not.toBeNull();
-    expect(toggle!.getAttribute('aria-checked')).toBe('true');
-    expect(toggle!.getAttribute('aria-label')).toBe('灵机剪影视频工作流');
+    expect(toggle!.checked).toBe(true);
 
     await act(async () => {
-      toggle!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      toggle!.click();
       await Promise.resolve();
     });
 
-    const toggleAfter = container.querySelector('[role="switch"]') as HTMLButtonElement;
-    expect(toggleAfter.getAttribute('aria-checked')).toBe('false');
+    const toggleAfter = container.querySelector<HTMLInputElement>(
+      'input[aria-label="My Skill 启用开关"]',
+    );
+    expect(toggleAfter!.checked).toBe(false);
 
     // 由「保存配置」落盘：saveConfig 入参的 skills enabled=false
     await act(async () => {
@@ -151,7 +169,7 @@ describe('AgentSettingsTab Skills section', () => {
       agents: Record<string, { skills?: { id: string; enabled: boolean }[] }>;
     };
     expect(arg.agents.pi.skills).toContainEqual({
-      id: 'lingji-video-workflow',
+      id: 'my-skill',
       enabled: false,
     });
 
