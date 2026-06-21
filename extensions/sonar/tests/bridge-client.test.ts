@@ -78,12 +78,14 @@ describe('createBridgeClient.enqueue', () => {
     const pending = memPending();
     const client = createBridgeClient({ fetchImpl, pending });
     const res = await client.enqueue(config, payload());
-    expect(res.status).toBe('sent');
-    expect(res.duplicate).toBe(false);
-    const [url, init] = fetchImpl.mock.calls[0];
+    expect(res).toMatchObject({ status: 'sent', duplicate: false });
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [
+      string,
+      RequestInit & { headers: Record<string, string> },
+    ];
     expect(url).toBe('http://127.0.0.1:19820/sonar/enqueue');
-    expect((init as RequestInit).method).toBe('POST');
-    expect((init as { headers: Record<string, string> }).headers['x-sonar-token']).toBe('tkn');
+    expect(init.method).toBe('POST');
+    expect(init.headers['x-sonar-token']).toBe('tkn');
     expect(pending.items).toHaveLength(0);
   });
 
