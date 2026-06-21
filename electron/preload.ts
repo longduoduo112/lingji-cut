@@ -254,6 +254,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ) => ipcRenderer.invoke('sonar-inbox-mark-status', id, status, patch),
   sonarInboxRemove: (id: string) => ipcRenderer.invoke('sonar-inbox-remove', id),
   sonarBridgeInfo: () => ipcRenderer.invoke('sonar-bridge-info'),
+  onSonarInboxUpdated: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('sonar-inbox-updated', handler);
+    return () => ipcRenderer.removeListener('sonar-inbox-updated', handler);
+  },
   getFileMtime: (filePath: string) =>
     ipcRenderer.invoke('get-file-mtime', filePath) as Promise<number | null>,
   saveScriptState: (projectDir: string, state: string) =>

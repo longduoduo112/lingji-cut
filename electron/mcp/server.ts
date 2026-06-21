@@ -146,6 +146,14 @@ export async function startMcpServer(
           store: sonarStore!,
           expectedToken: sonarToken,
           version: '1.0.0',
+          // 收件箱有新增/刷新 → 通知渲染端待创作箱实时刷新（无需手动点刷新）。
+          onInboxChanged: () => {
+            try {
+              getMainWindowFn?.()?.webContents.send('sonar-inbox-updated');
+            } catch (e) {
+              console.warn('[Sonar] 通知渲染端刷新失败', e);
+            }
+          },
         });
       } catch (err) {
         console.error('[Sonar] 处理请求出错:', err);

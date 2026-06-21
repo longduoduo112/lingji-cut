@@ -60,6 +60,9 @@ export function SonarInboxPanel({ onDraft }: SonarInboxPanelProps) {
     if (api?.sonarBridgeInfo) {
       void api.sonarBridgeInfo().then(setBridge).catch(() => {});
     }
+    // 扩展推送到桥后，主进程派发 sonar-inbox-updated → 实时刷新，无需手动点刷新。
+    const off = api?.onSonarInboxUpdated?.(() => void refresh());
+    return () => off?.();
   }, [refresh, api]);
 
   const pickDir = useCallback(async () => {

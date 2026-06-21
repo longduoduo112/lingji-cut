@@ -27,6 +27,8 @@ export interface SonarRouteDeps {
   store: SonarInboxStore;
   expectedToken: string;
   version?: string;
+  /** 收件箱因 enqueue 发生变化（新增/刷新）时回调，用于通知渲染端实时刷新。 */
+  onInboxChanged?: () => void;
 }
 
 /** 该 path 是否归声呐桥处理（server.ts 用它决定是否接管）。 */
@@ -73,6 +75,8 @@ export async function handleSonarRequest(
     if (!v.ok) return { status: 400, body: { error: v.message } };
     const refresh = (req.body as { refresh?: unknown }).refresh === true;
     const { item, duplicate, refreshed } = await deps.store.enqueue(v.input, { refresh });
+    // 新增或刷新（非纯去重）才算收件箱有变化 → 通知渲染端实时刷新。
+    if (!duplicate) deps.onInboxChanged?.();
     return { status: 200, body: { queued: true, itemId: item.id, duplicate, refreshed: refreshed ?? false } };
   }
 

@@ -391,6 +391,8 @@ export interface ElectronAPI {
   ) => Promise<import('./sonar-inbox').SonarInboxItem | null>;
   sonarInboxRemove: (id: string) => Promise<boolean>;
   sonarBridgeInfo: () => Promise<{ port: number; token: string }>;
+  /** 收件箱新增/刷新时触发（扩展推送到桥后），用于待创作箱实时刷新。返回取消订阅函数。 */
+  onSonarInboxUpdated: (callback: () => void) => () => void;
   saveScriptState: (projectDir: string, state: string) => Promise<void>;
   loadScriptState: (projectDir: string) => Promise<string | null>;
   selectTextFile: () => Promise<{ path: string; content: string } | null>;

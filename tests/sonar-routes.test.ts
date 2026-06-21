@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -119,6 +119,23 @@ describe('handleSonarRequest', () => {
       d,
     );
     expect(res.status).toBe(400);
+  });
+
+  it('enqueue 新增/刷新触发 onInboxChanged，纯去重不触发', async () => {
+    const onInboxChanged = vi.fn();
+    const dd: SonarRouteDeps = { ...d, onInboxChanged };
+    // 新增 → 触发
+    await handleSonarRequest({ method: 'POST', path: '/sonar/enqueue', token: TOKEN, body: validBody() }, dd);
+    expect(onInboxChanged).toHaveBeenCalledTimes(1);
+    // 纯去重 → 不触发
+    await handleSonarRequest({ method: 'POST', path: '/sonar/enqueue', token: TOKEN, body: validBody() }, dd);
+    expect(onInboxChanged).toHaveBeenCalledTimes(1);
+    // 刷新 → 再次触发
+    await handleSonarRequest(
+      { method: 'POST', path: '/sonar/enqueue', token: TOKEN, body: { ...validBody(), refresh: true } },
+      dd,
+    );
+    expect(onInboxChanged).toHaveBeenCalledTimes(2);
   });
 
   it('未知 /sonar 路径 → 404', async () => {
