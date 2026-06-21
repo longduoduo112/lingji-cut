@@ -21,6 +21,12 @@ import {
 } from '../ui';
 import { ProjectList } from '../components/ProjectList';
 import { ImportScriptDialog } from '../components/script/ImportScriptDialog';
+import { SonarInboxPanel } from '../components/setup/SonarInboxPanel';
+import {
+  deriveProjectName,
+  inboxItemToOriginalMarkdown,
+  type SonarInboxItem,
+} from '../lib/sonar-inbox';
 import {
   AutoModeSection,
   type AutoModeModelBinding,
@@ -171,6 +177,21 @@ export function Setup({
       defaultModelBinding,
     };
   }, [aiSettings, selectedTemplate, selectedRole, voiceIdDefault]);
+
+  // 待创作箱「生成初稿」：转录稿作为 original.md 素材，复用一键 autoMode 流水线做 AI 二创。
+  const handleDraftFromInbox = useCallback(
+    async (item: SonarInboxItem, parentDir: string) => {
+      await onImportScript(
+        parentDir,
+        deriveProjectName(item),
+        inboxItemToOriginalMarkdown(item),
+        true,
+        autoModeOptions.defaults,
+        autoModeOptions.defaultModelBinding,
+      );
+    },
+    [onImportScript, autoModeOptions],
+  );
 
   // ── 抖音弹窗的一键成稿状态 ──
   const [douyinAutoMode, setDouyinAutoMode] = useState(false);
@@ -465,6 +486,9 @@ export function Setup({
             <span className={styles.quickItemLabel}>导入项目</span>
           </button>
         </div>
+
+        {/* ── 待创作箱（声呐监听推入的二创素材）── */}
+        <SonarInboxPanel onDraft={handleDraftFromInbox} />
 
         {/* ── 本地草稿 ── */}
         <div className={styles.draftsSection}>
