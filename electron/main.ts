@@ -22,6 +22,7 @@ import { resolveStylePresetId } from '../src/lib/card-style';
 import { assertCardRenders } from './remotion/smoke-render';
 import type { ExportConfig } from '../src/lib/export-settings';
 import { generateCoverCandidates } from '../src/lib/cover-generation';
+import { generatePublishMetadata } from '../src/lib/publish-metadata';
 import { resolvePromptBinding } from '../src/lib/llm/binding-resolver';
 import {
   handleGenerateCardImage,
@@ -88,7 +89,7 @@ import {
   readRunEvents,
   type AutoRunEvent,
 } from './telemetry/auto-run-logger';
-import { startMcpServer, stopMcpServer } from './mcp/server';
+import { startMcpServer, stopMcpServer, getSonarInboxStore, getSonarBridgeInfo } from './mcp/server';
 import { loadProjectFile, saveProjectSection } from './project-file';
 import { materializePreviewMotionCardDataUris } from './remotion/motion-card-assets';
 import {
@@ -1057,6 +1058,10 @@ ipcMain.handle(
       projectDir: string;
       projectBindings?: PromptBindingMap | null;
       telemetryRunId?: string | null;
+      /** 画幅比例（发布选项卡按 16:9 / 4:3 / 3:4 生成）；缺省 16:9。 */
+      aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+      /** 每条 prompt 生成的候选数量；缺省 4。 */
+      n?: number;
     },
   ) => {
     const telemetry = makeMainTelemetry(args.telemetryRunId);
@@ -1096,6 +1101,7 @@ ipcMain.handle(
         binding.imageModel,
         coversDir,
         coverProgressCtx,
+        { aspectRatio: args.aspectRatio, n: args.n },
       );
       telemetry.emit('stage.end', {
         stage: 'cover',
@@ -1113,6 +1119,39 @@ ipcMain.handle(
         error: err instanceof Error ? err.message : String(err),
       });
       throw err;
+    }
+  },
+);
+
+ipcMain.handle(
+  'generate-publish-metadata',
+  async (
+    _event,
+    args: {
+      settings: AISettings;
+      sourceText: string;
+      currentTitle?: string;
+    },
+  ) => {
+    writeAppLog(
+      'info',
+      'publish',
+      '收到发布文案生成请求',
+      `sourceLen=${args.sourceText?.length ?? 0}`,
+    );
+    try {
+      return await generatePublishMetadata(args.settings, {
+        sourceText: args.sourceText,
+        currentTitle: args.currentTitle,
+      });
+    } catch (error) {
+      writeAppLog(
+        'error',
+        'publish',
+        '发布文案生成失败',
+        error instanceof Error ? error.stack ?? error.message : String(error),
+      );
+      throw error;
     }
   },
 );
@@ -1733,6 +1772,104 @@ ipcMain.handle('select-media-file', async (_event, kind: 'audio' | 'video' | 'sr
   return result.canceled ? null : result.filePaths[0];
 });
 
+/** 解析图片像素尺寸（PNG / JPEG / WebP 头部）；无法识别返回 null。 */
+function readImageSize(buf: Buffer): { width: number; height: number } | null {
+  // PNG: 8 字节签名 + IHDR(长度4+类型4) 后是 width/height
+  if (buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+    const width = buf.readUInt32BE(16);
+    const height = buf.readUInt32BE(20);
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+  // JPEG: 扫描 SOF 标记
+  if (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 9 < buf.length) {
+      if (buf[offset] !== 0xff) {
+        offset++;
+        continue;
+      }
+      const marker = buf[offset + 1];
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        const height = buf.readUInt16BE(offset + 5);
+        const width = buf.readUInt16BE(offset + 7);
+        return width > 0 && height > 0 ? { width, height } : null;
+      }
+      const segLen = buf.readUInt16BE(offset + 2);
+      if (segLen < 2) return null;
+      offset += 2 + segLen;
+    }
+    return null;
+  }
+  // WebP (RIFF....WEBP)
+  if (
+    buf.length >= 30 &&
+    buf.toString('ascii', 0, 4) === 'RIFF' &&
+    buf.toString('ascii', 8, 12) === 'WEBP'
+  ) {
+    const fmt = buf.toString('ascii', 12, 16);
+    if (fmt === 'VP8 ') {
+      return { width: buf.readUInt16LE(26) & 0x3fff, height: buf.readUInt16LE(28) & 0x3fff };
+    }
+    if (fmt === 'VP8X') {
+      const width = 1 + (buf[24] | (buf[25] << 8) | (buf[26] << 16));
+      const height = 1 + (buf[27] | (buf[28] << 8) | (buf[29] << 16));
+      return { width, height };
+    }
+  }
+  return null;
+}
+
+// 发布封面：扫描项目 covers/ 目录下的图片，读取真实像素尺寸，供发布选项卡按比例分桶展示。
+ipcMain.handle('scan-cover-images', async (_event, projectDir: string) => {
+  if (!projectDir) return [];
+  const dir = path.join(projectDir, 'covers');
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const out: { path: string; width: number; height: number; mtimeMs: number }[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!/\.(png|jpe?g|webp)$/i.test(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      try {
+        const fh = await fs.open(full, 'r');
+        const head = Buffer.alloc(131072);
+        const { bytesRead } = await fh.read(head, 0, head.length, 0);
+        await fh.close();
+        const size = readImageSize(head.subarray(0, bytesRead));
+        if (!size) continue;
+        const stat = await fs.stat(full);
+        out.push({ path: full, width: size.width, height: size.height, mtimeMs: stat.mtimeMs });
+      } catch {
+        // 跳过无法读取的文件
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+});
+
+// 发布联动兜底：扫描项目目录顶层最新的 .mp4 成片（用于 App 重启后预填发布视频文件）。
+ipcMain.handle('find-latest-export', async (_event, projectDir: string) => {
+  if (!projectDir) return null;
+  try {
+    const entries = await fs.readdir(projectDir, { withFileTypes: true });
+    let best: { path: string; mtimeMs: number } | null = null;
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!entry.name.toLowerCase().endsWith('.mp4')) continue;
+      const full = path.join(projectDir, entry.name);
+      const stat = await fs.stat(full);
+      if (!best || stat.mtimeMs > best.mtimeMs) {
+        best = { path: full, mtimeMs: stat.mtimeMs };
+      }
+    }
+    return best ? best.path : null;
+  } catch {
+    return null;
+  }
+});
+
 ipcMain.handle('add-asset', async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -1909,6 +2046,32 @@ ipcMain.handle(
     }
   },
 );
+
+// —— 声呐「待创作箱」桥（扩展经 /sonar/enqueue 推入，欢迎页消费）——
+ipcMain.handle('sonar-inbox-list', async () => {
+  const store = getSonarInboxStore();
+  return store ? store.list() : [];
+});
+
+ipcMain.handle(
+  'sonar-inbox-mark-status',
+  async (
+    _event,
+    id: string,
+    status: 'pending' | 'creating' | 'drafted' | 'failed',
+    patch?: { projectPath?: string; error?: string },
+  ) => {
+    const store = getSonarInboxStore();
+    return store ? store.markStatus(id, status, patch) : null;
+  },
+);
+
+ipcMain.handle('sonar-inbox-remove', async (_event, id: string) => {
+  const store = getSonarInboxStore();
+  return store ? store.remove(id) : false;
+});
+
+ipcMain.handle('sonar-bridge-info', async () => getSonarBridgeInfo());
 
 ipcMain.handle('save-script-state', async (_event, projectDir: string, state: string) => {
   await fs.mkdir(projectDir, { recursive: true });

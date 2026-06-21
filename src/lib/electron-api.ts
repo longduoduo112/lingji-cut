@@ -275,7 +275,14 @@ export interface ElectronAPI {
     projectDir: string;
     projectBindings?: PromptBindingMap | null;
     telemetryRunId?: string | null;
+    aspectRatio?: ImageAspectRatio;
+    n?: number;
   }) => Promise<CoverCandidate[]>;
+  generatePublishMetadata: (args: {
+    settings: AISettings;
+    sourceText: string;
+    currentTitle?: string;
+  }) => Promise<{ title: string; desc: string; tags: string[] }>;
   generateCardImage: (args: GenerateCardImageArgs) => Promise<MediaCardContent>;
   generateCardVideo: (args: GenerateCardVideoArgs) => Promise<MediaCardContent>;
   cancelCardMediaGeneration: (cardId: string) => Promise<{ ok: true }>;
@@ -326,6 +333,12 @@ export interface ElectronAPI {
   selectProjectDirectory: () => Promise<string | null>;
   selectSetupFile: (kind: ImportKind) => Promise<string | null>;
   selectMediaFile: (kind: 'audio' | 'video' | 'srt' | 'image') => Promise<string | null>;
+  /** 扫描项目目录顶层最新的 .mp4 成片；无则返回 null（发布选项卡联动兜底）。 */
+  findLatestExport: (projectDir: string) => Promise<string | null>;
+  /** 扫描项目 covers/ 下的图片并读取真实像素尺寸（发布选项卡按比例分桶）。 */
+  scanCoverImages: (
+    projectDir: string,
+  ) => Promise<{ path: string; width: number; height: number; mtimeMs: number }[]>;
   getPathForFile: (file: File) => string;
   addAsset: () => Promise<{
     path: string;
@@ -369,6 +382,15 @@ export interface ElectronAPI {
   // Script workbench
   saveScriptFile: (projectDir: string, filename: string, content: string) => Promise<void>;
   loadScriptFile: (projectDir: string, filename: string) => Promise<string | null>;
+  // —— 声呐「待创作箱」桥（扩展推入的二创素材）——
+  sonarInboxList: () => Promise<import('./sonar-inbox').SonarInboxItem[]>;
+  sonarInboxMarkStatus: (
+    id: string,
+    status: import('./sonar-inbox').SonarInboxStatus,
+    patch?: { projectPath?: string; error?: string },
+  ) => Promise<import('./sonar-inbox').SonarInboxItem | null>;
+  sonarInboxRemove: (id: string) => Promise<boolean>;
+  sonarBridgeInfo: () => Promise<{ port: number; token: string }>;
   saveScriptState: (projectDir: string, state: string) => Promise<void>;
   loadScriptState: (projectDir: string) => Promise<string | null>;
   selectTextFile: () => Promise<{ path: string; content: string } | null>;

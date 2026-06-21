@@ -28,6 +28,11 @@ export function getSonarInboxStore(): SonarInboxStore | null {
   return sonarStore;
 }
 
+/** 暴露给主进程/IPC：桥端点信息（端口 + token），供设置页展示让用户复制进扩展。 */
+export function getSonarBridgeInfo(): { port: number; token: string } {
+  return { port: currentPort, token: sonarToken };
+}
+
 /** sessionId → { transport, server } 映射 */
 const sessions: Record<string, { transport: StreamableHTTPServerTransport; server: McpServer }> = {};
 

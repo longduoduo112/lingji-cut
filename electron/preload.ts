@@ -114,7 +114,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     projectDir: string;
     projectBindings?: PromptBindingMap | null;
     telemetryRunId?: string | null;
+    aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+    n?: number;
   }) => ipcRenderer.invoke('generate-cover-images', args),
+  generatePublishMetadata: (args: {
+    settings: AISettings;
+    sourceText: string;
+    currentTitle?: string;
+  }) => ipcRenderer.invoke('generate-publish-metadata', args),
   generateCardImage: (args: import('../src/lib/electron-api').GenerateCardImageArgs) =>
     ipcRenderer.invoke('generate-card-image', args),
   generateCardVideo: (args: import('../src/lib/electron-api').GenerateCardVideoArgs) =>
@@ -176,6 +183,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectProjectDirectory: () => ipcRenderer.invoke('select-project-directory'),
   selectSetupFile: (kind: 'audio' | 'srt') => ipcRenderer.invoke('select-setup-file', kind),
   selectMediaFile: (kind: 'audio' | 'video' | 'srt' | 'image') => ipcRenderer.invoke('select-media-file', kind),
+  findLatestExport: (projectDir: string) => ipcRenderer.invoke('find-latest-export', projectDir),
+  scanCoverImages: (projectDir: string) => ipcRenderer.invoke('scan-cover-images', projectDir),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   addAsset: () => ipcRenderer.invoke('add-asset'),
   scanProjectAssets: (projectDir: string) =>
@@ -236,6 +245,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('save-script-file', projectDir, filename, content),
   loadScriptFile: (projectDir: string, filename: string) =>
     ipcRenderer.invoke('load-script-file', projectDir, filename),
+  // —— 声呐「待创作箱」桥 ——
+  sonarInboxList: () => ipcRenderer.invoke('sonar-inbox-list'),
+  sonarInboxMarkStatus: (
+    id: string,
+    status: 'pending' | 'creating' | 'drafted' | 'failed',
+    patch?: { projectPath?: string; error?: string },
+  ) => ipcRenderer.invoke('sonar-inbox-mark-status', id, status, patch),
+  sonarInboxRemove: (id: string) => ipcRenderer.invoke('sonar-inbox-remove', id),
+  sonarBridgeInfo: () => ipcRenderer.invoke('sonar-bridge-info'),
   getFileMtime: (filePath: string) =>
     ipcRenderer.invoke('get-file-mtime', filePath) as Promise<number | null>,
   saveScriptState: (projectDir: string, state: string) =>
