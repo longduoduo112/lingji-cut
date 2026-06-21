@@ -27,6 +27,8 @@ export interface SonarRouteDeps {
   store: SonarInboxStore;
   expectedToken: string;
   version?: string;
+  /** 扩展 POST 应使用的本机端点基址，如 http://127.0.0.1:19820；/sonar/pair 回传给扩展自动配置。 */
+  endpoint?: string;
   /** 收件箱因 enqueue 发生变化（新增/刷新）时回调，用于通知渲染端实时刷新。 */
   onInboxChanged?: () => void;
 }
@@ -64,6 +66,21 @@ export async function handleSonarRequest(
   if (path === '/sonar/health') {
     if (method !== 'GET') return { status: 405, body: { error: 'Method Not Allowed' } };
     return { status: 200, body: { ok: true, name: 'lingji-editor', version: deps.version ?? '1.0.0' } };
+  }
+
+  // 一键配对：localhost 回传 endpoint+token，扩展点「自动连接」即拉取并保存（零输入）。
+  if (path === '/sonar/pair') {
+    if (method !== 'GET') return { status: 405, body: { error: 'Method Not Allowed' } };
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        name: 'lingji-editor',
+        version: deps.version ?? '1.0.0',
+        endpoint: deps.endpoint ?? 'http://127.0.0.1:19820',
+        token: deps.expectedToken,
+      },
+    };
   }
 
   if (path === '/sonar/enqueue') {

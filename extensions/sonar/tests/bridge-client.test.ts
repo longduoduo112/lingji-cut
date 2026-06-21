@@ -64,6 +64,30 @@ describe('createBridgeClient.probe', () => {
   });
 });
 
+describe('createBridgeClient.pair', () => {
+  it('GET /sonar/pair 返回 endpoint+token', async () => {
+    const fetchImpl = vi.fn(async () =>
+      okJson({ ok: true, endpoint: 'http://127.0.0.1:19820', token: 'tok-xyz' }),
+    );
+    const client = createBridgeClient({ fetchImpl, pending: memPending() });
+    const r = await client.pair('http://127.0.0.1:19820');
+    expect(r).toEqual({ ok: true, endpoint: 'http://127.0.0.1:19820', token: 'tok-xyz' });
+    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:19820/sonar/pair', expect.anything());
+  });
+
+  it('无 token 或不可达 → ok:false', async () => {
+    const c1 = createBridgeClient({ fetchImpl: vi.fn(async () => okJson({ ok: true })), pending: memPending() });
+    expect((await c1.pair('http://127.0.0.1:19820')).ok).toBe(false);
+    const c2 = createBridgeClient({
+      fetchImpl: vi.fn(async () => {
+        throw new Error('down');
+      }),
+      pending: memPending(),
+    });
+    expect((await c2.pair('http://127.0.0.1:19820')).ok).toBe(false);
+  });
+});
+
 describe('createBridgeClient.enqueue', () => {
   it('disabled 时直接跳过', async () => {
     const fetchImpl = vi.fn();

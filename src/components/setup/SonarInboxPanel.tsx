@@ -150,7 +150,10 @@ export function SonarInboxPanel({ onDraft }: SonarInboxPanelProps) {
             </button>
             {copied ? <span className={styles.copied}>已复制</span> : null}
           </div>
-          <p className={styles.bridgeHint}>在声呐扩展「设置 → 灵机剪影联动」中填入以上端点与 token，并开启联动。</p>
+          <p className={styles.bridgeHint}>
+            ① 安装并打开「声呐」浏览器扩展（Chrome → 扩展程序 → 加载 <code>extensions/sonar/dist</code>）。
+            ② 在扩展「设置 → 灵机剪影联动」点「🔗 一键连接灵机剪影」即可，无需手动复制以上 token。
+          </p>
         </div>
       ) : null}
 

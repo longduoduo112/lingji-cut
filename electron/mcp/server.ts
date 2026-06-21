@@ -146,6 +146,7 @@ export async function startMcpServer(
           store: sonarStore!,
           expectedToken: sonarToken,
           version: '1.0.0',
+          endpoint: `http://127.0.0.1:${currentPort}`,
           // 收件箱有新增/刷新 → 通知渲染端待创作箱实时刷新（无需手动点刷新）。
           onInboxChanged: () => {
             try {

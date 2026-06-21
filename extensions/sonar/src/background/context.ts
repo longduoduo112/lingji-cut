@@ -24,7 +24,10 @@ export interface InMemoryContextOverrides {
 function defaultBridge(): BridgeContext {
   return {
     settings: createMemoryBridgeSettingsStore(),
-    client: { async probe() { return { ok: false }; } },
+    client: {
+      async probe() { return { ok: false }; },
+      async pair() { return { ok: false }; },
+    },
     async push() { return { pushed: false, reason: 'disabled' }; },
   };
 }

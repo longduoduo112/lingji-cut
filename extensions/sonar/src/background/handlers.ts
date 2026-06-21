@@ -33,10 +33,10 @@ import { toBridgeSettingsView } from '@/bridge/bridge-settings';
 import type { BridgeClient } from '@/bridge/bridge-client';
 import type { PushOptions, PushResult } from '@/bridge/push-on-processed';
 
-/** 桥依赖：设置存储 + 探活客户端（testBridge）+ 手动推送某视频到待创作箱。 */
+/** 桥依赖：设置存储 + 探活/配对客户端 + 手动推送某视频到待创作箱。 */
 export interface BridgeContext {
   settings: BridgeSettingsStore;
-  client: Pick<BridgeClient, 'probe'>;
+  client: Pick<BridgeClient, 'probe' | 'pair'>;
   push(videoId: string, opts?: PushOptions): Promise<PushResult>;
 }
 
@@ -274,6 +274,21 @@ export function createHandlers(ctx: HandlerContext): HandlerMap {
     async pushVideoToBridge(params) {
       // 手动推送：force（忽略开关）+ refresh（命中已有则刷新为待创作）。
       return ctx.bridge.push(requireString(params, 'videoId'), { force: true, refresh: true });
+    },
+
+    async autoConnectBridge() {
+      // 一键自动配置：从本机 /sonar/pair 拉取 endpoint+token 并保存开启（零输入）。
+      const cur = await ctx.bridge.settings.get();
+      const r = await ctx.bridge.client.pair(cur.endpoint);
+      if (!r.ok || !r.token) {
+        return { ok: false, settings: toBridgeSettingsView(cur) };
+      }
+      await ctx.bridge.settings.update({
+        enabled: true,
+        endpoint: r.endpoint ?? cur.endpoint,
+        token: r.token,
+      });
+      return { ok: true, settings: toBridgeSettingsView(await ctx.bridge.settings.get()) };
     },
   };
 }

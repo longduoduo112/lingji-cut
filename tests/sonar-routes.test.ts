@@ -46,6 +46,18 @@ describe('handleSonarRequest', () => {
     expect(res.body).toMatchObject({ ok: true, name: 'lingji-editor', version: '1.0.0' });
   });
 
+  it('GET /sonar/pair 回传 endpoint+token（一键自动配置）', async () => {
+    const dd: SonarRouteDeps = { ...d, endpoint: 'http://127.0.0.1:19820' };
+    const res = await handleSonarRequest({ method: 'GET', path: '/sonar/pair' }, dd);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      ok: true,
+      endpoint: 'http://127.0.0.1:19820',
+      token: TOKEN,
+      name: 'lingji-editor',
+    });
+  });
+
   it('POST /sonar/enqueue 正确 token 入队', async () => {
     const res = await handleSonarRequest(
       { method: 'POST', path: '/sonar/enqueue', token: TOKEN, body: validBody() },

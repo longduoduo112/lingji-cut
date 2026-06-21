@@ -85,6 +85,8 @@ export interface DouyinClient {
   testBridge(): Promise<ProbeResult>;
   /** 手动把某视频（须已转录）推送到灵机剪影待创作箱，命中已有则刷新为待创作。 */
   pushVideoToBridge(videoId: string): Promise<PushResult>;
+  /** 一键自动连接：从本机 /sonar/pair 拉取 endpoint+token 并保存开启，返回是否成功与最新设置视图。 */
+  autoConnectBridge(): Promise<{ ok: boolean; settings: BridgeSettingsView }>;
 }
 
 /**
@@ -142,5 +144,6 @@ export function createDouyinClient(transport: Transport): DouyinClient {
     },
     testBridge: () => call('testBridge', undefined),
     pushVideoToBridge: (videoId) => call('pushVideoToBridge', { videoId }),
+    autoConnectBridge: () => call('autoConnectBridge', undefined),
   };
 }

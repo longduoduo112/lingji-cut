@@ -51,6 +51,12 @@ export interface ProbeResult {
   version?: string;
 }
 
+export interface PairResult {
+  ok: boolean;
+  endpoint?: string;
+  token?: string;
+}
+
 export type EnqueueOutcome =
   | { status: 'sent'; duplicate: boolean }
   | { status: 'queued' }
@@ -69,6 +75,8 @@ export interface EnqueueOptions {
 
 export interface BridgeClient {
   probe(config: BridgeConfig): Promise<ProbeResult>;
+  /** 向 {endpoint}/sonar/pair 拉取本机端点与 token（一键自动配置）。 */
+  pair(endpoint: string): Promise<PairResult>;
   enqueue(config: BridgeConfig, payload: BridgePayload, opts?: EnqueueOptions): Promise<EnqueueOutcome>;
   flushPending(config: BridgeConfig): Promise<FlushResult>;
 }
@@ -124,6 +132,18 @@ export function createBridgeClient(deps: BridgeClientDeps): BridgeClient {
         if (!res.ok) return { ok: false };
         const body = (await res.json()) as { ok?: boolean; version?: string };
         return { ok: body?.ok === true, version: body?.version };
+      } catch {
+        return { ok: false };
+      }
+    },
+
+    async pair(endpoint) {
+      try {
+        const res = await fetchImpl(joinUrl(endpoint, 'sonar/pair'), { method: 'GET' });
+        if (!res.ok) return { ok: false };
+        const body = (await res.json()) as { ok?: boolean; endpoint?: string; token?: string };
+        if (body?.ok !== true || !body.token) return { ok: false };
+        return { ok: true, endpoint: body.endpoint ?? endpoint, token: body.token };
       } catch {
         return { ok: false };
       }

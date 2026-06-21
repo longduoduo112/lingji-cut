@@ -450,11 +450,55 @@ function BridgeSettingsSection({ client }: { client: DouyinClient }) {
     }
   };
 
+  const connect = async () => {
+    setMsg('正在连接灵机剪影…');
+    try {
+      const r = await client.autoConnectBridge();
+      if (r.ok) {
+        setEnabled(r.settings.enabled);
+        setEndpoint(r.settings.endpoint);
+        setHasToken(r.settings.hasToken);
+        setTokenMasked(r.settings.tokenMasked);
+        setToken('');
+        setMsg('已连接灵机剪影 ✓ 无需手动填写');
+      } else {
+        setMsg('未检测到灵机剪影：请先启动桌面端（确保已打开应用）');
+      }
+    } catch (e) {
+      setMsg(e instanceof SonarException ? e.error.message : String(e));
+    }
+  };
+
   return (
     <Section title="灵机剪影联动" ok={enabled && hasToken}>
       <div style={{ fontSize: 12.5, color: S.c8, lineHeight: 1.7, marginBottom: 12 }}>
         发现并转录新作品后，自动把转录稿推送到灵机剪影「待创作箱」做二创初稿。
-        端点与 token 在灵机剪影欢迎页「待创作箱 → 桥配置」获取。
+        <b style={{ color: S.f0 }}>启动灵机剪影后，点下方「一键连接」即可，无需手动填写。</b>
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <Hover
+          base={{
+            height: 38,
+            padding: '0 18px',
+            background: S.accent,
+            color: '#fff',
+            border: 'none',
+            borderRadius: 9,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+          hover={{ filter: 'brightness(1.1)' }}
+          onClick={connect}
+        >
+          🔗 一键连接灵机剪影
+        </Hover>
+      </div>
+      <div style={{ fontSize: 11.5, color: S.faint, marginBottom: 12 }}>
+        手动填写（一般不需要）：端点与 token 也可在灵机剪影欢迎页「待创作箱 → 桥配置」查看。
       </div>
       <Check
         checked={enabled}
