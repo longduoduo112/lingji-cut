@@ -62,7 +62,7 @@ function capturingServices(captured: { url?: string }): Services {
       async cancel() {},
     },
     processing: { async process(videoId) { return { id: 'pr-1', videoId, stage: 'queued', progress: 0 }; }, async start(videoId) { return { id: 'pr-1', videoId, stage: 'queued', progress: 0 }; }, async cancel() {} },
-    monitor: { async runOnce() { return { checkedCreatorIds: [], newVideoIds: [], circuitBroken: false }; } },
+    monitor: { async runOnce() { return { checkedCreatorIds: [], newVideoIds: [], circuitBroken: false }; }, async runDueBatch() { return { checkedCreatorIds: [], newVideoIds: [], circuitBroken: false }; } },
     export: { async exportMarkdown() { return { id: 'ex-1', status: 'completed', filename: 'a.md' }; } },
     aiTester: { async test() { return { ok: true, latencyMs: 1 }; } },
   };

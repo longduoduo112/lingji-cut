@@ -39,6 +39,8 @@ export interface ProcessingService {
 
 export interface MonitorService {
   runOnce(creatorId?: string): Promise<MonitorResult>;
+  /** 检查一批到期博主（按各自 intervalMinutes），定时调度调用。 */
+  runDueBatch(opts?: { batchSize?: number }): Promise<MonitorResult>;
 }
 
 export interface ExportService {
@@ -94,6 +96,9 @@ export function createStubServices(): Services {
     },
     monitor: {
       async runOnce() {
+        return { checkedCreatorIds: [], newVideoIds: [], circuitBroken: false };
+      },
+      async runDueBatch() {
         return { checkedCreatorIds: [], newVideoIds: [], circuitBroken: false };
       },
     },

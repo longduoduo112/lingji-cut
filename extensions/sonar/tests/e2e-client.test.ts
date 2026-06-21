@@ -41,6 +41,9 @@ function fakeServices(repo: Repository): Services {
       async runOnce() {
         return { checkedCreatorIds: [CREATOR_ID], newVideoIds: ['x'], circuitBroken: false };
       },
+      async runDueBatch() {
+        return { checkedCreatorIds: [CREATOR_ID], newVideoIds: ['x'], circuitBroken: false };
+      },
     },
     export: {
       async exportMarkdown() {

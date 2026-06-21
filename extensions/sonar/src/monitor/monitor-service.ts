@@ -7,12 +7,13 @@
  */
 import type { Creator, Video } from '@/domain/models';
 import type { MonitorResult } from '@/domain/api-types';
-import type { SonarError, SonarErrorCode } from '@/domain/errors';
+import type { SonarErrorCode } from '@/domain/errors';
 import { isMonitorCircuitBreaker, makeError } from '@/domain/errors';
 import type { MonitorService } from '@/background/services';
 import type { Repository } from '@/background/repository';
 import { diffNewVideos } from './diff';
 import type { CreatorSubscription } from '@/domain/models';
+import { selectDueSubscriptions, DEFAULT_BATCH_SIZE } from './schedule';
 
 export interface FetchCreatorVideosResult {
   videos?: Video[];
@@ -41,33 +42,52 @@ async function pickSubscription(
 }
 
 export function createMonitorService(deps: MonitorDeps): MonitorService {
+  /** 检查单个订阅，把结果累加进 result；返回是否熔断（应中止后续）。 */
+  async function checkOne(sub: CreatorSubscription, result: MonitorResult): Promise<boolean> {
+    const res = await deps.fetchCreatorVideos(sub);
+    if (res.errorCode) {
+      result.error = makeError(res.errorCode, '监控检查失败');
+      if (isMonitorCircuitBreaker(res.errorCode)) {
+        result.circuitBroken = true;
+        return true;
+      }
+      return false;
+    }
+
+    const videos = res.videos ?? [];
+    const diff = diffNewVideos(sub.latestVideoId, videos);
+    for (const video of diff.newVideos) {
+      await deps.notify(sub.creator, video);
+      // 新作品默认进入处理队列做字幕解析；摘要是否生成由处理服务按 Provider 配置决定。
+      deps.onNewVideo?.(video, sub.creator);
+      result.newVideoIds.push(video.id);
+    }
+    await deps.repo.updateSubscription(sub.creator.id, {
+      lastCheckedAt: deps.now(),
+      ...(diff.latestId ? { latestVideoId: diff.latestId } : {}),
+    });
+    result.checkedCreatorIds.push(sub.creator.id);
+    return false;
+  }
+
   return {
     async runOnce(creatorId?: string): Promise<MonitorResult> {
       const result: MonitorResult = { checkedCreatorIds: [], newVideoIds: [], circuitBroken: false };
       const sub = await pickSubscription(deps.repo, creatorId);
       if (!sub) return result;
+      await checkOne(sub, result);
+      return result;
+    },
 
-      const res = await deps.fetchCreatorVideos(sub);
-      if (res.errorCode) {
-        const error: SonarError = makeError(res.errorCode, '监控检查失败');
-        result.error = error;
-        result.circuitBroken = isMonitorCircuitBreaker(res.errorCode);
-        return result;
+    async runDueBatch(opts?: { batchSize?: number }): Promise<MonitorResult> {
+      const result: MonitorResult = { checkedCreatorIds: [], newVideoIds: [], circuitBroken: false };
+      const subs = await deps.repo.listSubscriptions();
+      const due = selectDueSubscriptions(subs, deps.now(), opts?.batchSize ?? DEFAULT_BATCH_SIZE);
+      for (const sub of due) {
+        // 单条熔断（登录失效/验证码）即中止整批，避免连环触发风控。
+        const broke = await checkOne(sub, result);
+        if (broke) break;
       }
-
-      const videos = res.videos ?? [];
-      const diff = diffNewVideos(sub.latestVideoId, videos);
-      for (const video of diff.newVideos) {
-        await deps.notify(sub.creator, video);
-        // 新作品默认进入处理队列做字幕解析；摘要是否生成由处理服务按 Provider 配置决定。
-        deps.onNewVideo?.(video, sub.creator);
-        result.newVideoIds.push(video.id);
-      }
-      await deps.repo.updateSubscription(sub.creator.id, {
-        lastCheckedAt: deps.now(),
-        ...(diff.latestId ? { latestVideoId: diff.latestId } : {}),
-      });
-      result.checkedCreatorIds.push(sub.creator.id);
       return result;
     },
   };

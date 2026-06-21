@@ -115,20 +115,23 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 // —— 自动监控（chrome.alarms）——
+// 基础 tick 取最小可选周期（15min）；每 tick 检查所有「到期」博主（按各自 intervalMinutes），
+// 从而覆盖每个博主而非每轮只查一个。
 const MONITOR_ALARM = 'sonar:monitor';
+const MONITOR_TICK_MINUTES = 15;
 
-function scheduleMonitor(periodInMinutes = 30): void {
+function scheduleMonitor(periodInMinutes = MONITOR_TICK_MINUTES): void {
   void chrome.alarms?.create(MONITOR_ALARM, { periodInMinutes });
 }
 scheduleMonitor();
-// Chrome 启动后补偿检查一次，并补推桥 pending（桌面端可能在上次离线时错过）。
+// Chrome 启动后补偿检查一批，并补推桥 pending（桌面端可能在上次离线时错过）。
 chrome.runtime.onStartup?.addListener(() => {
-  void services.monitor.runOnce().catch((e) => console.warn('[Sonar] 启动补偿监控失败', e));
+  void services.monitor.runDueBatch().catch((e) => console.warn('[Sonar] 启动补偿监控失败', e));
   void flushBridgePending().catch((e) => console.warn('[Sonar] 启动补推桥 pending 失败', e));
 });
 chrome.alarms?.onAlarm.addListener((alarm) => {
   if (alarm.name !== MONITOR_ALARM) return;
-  void services.monitor.runOnce().catch((e) => console.warn('[Sonar] 定时监控失败', e));
+  void services.monitor.runDueBatch().catch((e) => console.warn('[Sonar] 定时监控失败', e));
   // 每次定时监控顺带补推暂存负载（桌面端恢复在线即送达）。
   void flushBridgePending().catch((e) => console.warn('[Sonar] 定时补推桥 pending 失败', e));
 });
