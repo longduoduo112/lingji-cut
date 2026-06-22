@@ -26,8 +26,19 @@ const EASE_OUT_EXPO: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const EASE_APPLE: [number, number, number, number] = [0.25, 0.1, 0.25, 1];
 
 /**
+ * 工作区三个 tab：写稿工作台 / 视频编辑器 / 发布。
+ * 它们共用同一棵子树（App.tsx 里用 display:contents/none 切换显隐），切换时
+ * 必须共用稳定的 contentKey，避免 AnimatePresence mode="wait" 触发 exit→remount。
+ */
+const WORKSPACE_PAGES: ReadonlySet<AppPage> = new Set([
+  'script-workbench',
+  'editor',
+  'publish',
+]);
+
+/**
  * 页面过渡配置 — macOS 风格:
- * - 编辑器/脚本工作台之间切换不走这里,由 WorkspaceTabs + CSS display 切换(零振荡)
+ * - 工作区内部（写稿/编辑器/发布）切换走稳定 contentKey + CSS display，零振荡、不 remount
  * - 所有进入 welcome/setup 的路径:淡出回 welcome 用 y:8 柔和落下
  * - 所有进入 settings 的路径:淡入 + 轻微 y 偏移(侧栏感)
  * - 默认:普通 crossfade(短促淡入淡出)
@@ -42,6 +53,22 @@ export function resolvePageTransition({
     return {
       enabled: false,
       contentKey: 'static-content',
+      initial: STATIC_STATE,
+      animate: STATIC_STATE,
+      exit: STATIC_STATE,
+      transition: { duration: 0, ease: EASE_APPLE },
+    };
+  }
+
+  // 工作区内部三页（写稿/编辑器/发布）切换：共用稳定 contentKey，让
+  // AnimatePresence 不介入。App.tsx 里这三页同属一棵子树，用 display 切换显隐，
+  // 切换走 CSS 而非 exit→remount，避免 framer-motion v12 mode="wait" 在
+  // exit 动画与新 render 时序竞态下卡在「旧节点 opacity:0、新节点永不挂载」的空白态。
+  // 历史上这里曾用 `crossfade:editor->script-workbench` 这种变化 key，触发空白。
+  if (WORKSPACE_PAGES.has(toPage) && WORKSPACE_PAGES.has(fromPage)) {
+    return {
+      enabled: false,
+      contentKey: 'workspace',
       initial: STATIC_STATE,
       animate: STATIC_STATE,
       exit: STATIC_STATE,

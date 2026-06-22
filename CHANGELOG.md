@@ -59,6 +59,7 @@
 ### Fixed
 - **图片卡转 Motion 卡字幕分支**：`convert→motion` 补齐 `cardTemplate` / `imageTemplate` / `stylePresetId`，转换后样式不再丢失。
 - **`audio gen` UI 刷新失效**：音频生成结果写回 `timeline.podcast`，使已打开项目的 UI 刷新生效。
+- **工作区 tab 切换偶发空白**：写稿工作台 / 视频编辑器 / 发布三个 tab 互切时，`resolvePageTransition` 仍返回随切换变化的 `contentKey`（如 `crossfade:editor->script-workbench`），导致 `AnimatePresence mode="wait"` 触发「旧页 exit(opacity→0) → 新页 remount」的完整周期；framer-motion v12 在 exit 动画帧与新 render 的时序竞态下会卡在「旧节点已退至透明、`onExitComplete` 未触发、新节点永不挂载」的状态，表现为整片空白（概率性出现）。修复为：工作区三页共用稳定 `contentKey: 'workspace'` + 静态 opacity:1，让 `AnimatePresence` 不介入，真正走 `display:contents/none` 切换显隐（兑现 `App.tsx` / `page-transition.ts` 原有注释的设计意图）。跨类别切换（welcome ↔ workspace、workspace → settings）仍保留正常 crossfade 动画。
 
 ## [1.1.0] - 2026-06-06
 
