@@ -115,14 +115,14 @@ export function createIdbRepository(deps: IdbRepositoryDeps): Repository {
     async getVideo(id) {
       return (await (await db()).get('videos', id)) ?? null;
     },
-    async listRecentVideos(limit = 50) {
+    async listRecentVideos(limit) {
       const all = (await (await db()).getAll('videos')).sort((a, b) => b.publishedAt - a.publishedAt);
-      return all.slice(0, limit);
+      return typeof limit === 'number' ? all.slice(0, limit) : all;
     },
     async listCreatorVideos(creatorId, options?: ListVideoOptions): Promise<VideoPage> {
-      const all = (await (await db()).getAllFromIndex('videos', 'creatorId', creatorId)).sort(
-        (a, b) => b.publishedAt - a.publishedAt,
-      );
+      const all = (await (await db()).getAllFromIndex('videos', 'creatorId', creatorId))
+        .sort((a, b) => b.publishedAt - a.publishedAt)
+        .filter((v) => options?.cursor === undefined || v.publishedAt < options.cursor);
       const count = options?.count ?? 20;
       const page = all.slice(0, count);
       return {

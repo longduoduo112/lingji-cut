@@ -133,6 +133,19 @@ export function createHandlers(ctx: HandlerContext): HandlerMap {
       return ctx.repo.listRecentVideos(typeof limit === 'number' ? limit : undefined);
     },
 
+    async collectCreatorFully(params) {
+      const secUid = requireString(params, 'secUid');
+      const profileUrl = asObject(params).profileUrl;
+      return ctx.services.collect.collectCreatorFully({
+        secUid,
+        ...(typeof profileUrl === 'string' && profileUrl ? { profileUrl } : {}),
+      });
+    },
+
+    async getCollectProgress(params) {
+      return ctx.services.collect.getProgress(requireString(params, 'secUid'));
+    },
+
     async resolveVideo(params) {
       const input = asObject(params) as ResolveVideoInput;
       return resolveVideo(input, input.preferFresh ? { preferFresh: true } : undefined);

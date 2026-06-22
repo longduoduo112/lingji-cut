@@ -1,7 +1,7 @@
-/** 原型中的全部 SVG 图标，逐条还原（同心圆声呐 logo、导航、齿轮、搜索、星火、info）。 */
+/** 原型中的全部 SVG 图标，逐条还原（同心圆灵机采风 logo、导航、齿轮、搜索、星火、info）。 */
 import type { CSSProperties } from 'react';
 
-/** 声呐同心圆 logo（雷达波）。outer=false 时省略最外环（注入按钮用）。 */
+/** 灵机采风同心圆 logo（雷达波）。outer=false 时省略最外环（注入按钮用）。 */
 export function SonarMark({ size = 18, outer = true }: { size?: number; outer?: boolean }) {
   return (
     <svg width={size} height={size} viewBox="0 0 18 18" fill="none">

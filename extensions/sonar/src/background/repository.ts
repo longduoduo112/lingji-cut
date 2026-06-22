@@ -133,14 +133,16 @@ export function createMemoryRepository(deps: MemoryRepositoryDeps): Repository {
     async getVideo(id) {
       return videos.get(id) ?? null;
     },
-    async listRecentVideos(limit = 50) {
-      return [...videos.values()].sort((a, b) => b.publishedAt - a.publishedAt).slice(0, limit);
+    async listRecentVideos(limit) {
+      const all = [...videos.values()].sort((a, b) => b.publishedAt - a.publishedAt);
+      return typeof limit === 'number' ? all.slice(0, limit) : all;
     },
     async listCreatorVideos(creatorId, options) {
       const count = options?.count ?? 20;
       const all = [...videos.values()]
         .filter((v) => v.creatorId === creatorId)
-        .sort((a, b) => b.publishedAt - a.publishedAt);
+        .sort((a, b) => b.publishedAt - a.publishedAt)
+        .filter((v) => options?.cursor === undefined || v.publishedAt < options.cursor);
       const page = all.slice(0, count);
       return {
         videos: page,

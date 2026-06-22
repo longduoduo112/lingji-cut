@@ -11,6 +11,8 @@ export const METHOD_NAMES = [
   'getCreatorBySecUid',
   'listCreatorVideos',
   'listRecentVideos',
+  'collectCreatorFully',
+  'getCollectProgress',
   // 解析与下载
   'resolveVideo',
   'downloadVideo',

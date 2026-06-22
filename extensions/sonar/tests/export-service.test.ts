@@ -4,18 +4,18 @@ import { buildExportFilename, buildMarkdownDataUrl } from '@/background/export/m
 describe('buildExportFilename', () => {
   it('uses a single sanitized title for one video', () => {
     expect(buildExportFilename(['标题/标题'], 1, Date.UTC(2026, 5, 19))).toBe(
-      '声呐/导出/20260619_标题标题.md',
+      '灵机采风/导出/20260619_标题标题.md',
     );
   });
 
   it('uses a batch name for multiple videos', () => {
     expect(buildExportFilename(['a', 'b'], 2, Date.UTC(2026, 5, 19))).toBe(
-      '声呐/导出/20260619_批量导出_2条.md',
+      '灵机采风/导出/20260619_批量导出_2条.md',
     );
   });
 
   it('falls back when there are no titles', () => {
-    expect(buildExportFilename([], 0, Date.UTC(2026, 5, 19))).toBe('声呐/导出/20260619_导出.md');
+    expect(buildExportFilename([], 0, Date.UTC(2026, 5, 19))).toBe('灵机采风/导出/20260619_导出.md');
   });
 });
 

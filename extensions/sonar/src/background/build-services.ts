@@ -13,6 +13,7 @@ import type { ProcessingTask } from '@/domain/models';
 import type { ProcessVideoOptions } from '@/domain/api-types';
 import { SonarException, makeError } from '@/domain/errors';
 import { ensureVideoSources, createFetchPage } from './resolve-sources';
+import { fetchMediaBlob } from '@/offscreen/download-blob';
 import { createBcutAsrProvider } from '@/processing/bcut-asr-provider';
 import { createSummaryProvider } from '@/processing/summary-provider';
 import { createProcessingService } from '@/processing/processing-service';
@@ -28,6 +29,8 @@ import { createMarkdownExportService } from './export/markdown-export-service';
 import { createAiProviderTester } from './ai-provider-tester';
 import { createMonitorService } from '@/monitor/monitor-service';
 import { createTabCreatorFetcher, createChromeNotifier } from './monitor-tab';
+import { createCollectProgressHub, type CollectProgressHub } from './collect-progress';
+import { createFullCollectRunner } from './collect-tab';
 import { createBridgeClient, type BridgeClient } from '@/bridge/bridge-client';
 import { createPushOnProcessed } from '@/bridge/push-on-processed';
 import type { BridgeSettingsStore } from '@/bridge/bridge-settings';
@@ -57,12 +60,17 @@ function createConfiguredProcessingService(deps: BuildServicesDeps): ProcessingS
     (await ensureVideoSources({ repo: deps.repo, fetchPage, now: deps.now }, { awemeId: videoId, preferFresh: true }))
       .sources;
 
+  // 取流复用下载路径的护栏（Range / credentials / content-type 拦截），避免两条路径再次漂移：
+  // CDN 签名过期会返回 200 + HTML，旧实现把 HTML 喂给解码器只报笼统「音频提取失败」。
   const fetchMedia = async (url: string): Promise<Blob> => {
-    const res = await fetchImpl(url);
-    if (!res.ok) {
-      throw new SonarException(makeError('MEDIA_FETCH_FAILED', `获取媒体失败（HTTP ${res.status}）`));
+    try {
+      return await fetchMediaBlob(url, fetchImpl);
+    } catch (error) {
+      throw new SonarException(makeError('MEDIA_FETCH_FAILED', '获取媒体失败', {
+        retryable: true,
+        detail: error instanceof Error ? error.message : String(error),
+      }));
     }
-    return res.blob();
   };
 
   // 每次调用按当前设置重建编排器（拾取最新 LLM Provider / 温度）。
@@ -117,6 +125,8 @@ export interface BuiltServices {
   downloadService: AttachableDownloadService;
   /** 桥依赖（HandlerContext 用）。 */
   bridge: BridgeContext;
+  /** 全量采集进度中枢（service-worker 接收 collect-progress 时写入）。 */
+  collectHub: CollectProgressHub;
   /** 补推暂存的 pending 负载（startup / 每次 alarm 调用）。 */
   flushBridgePending(): Promise<void>;
 }
@@ -143,6 +153,11 @@ export function buildServices(deps: BuildServicesDeps): BuiltServices {
       await pushOnProcessed(videoId);
     },
   });
+
+  // 全量采集：进度中枢 + 后台标签页 runner。hub 由 service-worker 在收到 collect-progress 时写入。
+  const collectHub = createCollectProgressHub({ now: deps.now });
+  const collectRunner = createFullCollectRunner({ hub: collectHub });
+
   const services: Services = {
     ...createStubServices(),
     download: downloadService,
@@ -156,11 +171,16 @@ export function buildServices(deps: BuildServicesDeps): BuiltServices {
       onNewVideo: (video) => void autoQueue.enqueue(video.id),
       now: deps.now,
     }),
+    collect: {
+      collectCreatorFully: (input) => collectRunner.collectCreatorFully(input),
+      getProgress: (secUid) => collectHub.get(secUid),
+    },
   };
   return {
     services,
     downloadService,
     bridge: { settings: bridgeSettings, client: bridgeClient, push: pushOnProcessed },
+    collectHub,
     async flushBridgePending() {
       await bridgeClient.flushPending(await bridgeSettings.get());
     },

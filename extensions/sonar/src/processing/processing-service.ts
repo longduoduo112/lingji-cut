@@ -24,6 +24,21 @@ export interface ProcessingDeps {
   newId: () => string;
 }
 
+/** 最多尝试的候选源数量（含纯视频 DASH 流被跳过的情况）。 */
+const MAX_SOURCE_ATTEMPTS = 4;
+
+/** 候选源的简短标签（主机 + 来源字段 + 清晰度），用于失败诊断，不含签名参数。 */
+function sourceLabel(source: VideoSource): string {
+  let host = '?';
+  try {
+    host = new URL(source.url).hostname;
+  } catch {
+    /* 非法 URL */
+  }
+  const res = source.width && source.height ? `${source.width}x${source.height}` : '';
+  return [host, source.watermark, res].filter(Boolean).join('/');
+}
+
 const STAGE_PROGRESS: Record<ProcessingStage, number> = {
   queued: 0,
   resolving: 0.1,
@@ -79,13 +94,34 @@ export function createProcessingService(deps: ProcessingDeps): ProcessingService
         if (sources.length === 0) {
           throw new SonarException(makeError('NO_DOWNLOADABLE_SOURCE', '没有可用于提取音频的视频源'));
         }
-        const source = sources[0];
 
+        // 逐个候选源尝试取流+提音，直到拿到含音频的源。
+        // 抖音 Web 捕获的 bit_rate 档位常是「纯视频 DASH 流」（音视频分离），被排序为高优先；
+        // 纯视频源经 ffmpeg `-vn` 后无任何输出流（“Output file #0 does not contain any stream”）。
+        // 失败即换下一个候选；全部失败时把各候选的主机与原因汇总进 detail，便于定位。
         await advance('fetching_media');
-        const media = await deps.fetchMedia(source.url);
-
-        await advance('extracting_audio');
-        const audio = await deps.extractAudio(media);
+        let audio: Blob | null = null;
+        const attempts: string[] = [];
+        for (const source of sources.slice(0, MAX_SOURCE_ATTEMPTS)) {
+          try {
+            const media = await deps.fetchMedia(source.url);
+            await advance('extracting_audio');
+            audio = await deps.extractAudio(media);
+            break;
+          } catch (err) {
+            if (cancelled.has(id)) throw err; // 用户取消则不再尝试其它候选
+            const e = toSonarError(err);
+            attempts.push(`${sourceLabel(source)}→${e.detail ?? e.message}`);
+          }
+        }
+        if (!audio) {
+          throw new SonarException(
+            makeError('AUDIO_EXTRACTION_FAILED', '浏览器音频提取失败：候选源均无可用音频', {
+              retryable: true,
+              detail: attempts.join(' ｜ '),
+            }),
+          );
+        }
 
         await advance('transcribing');
         transcript = await deps.asr.transcribe(audio, { videoId });

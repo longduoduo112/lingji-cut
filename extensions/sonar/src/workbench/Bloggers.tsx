@@ -6,7 +6,7 @@ import { Avatar, Hover, useHover } from '@/ui/kit';
 import type { VideoStatusApi } from '@/ui/video-status';
 import { isNew } from '@/ui/video-status';
 import type { CreatorView, WorkbenchData } from './use-data';
-import { errText } from './use-data';
+import { describeCollectProgress, errText } from './use-data';
 
 export function Bloggers({
   client,
@@ -62,7 +62,7 @@ export function Bloggers({
 
         {data.creatorList.length === 0 ? (
           <div style={{ padding: '60px 0', textAlign: 'center', color: S.faint, fontSize: 13, lineHeight: 1.8 }}>
-            还没有监听博主。在抖音博主主页点扩展图标「加入声呐监听」，或点右上「添加博主」。
+            还没有监听博主。在抖音博主主页点扩展图标「加入灵机采风监听」，或点右上「添加博主」。
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 14 }}>
@@ -77,6 +77,7 @@ export function Bloggers({
                   monitoring={monitoring}
                   videoCount={videoCount}
                   newCount={newCount}
+                  collectText={data.collectProgress[c.id] ? describeCollectProgress(data.collectProgress[c.id]) : null}
                   syncing={syncing === c.id}
                   onToggle={() => {
                     setPausedLocal((m) => ({ ...m, [c.id]: monitoring }));
@@ -107,6 +108,7 @@ function CreatorCard({
   monitoring,
   videoCount,
   newCount,
+  collectText,
   syncing,
   onToggle,
   onSync,
@@ -116,6 +118,7 @@ function CreatorCard({
   monitoring: boolean;
   videoCount: number;
   newCount: number;
+  collectText: string | null;
   syncing: boolean;
   onToggle: () => void;
   onSync: () => void;
@@ -157,8 +160,8 @@ function CreatorCard({
         <Stat label="视频" value={String(videoCount)} flex={1} />
         <Stat label="未读" value={String(newCount)} color={newCount > 0 ? S.accent : undefined} flex={1} />
         <div style={{ flex: 1.4 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 500, color: S.b4, marginTop: 2 }}>{syncing ? '同步中…' : c.lastSync}</div>
-          <div style={{ fontSize: 10.5, color: S.faint, marginTop: 2 }}>上次同步</div>
+          <div style={{ fontSize: 12.5, fontWeight: 500, color: collectText && !collectText.startsWith('已采集') ? S.accent : S.b4, marginTop: 2 }}>{collectText ?? (syncing ? '同步中…' : c.lastSync)}</div>
+          <div style={{ fontSize: 10.5, color: S.faint, marginTop: 2 }}>{collectText ? '主页采集' : '上次同步'}</div>
         </div>
         <button
           onClick={onSync}

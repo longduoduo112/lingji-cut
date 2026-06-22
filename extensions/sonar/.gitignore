@@ -3,3 +3,5 @@ dist/
 *.log
 .DS_Store
 .vite/
+# ffmpeg.wasm 本地资源由 scripts/copy-ffmpeg-assets.mjs 在 predev/prebuild 生成
+public/ffmpeg/

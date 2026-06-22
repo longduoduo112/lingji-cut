@@ -230,7 +230,7 @@ function Sidebar({
       <div style={{ padding: '16px 16px 10px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <SonarBadge box={30} radius={9} icon={18} shadow="0 2px 8px rgba(10,132,255,.4)" />
         <div style={{ lineHeight: 1.1 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: S.white, letterSpacing: '.3px' }}>声呐 Sonar</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: S.white, letterSpacing: '.3px' }}>灵机采风</div>
           <div style={{ fontSize: 11, color: S.faint, marginTop: 2 }}>博主监听 · 视频情报</div>
         </div>
       </div>

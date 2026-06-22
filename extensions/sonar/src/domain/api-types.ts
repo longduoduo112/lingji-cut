@@ -27,6 +27,33 @@ export interface VideoPage {
   hasMore: boolean;
 }
 
+// —— 博主作品全量采集（后台隐藏标签页滚动加载全部 + 进度）——
+export interface CollectCreatorInput {
+  secUid: string;
+  /** 博主主页 URL（缺省由 secUid 拼出）。 */
+  profileUrl?: string;
+}
+
+export interface CollectCreatorResult {
+  ok: boolean;
+  /** 入库去重后的作品数。 */
+  collected: number;
+  /** 主页声明的作品总数（读到时）。 */
+  total?: number;
+  /** 失败原因：无法开标签页 / Content Script 未就绪 / 超时未完成。 */
+  reason?: 'no_tab' | 'not_ready' | 'timeout';
+}
+
+/** 全量采集实时进度视图（UI 轮询用）。 */
+export interface CollectProgressView {
+  secUid: string;
+  collected: number;
+  total?: number;
+  round: number;
+  done: boolean;
+  updatedAt: number;
+}
+
 // —— 解析与下载 ——
 export interface ResolveVideoInput {
   videoId?: string;

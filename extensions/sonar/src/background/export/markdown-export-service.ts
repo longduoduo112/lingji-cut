@@ -2,7 +2,7 @@
  * Markdown 导出服务（设计文档 5.10）。
  *
  * 从 Repository 汇集视频/博主/摘要/字幕，渲染为 Markdown，经 data URL + chrome.downloads
- * 保存到「声呐/导出/」。Service Worker 无 DOM，故用 data URL 而非 Blob URL。
+ * 保存到「灵机采风/导出/」。Service Worker 无 DOM，故用 data URL 而非 Blob URL。
  */
 import type { ExportTask, MarkdownExportInput } from '@/domain/api-types';
 import type { ExportService } from '../services';
@@ -13,9 +13,9 @@ import { sanitizeSegment, formatDateUTC } from '@/resolver/filename';
 
 export function buildExportFilename(titles: string[], count: number, dateMs: number): string {
   const date = formatDateUTC(dateMs);
-  if (count === 0) return `声呐/导出/${date}_导出.md`;
-  if (count === 1) return `声呐/导出/${date}_${sanitizeSegment(titles[0] || '导出')}.md`;
-  return `声呐/导出/${date}_批量导出_${count}条.md`;
+  if (count === 0) return `灵机采风/导出/${date}_导出.md`;
+  if (count === 1) return `灵机采风/导出/${date}_${sanitizeSegment(titles[0] || '导出')}.md`;
+  return `灵机采风/导出/${date}_批量导出_${count}条.md`;
 }
 
 export function buildMarkdownDataUrl(markdown: string): string {

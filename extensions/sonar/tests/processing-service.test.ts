@@ -59,6 +59,39 @@ describe('createProcessingService', () => {
     expect((await deps.repo.getProcessingTask('task-1'))?.stage).toBe('completed');
   });
 
+  it('falls back to the next candidate source when the first yields no audio', async () => {
+    const videoOnly: VideoSource = { ...source, url: 'https://v5.douyinvod.com/dash/video-only.mp4' };
+    const muxed: VideoSource = { ...source, url: 'https://aweme.snssdk.com/aweme/v1/play/muxed.mp4' };
+    const extractAudio = vi
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error('no stream'), { error: { code: 'AUDIO_EXTRACTION_FAILED' } }),
+      )
+      .mockResolvedValueOnce(new Blob(['audio']));
+    const deps = makeDeps({ resolveSources: vi.fn(async () => [videoOnly, muxed]), extractAudio });
+    const svc = createProcessingService(deps as never);
+    const task = await svc.process('v1');
+
+    expect(task.stage).toBe('completed');
+    expect(extractAudio).toHaveBeenCalledTimes(2);
+    expect((await deps.repo.getTranscript('v1'))?.fullText).toBe('全文');
+  });
+
+  it('fails with the per-candidate reasons when every source lacks audio', async () => {
+    const a: VideoSource = { ...source, url: 'https://v5.douyinvod.com/dash/a.mp4' };
+    const b: VideoSource = { ...source, url: 'https://v9.douyinvod.com/dash/b.mp4' };
+    const extractAudio = vi.fn(async () => {
+      throw Object.assign(new Error('boom'), { error: { code: 'AUDIO_EXTRACTION_FAILED', detail: '退出码 1：does not contain any stream' } });
+    });
+    const deps = makeDeps({ resolveSources: vi.fn(async () => [a, b]), extractAudio });
+    const svc = createProcessingService(deps as never);
+
+    await expect(svc.process('v1')).rejects.toMatchObject({ error: { code: 'AUDIO_EXTRACTION_FAILED' } });
+    const task = await deps.repo.getProcessingTask('task-1');
+    expect(task?.error?.detail).toContain('v5.douyinvod.com');
+    expect(task?.error?.detail).toContain('v9.douyinvod.com');
+  });
+
   it('throws ASR_NOT_CONFIGURED when no ASR provider is set', async () => {
     const svc = createProcessingService(makeDeps({ asr: null }) as never);
     await expect(svc.process('v1')).rejects.toMatchObject({ error: { code: 'ASR_NOT_CONFIGURED' } });

@@ -88,7 +88,7 @@ export function SidePanel() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 15px', background: 'rgba(40,40,43,.9)', borderBottom: '.5px solid rgba(255,255,255,.08)' }}>
         <SonarBadge box={24} radius={7} icon={15} />
-        <span style={{ fontSize: 13.5, fontWeight: 700, color: S.white, flex: 1 }}>声呐 · 动态</span>
+        <span style={{ fontSize: 13.5, fontWeight: 700, color: S.white, flex: 1 }}>灵机采风 · 动态</span>
         <SmallIcon onClick={() => void load()} title="刷新">↻</SmallIcon>
         <SmallIcon onClick={() => window.close()} title="关闭">✕</SmallIcon>
       </div>

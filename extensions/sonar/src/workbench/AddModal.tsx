@@ -114,7 +114,7 @@ export function AddModal({
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 16, padding: '11px 13px', background: 'rgba(10,132,255,.08)', border: '.5px solid rgba(10,132,255,.18)', borderRadius: 9 }}>
               <InfoIcon />
               <span style={{ fontSize: 11.5, color: '#9fb8d8', lineHeight: 1.5 }}>
-                添加后将自动抓取最近 20 条视频，每 30 分钟检查一次更新；AI 摘要需先在「设置」配置 Provider 并确认数据发送。
+                请先在目标博主主页使用「加入灵机采风监听」；扩展会滚动采集全部公开可见作品并显示实时进度，之后每 30 分钟检查更新。
               </span>
             </div>
           </div>

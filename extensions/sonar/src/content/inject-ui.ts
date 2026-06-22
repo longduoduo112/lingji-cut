@@ -2,19 +2,22 @@
  * 抖音页面注入 UI（设计文档第 6 节，视觉对齐原型 `Sonar 插件适配.dc.html`）。
  *
  * Shadow DOM 隔离样式，固定页面右下角的 Sonar 浮层（找不到稳定锚点时不强改抖音布局）：
- * - 博主主页：加入声呐监听 / 已监听 / 正在同步 / 登录失效。
+ * - 博主主页：加入灵机采风监听 / 已监听 / 正在同步 / 登录失效。
  * - 视频页 / 作品弹层：下载原片 / 入库并分析 / 重点标记。
  * 通过 DouyinClient 与 Service Worker 通信，不触碰认证数据。
  */
 import { createChromeRuntimeTransport, createDouyinClient } from '@/client';
-import { SonarException } from '@/domain/errors';
+import { SonarException, sonarErrorText } from '@/domain/errors';
+import { detectPageFromUrl } from '@/adapter/page-detection';
+import { runFullCollectInPage } from './collect-in-page';
 
 const HOST_ID = 'sonar-inject-host';
 
 const MARK = `<svg width="11" height="11" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="1.6" fill="#fff"/><circle cx="9" cy="9" r="4.2" stroke="#fff" stroke-opacity=".8" stroke-width="1.3"/></svg>`;
 
 export function injectedUiErrorMessage(error: unknown): string {
-  if (error instanceof SonarException) return error.error.message;
+  // 透出脱敏 detail（如 ffmpeg / 解码底层报错），否则用户只看到笼统提示、无法排查。
+  if (error instanceof SonarException) return sonarErrorText(error.error) ?? error.error.message;
   if (error instanceof Error && error.message) return `扩展连接失败：${error.message}`;
   return '扩展连接失败，请刷新页面重试';
 }
@@ -61,7 +64,7 @@ export function mountInjectedUi(): void {
       .hidden{display:none;}
     </style>
     <div class="panel">
-      <div class="head"><span class="logo">${MARK}</span><span class="brand">声呐 Sonar</span><span class="ctx" id="ctx"></span></div>
+      <div class="head"><span class="logo">${MARK}</span><span class="brand">灵机采风</span><span class="ctx" id="ctx"></span></div>
       <div class="row" id="actions"></div>
       <div class="msg hidden" id="msg"></div>
     </div>
@@ -82,13 +85,45 @@ export function mountInjectedUi(): void {
 
   let secUid: string | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let creatorPollTimer: ReturnType<typeof setTimeout> | null = null;
+  let collecting = false;
+
+  // 全量采集：在当前可见页直接滚动加载全部作品（隐藏标签页被 Chrome 暂停渲染、懒加载不触发），
+  // onProgress 即时更新浮层；同时把作品幂等入库。
+  async function startFullCollect(targetSecUid: string, btn: HTMLButtonElement): Promise<void> {
+    if (collecting) return;
+    collecting = true;
+    btn.disabled = true;
+    const label = btn.querySelector('span:last-child') ?? btn;
+    const prev = label.textContent;
+    setMsg('正在采集，请保持本页在前台…');
+    try {
+      const r = await runFullCollectInPage(targetSecUid, (p) => {
+        if (!p.done) setMsg(`采集中 ${p.collected}${p.total ? '/' + p.total : ''}…`);
+      });
+      const count = r.total ? `${r.collected}/${r.total}` : `${r.collected} 条`;
+      setMsg(r.total && r.collected < r.total ? `已采集 ${count}（当前公开可见）` : `已采集 ${count}`);
+    } catch (e) {
+      setMsg(injectedUiErrorMessage(e), true);
+    } finally {
+      collecting = false;
+      btn.disabled = false;
+      label.textContent = prev;
+    }
+  }
 
   async function refresh(): Promise<void> {
     try {
-      const page = await client.detectCurrentPage();
+      // 直接按本页 URL 判定（每个标签页显示自己的上下文）；不经 SW 反查「激活标签页」，
+      // 后者受窗口焦点影响、在多窗口下会误判而隐藏浮层。
+      const page = detectPageFromUrl(window.location.href);
       if (retryTimer) {
         clearTimeout(retryTimer);
         retryTimer = null;
+      }
+      if (creatorPollTimer) {
+        clearTimeout(creatorPollTimer);
+        creatorPollTimer = null;
       }
       actions.innerHTML = '';
       setMsg('');
@@ -124,13 +159,22 @@ export function mountInjectedUi(): void {
   }
 
   async function renderCreator(): Promise<void> {
+    if (creatorPollTimer) {
+      clearTimeout(creatorPollTimer);
+      creatorPollTimer = null;
+    }
     actions.innerHTML = '';
     const creator = secUid ? await client.getCreatorBySecUid(secUid).catch(() => null) : null;
     if (!creator) {
-      const btn = mkButton('primary', '加入声呐监听', true);
+      const btn = mkButton('primary', '加入灵机采风监听', true);
       btn.disabled = true;
       actions.append(btn);
-      setMsg('正在采集主页资料，请稍候或刷新页面…');
+      setMsg('正在采集主页资料，请稍候…');
+      // 主页资料由 Content Script 读 DOM 提取后异步入库，轮询直到可用再启用按钮。
+      creatorPollTimer = setTimeout(() => {
+        creatorPollTimer = null;
+        void renderCreator();
+      }, 1500);
       return;
     }
     const subs = await client.listFollowedCreators().catch(() => []);
@@ -148,10 +192,25 @@ export function mountInjectedUi(): void {
         }, '已同步');
       actions.append(tag, sync);
     } else {
-      const btn = mkButton('primary', '加入声呐监听', true);
-      btn.onclick = () => run(btn, () => client.followCreator({ creator, intervalMinutes: 30 }), '已加入监听', renderCreator);
+      const btn = mkButton('primary', '加入灵机采风监听', true);
+      btn.onclick = () => run(
+        btn,
+        async () => {
+          await client.followCreator({ creator, intervalMinutes: 30 });
+          await runFullCollectInPage(creator.secUid, (p) => {
+            if (!p.done) setMsg(`采集中 ${p.collected}${p.total ? '/' + p.total : ''}…`);
+          });
+        },
+        '已加入监听并完成主页采集',
+        renderCreator,
+      );
       actions.append(btn);
     }
+    // 全量采集：滚动加载该博主全部作品（修复只采到首屏的问题），后台标签页 + 进度。
+    const total = document.querySelector('[data-e2e="user-tab-count"]')?.textContent?.trim();
+    const collectBtn = mkButton('ghost', total ? `采集全部 ${total}` : '采集全部作品');
+    collectBtn.onclick = () => void startFullCollect(creator.secUid, collectBtn);
+    actions.append(collectBtn);
   }
 
   async function toggleFlag(videoId: string): Promise<void> {

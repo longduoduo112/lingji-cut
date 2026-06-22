@@ -2,19 +2,27 @@ import { defineManifest } from '@crxjs/vite-plugin';
 import pkg from '../package.json';
 
 /**
- * 声呐 Sonar 的 Manifest V3 定义。
+ * 灵机采风 的 Manifest V3 定义。
  *
- * 权限与 host_permissions 对应设计文档第 11 节；音频提取使用浏览器 Web Audio，
- * 不加载远程脚本或 WASM。
- * 所有可执行资源随扩展本地打包，不从 CDN 加载。
+ * 权限与 host_permissions 对应设计文档第 11 节；音频提取使用 ffmpeg.wasm（单线程 core），
+ * 在 offscreen document 主线程经经典 <script> 加载并实例化（不经 module worker）。
+ * core js / wasm 随扩展本地打包（public/ffmpeg/，经 chrome.runtime.getURL 加载），
+ * 不从 CDN 加载远程脚本或 WASM；扩展页 CSP 因 wasm 运行时编译需放开 'wasm-unsafe-eval'。
  *
  * 开发期请根据实际捕获到的 CDN 域名收敛 host_permissions，不使用 <all_urls>。
  */
 export default defineManifest({
   manifest_version: 3,
-  name: '声呐 Sonar',
+  name: '灵机采风',
   description: '抖音博主监听：发现新作品、解析优先无水印源、下载与本地 AI 转录摘要。',
   version: pkg.version,
+
+  icons: {
+    16: 'icons/icon-16.png',
+    32: 'icons/icon-32.png',
+    48: 'icons/icon-48.png',
+    128: 'icons/icon-128.png',
+  },
 
   // 内容脚本观察页面响应；UI 通过 DouyinClient → 消息协议 → Service Worker。
   background: {
@@ -23,8 +31,14 @@ export default defineManifest({
   },
 
   action: {
-    default_title: '声呐 Sonar',
+    default_title: '灵机采风',
     default_popup: 'src/popup/index.html',
+    default_icon: {
+      16: 'icons/icon-16.png',
+      32: 'icons/icon-32.png',
+      48: 'icons/icon-48.png',
+      128: 'icons/icon-128.png',
+    },
   },
 
   side_panel: {
@@ -90,10 +104,19 @@ export default defineManifest({
     'http://127.0.0.1/*',
   ],
 
-  // 扩展页 CSP：仅允许本地脚本，禁止远程脚本。
+  // 扩展页 CSP：仅允许本地脚本，禁止远程脚本；'wasm-unsafe-eval' 供 ffmpeg.wasm 运行时编译。
   content_security_policy: {
-    extension_pages: "script-src 'self'; object-src 'self';",
+    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
   },
+
+  // ffmpeg.wasm 本地资源：offscreen document 经 chrome.runtime.getURL（扩展自身源）加载。
+  // worker 由 Vite 构建期自动打包并登记，无需在此手写。
+  web_accessible_resources: [
+    {
+      resources: ['ffmpeg/ffmpeg-core.js', 'ffmpeg/ffmpeg-core.wasm'],
+      matches: ['https://www.douyin.com/*'],
+    },
+  ],
 
   // 说明：PageBridge 通过 content-script 中的 `import '...?script&module'` 注入到页面
   // MAIN world，CRXJS 会自动把它登记进 web_accessible_resources，无需在此手写条目。

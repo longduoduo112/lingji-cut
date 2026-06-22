@@ -70,6 +70,14 @@ export function makeError(
   return { code, message, ...options };
 }
 
+/** 面向用户的错误文案：附上脱敏 detail（如 ffmpeg / 底层报错），便于排查而非只看笼统提示。 */
+export function sonarErrorText(error?: SonarError): string | undefined {
+  if (!error) return undefined;
+  return error.detail && error.detail !== error.message
+    ? `${error.message}（${error.detail}）`
+    : error.message;
+}
+
 /** 判断某错误是否应触发自动监控熔断（登录失效 / 验证码 / 访问限制）。 */
 export function isMonitorCircuitBreaker(code: SonarErrorCode): boolean {
   return (MONITOR_CIRCUIT_BREAKER_CODES as readonly SonarErrorCode[]).includes(code);

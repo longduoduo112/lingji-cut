@@ -1,4 +1,4 @@
-import { downmixChannels, encodePcm16Wav } from './audio-codec';
+import { createChromeFfmpegRunner } from './ffmpeg-runner';
 import {
   isOffscreenExtractAudioRequest,
   isOffscreenPrepareDownloadRequest,
@@ -9,7 +9,7 @@ import {
 } from './protocol';
 import { fetchDownloadBlob } from './download-blob';
 
-const TARGET_SAMPLE_RATE = 16_000;
+const ffmpegRunner = createChromeFfmpegRunner();
 const DOWNLOAD_BLOB_TTL_MS = 10 * 60 * 1000;
 const downloadBlobs = new Map<string, { blobUrl: string; timer: ReturnType<typeof setTimeout> }>();
 
@@ -49,42 +49,14 @@ async function writeOpfsFile(name: string, bytes: Uint8Array<ArrayBuffer>): Prom
   const root = await navigator.storage.getDirectory();
   const handle = await root.getFileHandle(name, { create: true });
   const writable = await handle.createWritable();
-  await writable.write(new Blob([bytes.buffer]));
+  await writable.write(new Blob([bytes]));
   await writable.close();
-}
-
-function createMonoBuffer(context: AudioContext, decoded: AudioBuffer): AudioBuffer {
-  const channels = Array.from(
-    { length: decoded.numberOfChannels },
-    (_, index) => decoded.getChannelData(index),
-  );
-  const mono = downmixChannels(channels);
-  const buffer = context.createBuffer(1, mono.length, decoded.sampleRate);
-  buffer.copyToChannel(mono, 0);
-  return buffer;
-}
-
-async function resample(buffer: AudioBuffer): Promise<Float32Array> {
-  const length = Math.max(1, Math.ceil(buffer.duration * TARGET_SAMPLE_RATE));
-  const offline = new OfflineAudioContext(1, length, TARGET_SAMPLE_RATE);
-  const source = offline.createBufferSource();
-  source.buffer = buffer;
-  source.connect(offline.destination);
-  source.start();
-  const rendered = await offline.startRendering();
-  return new Float32Array(rendered.getChannelData(0));
 }
 
 async function extractAudio(inputName: string, outputName: string): Promise<void> {
   const input = await readOpfsFile(inputName);
-  const context = new AudioContext();
-  try {
-    const decoded = await context.decodeAudioData(await input.arrayBuffer());
-    const samples = await resample(createMonoBuffer(context, decoded));
-    await writeOpfsFile(outputName, encodePcm16Wav(samples, TARGET_SAMPLE_RATE));
-  } finally {
-    await context.close();
-  }
+  const wav = await ffmpegRunner.transcodeToWav16kMono(new Uint8Array(await input.arrayBuffer()));
+  await writeOpfsFile(outputName, wav);
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

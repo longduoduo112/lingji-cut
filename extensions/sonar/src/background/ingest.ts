@@ -8,11 +8,49 @@ import { adaptAwemeDetail, adaptAwemePostList } from '@/adapter/video-adapter';
 import { adaptCreator } from '@/adapter/creator-adapter';
 import { pick } from '@/adapter/field';
 import type { ResponseCategory } from '@/content/page-capture';
+import type { Creator, Video } from '@/domain/models';
 import type { Repository } from './repository';
 
 export interface IngestResult {
   videoIds: string[];
   creatorId?: string;
+}
+
+function isCreatorShape(value: unknown): value is Creator {
+  if (typeof value !== 'object' || value === null) return false;
+  const c = value as Record<string, unknown>;
+  return typeof c.id === 'string' && typeof c.secUid === 'string' && typeof c.nickname === 'string';
+}
+
+function isVideoShape(value: unknown): value is Video {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.id === 'string' && typeof v.creatorId === 'string';
+}
+
+/**
+ * 载入「主动提取」的博主主页结果（DOM/SSR fallback，详见 content/dom-extractor.ts）。
+ * 入参已是规整后的稳定模型；这里只做最小结构校验并入库（与 ingestCapture 行为对齐：
+ * upsert 博主与作品，幂等）。DOM 提取拿不到 raw video 对象，故不写 cacheRawVideo——
+ * 源提取仍走作品详情页的既有捕获路径。
+ */
+export async function ingestDomCreatorPage(
+  repo: Repository,
+  creator: unknown,
+  videos: unknown,
+): Promise<IngestResult> {
+  if (!isCreatorShape(creator)) return { videoIds: [] };
+  const list = Array.isArray(videos) ? videos.filter(isVideoShape) : [];
+  // API 捕获可能先以内部 uid 建过 Creator/Subscription；DOM fallback 只有 secUid。
+  // 同一个 secUid 必须复用已有 id，否则作品会挂到第二个 Creator 上，工作台按订阅 id 过滤后显示 0 条。
+  const subscribed = (await repo.listSubscriptions()).find((sub) => sub.creator.secUid === creator.secUid)?.creator;
+  const existing = subscribed ?? (await repo.getCreatorBySecUid(creator.secUid));
+  const creatorId = existing?.id ?? creator.id;
+  const canonicalCreator: Creator = { ...existing, ...creator, id: creatorId };
+  const canonicalVideos = list.map((video) => ({ ...video, creatorId }));
+  await repo.upsertCreator(canonicalCreator);
+  if (canonicalVideos.length > 0) await repo.upsertVideos(canonicalVideos);
+  return { videoIds: canonicalVideos.map((v) => v.id), creatorId };
 }
 
 export async function ingestCapture(

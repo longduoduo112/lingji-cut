@@ -17,6 +17,8 @@ import type {
   TestAiProviderInput,
 } from '@/domain/api-types';
 import { SonarException, makeError } from '@/domain/errors';
+import type { CollectCreatorInput, CollectCreatorResult } from './collect-tab';
+import type { CollectProgressInfo } from './collect-progress';
 
 export interface DownloadRequest {
   video: Video;
@@ -51,12 +53,21 @@ export interface AiProviderTester {
   test(input: TestAiProviderInput): Promise<ProviderTestResult>;
 }
 
+/** 博主作品全量采集（后台隐藏标签页滚动加载全部 + 进度）。 */
+export interface CollectService {
+  /** 后台开标签页全量采集某博主作品，完成或超时才 resolve。 */
+  collectCreatorFully(input: CollectCreatorInput): Promise<CollectCreatorResult>;
+  /** 读取某博主当前采集进度（无则 null）。 */
+  getProgress(secUid: string): CollectProgressInfo | null;
+}
+
 export interface Services {
   download: DownloadService;
   processing: ProcessingService;
   monitor: MonitorService;
   export: ExportService;
   aiTester: AiProviderTester;
+  collect: CollectService;
 }
 
 /**
@@ -110,6 +121,14 @@ export function createStubServices(): Services {
     aiTester: {
       async test() {
         return { ok: false, error: makeError('SUMMARY_NOT_CONFIGURED', '尚未配置该 Provider') };
+      },
+    },
+    collect: {
+      async collectCreatorFully() {
+        return { ok: false, collected: 0, reason: 'no_tab' };
+      },
+      getProgress() {
+        return null;
       },
     },
   };

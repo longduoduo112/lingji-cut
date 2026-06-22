@@ -1,7 +1,8 @@
 /** 工作台共享数据层：聚合视频、博主订阅、AI 分析与本地 UI 状态，产出视图模型。 */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DouyinClient } from '@/client';
 import type { Creator, CreatorSubscription, Video, VideoAnalysis } from '@/domain/models';
+import type { CollectProgressView } from '@/domain/api-types';
 import { SonarException } from '@/domain/errors';
 import { formatRelative, initialOf } from '@/ui/format';
 
@@ -21,6 +22,17 @@ export interface CreatorView {
   lastSync: string;
   videoCount?: number;
   sub: CreatorSubscription;
+}
+
+export function describeCollectProgress(
+  progress: Pick<CollectProgressView, 'collected' | 'total' | 'done'>,
+): string {
+  const count = progress.total === undefined ? `${progress.collected} 条` : `${progress.collected}/${progress.total}`;
+  if (!progress.done) return `采集中 ${count}`;
+  if (progress.total !== undefined && progress.collected < progress.total) {
+    return `已采集 ${count}（公开可见）`;
+  }
+  return `已采集 ${count}`;
 }
 
 function handleOf(creator: Creator): string {
@@ -55,6 +67,7 @@ export interface WorkbenchData {
   creators: Map<string, CreatorView>;
   creatorList: CreatorView[];
   analyses: Record<string, VideoAnalysis | null>;
+  collectProgress: Record<string, CollectProgressView>;
   loading: boolean;
   error: string | null;
   reload: () => Promise<void>;
@@ -65,6 +78,8 @@ export function useWorkbenchData(client: DouyinClient): WorkbenchData {
   const [videos, setVideos] = useState<Video[]>([]);
   const [subs, setSubs] = useState<CreatorSubscription[]>([]);
   const [analyses, setAnalyses] = useState<Record<string, VideoAnalysis | null>>({});
+  const [collectProgress, setCollectProgress] = useState<Record<string, CollectProgressView>>({});
+  const refreshedCollects = useRef(new Set<string>());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const now = useMemo(() => Date.now(), [videos, subs]);
@@ -74,7 +89,7 @@ export function useWorkbenchData(client: DouyinClient): WorkbenchData {
     setError(null);
     try {
       const [all, cs] = await Promise.all([
-        client.listRecentVideos(500),
+        client.listRecentVideos(),
         client.listFollowedCreators(),
       ]);
       // 只保留监听博主的视频；浏览时顺带采集的其它视频留在仓库供下载，但不进列表（避免"未知博主"噪声）。
@@ -104,6 +119,34 @@ export function useWorkbenchData(client: DouyinClient): WorkbenchData {
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    if (subs.length === 0) return;
+    let disposed = false;
+    const poll = async (): Promise<void> => {
+      const rows = await Promise.all(
+        subs.map(async (sub) => [sub.creator.id, await client.getCollectProgress(sub.creator.secUid).catch(() => null)] as const),
+      );
+      if (disposed) return;
+      const next: Record<string, CollectProgressView> = {};
+      for (const [creatorId, progress] of rows) {
+        if (!progress) continue;
+        next[creatorId] = progress;
+        const completionKey = `${creatorId}:${progress.updatedAt}`;
+        if (progress.done && !refreshedCollects.current.has(completionKey)) {
+          refreshedCollects.current.add(completionKey);
+          void reload();
+        }
+      }
+      setCollectProgress(next);
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 1000);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+    };
+  }, [client, reload, subs]);
+
   const loadAnalysis = useCallback(
     async (videoId: string) => {
       const a = await client.getAnalysis(videoId);
@@ -121,5 +164,5 @@ export function useWorkbenchData(client: DouyinClient): WorkbenchData {
 
   const creatorList = useMemo(() => Array.from(creators.values()), [creators]);
 
-  return { videos, creators, creatorList, analyses, loading, error, reload, loadAnalysis };
+  return { videos, creators, creatorList, analyses, collectProgress, loading, error, reload, loadAnalysis };
 }

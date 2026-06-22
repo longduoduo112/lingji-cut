@@ -17,6 +17,9 @@ import type {
 import type {
   AddWorkflowItemInput,
   AiSettingsView,
+  CollectCreatorInput,
+  CollectCreatorResult,
+  CollectProgressView,
   DownloadOptions,
   ExportTask,
   FollowCreatorInput,
@@ -50,6 +53,10 @@ export interface DouyinClient {
   listCreatorVideos(creatorId: string, options?: ListVideoOptions): Promise<VideoPage>;
   /** 全部已采集视频（视频库 / 动态流）。 */
   listRecentVideos(limit?: number): Promise<Video[]>;
+  /** 后台开隐藏标签页全量采集某博主作品（滚动加载全部），完成或超时才 resolve。 */
+  collectCreatorFully(input: CollectCreatorInput): Promise<CollectCreatorResult>;
+  /** 读取某博主当前全量采集进度（无则 null）。 */
+  getCollectProgress(secUid: string): Promise<CollectProgressView | null>;
 
   resolveVideo(input: ResolveVideoInput): Promise<ResolvedVideo>;
   downloadVideo(videoId: string, options?: DownloadOptions): Promise<DownloadTask>;
@@ -106,6 +113,8 @@ export function createDouyinClient(transport: Transport): DouyinClient {
     getCreatorBySecUid: (secUid) => call('getCreatorBySecUid', { secUid }),
     listCreatorVideos: (creatorId, options) => call('listCreatorVideos', { creatorId, options }),
     listRecentVideos: (limit) => call('listRecentVideos', { limit }),
+    collectCreatorFully: (input) => call('collectCreatorFully', input),
+    getCollectProgress: (secUid) => call('getCollectProgress', { secUid }),
     resolveVideo: (input) => call('resolveVideo', input),
     downloadVideo: (videoId, options) => call('downloadVideo', { videoId, options }),
     getDownloadTask: (taskId) => call('getDownloadTask', { taskId }),

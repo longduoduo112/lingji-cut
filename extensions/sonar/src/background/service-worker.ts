@@ -1,5 +1,5 @@
 /**
- * 声呐 Sonar Service Worker 入口。
+ * 灵机采风 Service Worker 入口。
  *
  * 装配 HandlerContext，注册消息路由（UI 的类型化请求）与页面捕获入库（Content Script
  * 转发的抖音响应）。MV3 Service Worker 不长期驻留：模块级状态在被回收后会重建，持久化
@@ -7,7 +7,7 @@
  */
 import { createHandlers, type HandlerContext } from './handlers';
 import { createRouter } from './router';
-import { ingestCapture } from './ingest';
+import { ingestCapture, ingestDomCreatorPage } from './ingest';
 import { createIdbRepository } from './idb-repository';
 import { createChromeSettingsStore } from './settings-chrome-store';
 import { createChromeBridgeSettingsStore, createChromeBridgePendingStore } from './chrome-bridge-store';
@@ -41,7 +41,7 @@ const repo = createIdbRepository({ now, newId });
 const settings = createChromeSettingsStore();
 const bridgeSettings = createChromeBridgeSettingsStore();
 const bridgePending = createChromeBridgePendingStore();
-const { services, downloadService, bridge, flushBridgePending } = buildServices({
+const { services, downloadService, bridge, collectHub, flushBridgePending } = buildServices({
   repo,
   settings,
   now,
@@ -77,6 +77,40 @@ function isCaptureMessage(message: unknown): message is CaptureMessage {
   );
 }
 
+interface DomCaptureMessage {
+  kind: 'sonar/dom-capture';
+  creator: unknown;
+  videos: unknown;
+  pageUrl: string;
+}
+
+function isDomCaptureMessage(message: unknown): message is DomCaptureMessage {
+  return (
+    typeof message === 'object' &&
+    message !== null &&
+    (message as { kind?: unknown }).kind === 'sonar/dom-capture'
+  );
+}
+
+interface CollectProgressMessage {
+  kind: 'sonar/collect-progress';
+  secUid: string;
+  collected: number;
+  total?: number;
+  round: number;
+  done: boolean;
+  pageUrl?: string;
+}
+
+function isCollectProgressMessage(message: unknown): message is CollectProgressMessage {
+  return (
+    typeof message === 'object' &&
+    message !== null &&
+    (message as { kind?: unknown }).kind === 'sonar/collect-progress' &&
+    typeof (message as { secUid?: unknown }).secUid === 'string'
+  );
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   // Content Script 转发的页面捕获：入库，无需回包。
   if (isCaptureMessage(message)) {
@@ -93,6 +127,36 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         );
       })
       .catch((e) => console.warn('[Sonar] 捕获入库失败', message.category, e));
+    return false;
+  }
+  // 博主主页「主动提取」（DOM/SSR fallback）：抖音新版主页不再发作品列表/资料接口，
+  // PageBridge 拦不到，改由 Content Script 读渲染后的 DOM 提取并入库。
+  if (isDomCaptureMessage(message)) {
+    void ingestDomCreatorPage(context.repo, message.creator, message.videos)
+      .then((result) => {
+        console.info(
+          '[Sonar] DOM 提取主页 →',
+          '作品',
+          result.videoIds.length,
+          '博主',
+          result.creatorId ?? '-',
+        );
+      })
+      .catch((e) => console.warn('[Sonar] DOM 提取入库失败', e));
+    return false;
+  }
+  // 全量采集进度：Content Script 滚动加载时上报，写入进度中枢（done 唤醒后台 runner 关标签页）。
+  if (isCollectProgressMessage(message)) {
+    collectHub.update({
+      secUid: message.secUid,
+      collected: message.collected,
+      round: message.round,
+      done: message.done,
+      ...(message.total !== undefined ? { total: message.total } : {}),
+    });
+    if (message.done) {
+      console.info('[Sonar] 全量采集完成', message.secUid, '→', message.collected, '/', message.total ?? '?');
+    }
     return false;
   }
   // UI 的类型化协议请求：路由并异步回包（返回 true 保持通道开启）。

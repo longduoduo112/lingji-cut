@@ -47,12 +47,20 @@ function fakeServices(repo: Repository): Services {
     },
     export: {
       async exportMarkdown() {
-        return { id: 'ex-1', status: 'completed', filename: '声呐/导出/a.md' };
+        return { id: 'ex-1', status: 'completed', filename: '灵机采风/导出/a.md' };
       },
     },
     aiTester: {
       async test() {
         return { ok: true, latencyMs: 5 };
+      },
+    },
+    collect: {
+      async collectCreatorFully() {
+        return { ok: true, collected: 0 };
+      },
+      getProgress() {
+        return null;
       },
     },
   };

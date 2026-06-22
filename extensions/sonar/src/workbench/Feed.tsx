@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { DouyinClient } from '@/client';
 import type { Video } from '@/domain/models';
+import { sonarErrorText } from '@/domain/errors';
 import { S } from '@/ui/theme';
 import { NewBadge, StanceBadge, Thumb, useHover } from '@/ui/kit';
 import { formatCount, formatDuration, formatRelative } from '@/ui/format';
@@ -106,7 +107,7 @@ export function Feed({
               {data.loading
                 ? '加载中…'
                 : data.creatorList.length === 0
-                  ? '还没有监听任何博主。去抖音博主主页点扩展「加入声呐监听」，或点右上「添加」。'
+                  ? '还没有监听任何博主。去抖音博主主页点扩展「加入灵机采风监听」，或点右上「添加」。'
                   : '监听的博主暂无新视频。点顶部「同步全部」检查更新。'}
             </div>
           )}
@@ -141,7 +142,7 @@ export function Feed({
             onAnalysisChange={data.loadAnalysis}
             onProcess={processing.track}
             processingStage={processing.map[selected.id]?.stage}
-            processingError={processing.map[selected.id]?.error?.message}
+            processingError={sonarErrorText(processing.map[selected.id]?.error)}
             onNavigateSettings={onNavigateSettings}
           />
         ) : (

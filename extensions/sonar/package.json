@@ -5,13 +5,17 @@
   "type": "module",
   "description": "声呐 Sonar — 抖音博主监听 Chrome 扩展（Manifest V3，独立工程，与 Electron 应用隔离）",
   "scripts": {
+    "copy-ffmpeg-assets": "node scripts/copy-ffmpeg-assets.mjs",
+    "predev": "node scripts/copy-ffmpeg-assets.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-ffmpeg-assets.mjs",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
     "idb": "^8.0.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

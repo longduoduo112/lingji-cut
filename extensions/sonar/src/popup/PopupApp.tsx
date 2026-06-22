@@ -159,7 +159,7 @@ export function PopupApp() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 15px', background: 'rgba(40,40,43,.9)', borderBottom: '.5px solid rgba(255,255,255,.08)' }}>
         <SonarBadge box={26} radius={8} icon={16} />
-        <span style={{ fontSize: 14, fontWeight: 700, color: S.white, flex: 1 }}>声呐 Sonar</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: S.white, flex: 1 }}>灵机采风</span>
         {newCount > 0 && <span style={{ fontSize: 11, color: S.faint, fontFamily: S.mono }}>{newCount} 新</span>}
         <IconBtn onClick={() => chrome.runtime.openOptionsPage?.()} title="设置">
           <GearIcon size={15} color={S.cf} />

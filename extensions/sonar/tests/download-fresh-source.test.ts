@@ -65,6 +65,7 @@ function capturingServices(captured: { url?: string }): Services {
     monitor: { async runOnce() { return { checkedCreatorIds: [], newVideoIds: [], circuitBroken: false }; }, async runDueBatch() { return { checkedCreatorIds: [], newVideoIds: [], circuitBroken: false }; } },
     export: { async exportMarkdown() { return { id: 'ex-1', status: 'completed', filename: 'a.md' }; } },
     aiTester: { async test() { return { ok: true, latencyMs: 1 }; } },
+    collect: { async collectCreatorFully() { return { ok: false, collected: 0, reason: 'no_tab' as const }; }, getProgress() { return null; } },
   };
 }
 

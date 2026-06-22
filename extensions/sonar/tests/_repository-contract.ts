@@ -81,6 +81,12 @@ export function repositoryContract(label: string, makeRepo: () => Repository): v
       const page = await repo.listCreatorVideos('c1', { count: 2 });
       expect(page.videos.map((v) => v.id)).toEqual(['b', 'c']);
       expect(page.hasMore).toBe(true);
+
+      const next = await repo.listCreatorVideos('c1', { count: 2, cursor: page.cursor });
+      expect(next.videos.map((v) => v.id)).toEqual(['a']);
+
+      const allRecent = await repo.listRecentVideos();
+      expect(allRecent).toHaveLength(3);
     });
 
     it('caches and reads ranked sources and raw video', async () => {
