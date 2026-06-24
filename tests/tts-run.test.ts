@@ -4,17 +4,54 @@ import path from 'node:path';
 import os from 'node:os';
 import { runTtsHeadless } from '../electron/pipeline/runs/tts-run';
 
-function setup(opts: { script?: string; providerType?: string } = {}) {
+function setup(opts: {
+  script?: string;
+  providerType?: string;
+  voiceSource?: 'preset' | 'cloned';
+  // 设置一个项目级 templateId（写入 project.json 的 script.templateId）
+  templateId?: string;
+} = {}) {
   const userData = mkdtempSync(path.join(os.tmpdir(), 'lingji-ttsud-'));
   const project = mkdtempSync(path.join(os.tmpdir(), 'lingji-ttsproj-'));
+  const providerType = opts.providerType ?? 'minimax';
   writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({
     aiSettings: {
-      ttsProviders: [{ id: 'p1', name: 'MiniMax', type: opts.providerType ?? 'minimax', baseUrl: 'https://api', apiKey: 'sk-x', models: ['speech-01'] }],
-      ttsVoices: [{ id: 'v1', name: '女声', providerId: 'p1', providerType: opts.providerType ?? 'minimax', model: 'speech-01', voiceId: 'female-1', source: 'preset', params: {} }],
-      defaultTtsProviderId: 'p1', defaultTtsVoiceId: 'v1',
+      ttsProviders: [{ id: 'p1', name: 'TTS', type: providerType, baseUrl: 'https://api', apiKey: 'sk-x', models: ['speech-01'] }],
+      ttsVoices: [{
+        id: 'v1',
+        name: '女声',
+        providerId: 'p1',
+        providerType,
+        model: 'speech-01',
+        voiceId: 'female-1',
+        source: opts.voiceSource ?? (providerType === 'xiaomi_mimo' ? 'cloned' : 'preset'),
+        params: {},
+        ttsMimoAutoAnnotate: false,
+      }],
+      defaultTtsProviderId: 'p1',
+      defaultTtsVoiceId: 'v1',
+      ttsMimoAutoAnnotate: false,
     },
   }));
   if (opts.script !== undefined) writeFileSync(path.join(project, 'script.md'), opts.script);
+  if (opts.templateId) {
+    writeFileSync(
+      path.join(project, 'project.json'),
+      JSON.stringify({
+        version: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        timeline: null,
+        aiAnalysis: { analysisResult: null, coverCandidates: [] },
+        script: {
+          templateId: opts.templateId,
+          annotations: [],
+          reviewState: 'idle',
+          lastReviewedDocVersion: 0,
+        },
+      }),
+    );
+  }
   return { userData, project };
 }
 
@@ -71,12 +108,33 @@ describe('runTtsHeadless', () => {
     }
   });
 
-  it('throws unsupported_tts for non-minimax provider', async () => {
-    const { userData, project } = setup({ script: 'hi', providerType: 'xiaomi_mimo' });
+  it('throws unsupported_tts for unknown provider', async () => {
+    const { userData, project } = setup({ script: 'hi', providerType: 'azure' });
     try {
       await expect(
-        runTtsHeadless({ projectPath: project, userDataPath: userData, handle: fakeHandle() as never }, { runner: async () => ({ audioBuffer: Buffer.from('x'), audioExtension: 'wav' as const }) }),
+        runTtsHeadless(
+          { projectPath: project, userDataPath: userData, handle: fakeHandle() as never },
+          { runner: async () => ({ audioBuffer: Buffer.from('x'), audioExtension: 'wav' as const }) },
+        ),
       ).rejects.toMatchObject({ code: 'unsupported_tts' });
+    } finally {
+      rmSync(userData, { recursive: true, force: true });
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it('throws missing_ffmpeg for xiaomi_mimo when ffmpeg not resolved', async () => {
+    const { userData, project } = setup({ script: '你好世界。这是测试。', providerType: 'xiaomi_mimo' });
+    try {
+      await expect(
+        runTtsHeadless(
+          { projectPath: project, userDataPath: userData, handle: fakeHandle() as never },
+          {
+            runner: async () => ({ audioBuffer: Buffer.from('FAKE'), audioExtension: 'wav' as const }),
+            resolveBinaries: () => ({ ffmpegPath: null, ffprobePath: null }),
+          },
+        ),
+      ).rejects.toMatchObject({ code: 'missing_ffmpeg' });
     } finally {
       rmSync(userData, { recursive: true, force: true });
       rmSync(project, { recursive: true, force: true });
