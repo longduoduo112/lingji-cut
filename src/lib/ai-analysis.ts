@@ -1819,6 +1819,8 @@ export async function regenerateAICard(
       currentCard: card,
       cardTemplate,
       imageTemplate,
+      animationTemplate,
+      animationDirection,
       projectBindings,
     },
   );
@@ -1830,6 +1832,7 @@ export async function regenerateAICard(
     segmentId: segment.id,
     enabled: card.enabled,
     cardPrompt: cardPrompt?.trim() || undefined,
+    animationDirection: regenerated.animationDirection,
   };
 }
 

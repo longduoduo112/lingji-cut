@@ -212,6 +212,70 @@ export function useAICardInspector(cardId: string | null) {
     ],
   );
 
+  const generateAnimationDirection = useCallback(
+    async (targetCard: AICard): Promise<string> => {
+      if (!analysisResult) {
+        return '';
+      }
+
+      const settings = await loadAISettings();
+      const settingsIssue = getAISettingsIssue(settings);
+      if (settingsIssue) {
+        setAnalysisError(settingsIssue);
+        throw new Error(settingsIssue);
+      }
+      if (!settings) {
+        const issue = '请先完成 AI 配置';
+        setAnalysisError(issue);
+        throw new Error(issue);
+      }
+
+      const segment = analysisResult.segments.find((item) => item.id === targetCard.segmentId);
+      if (!segment) {
+        const issue = '未找到卡片对应的段落信息';
+        setAnalysisError(issue);
+        throw new Error(issue);
+      }
+
+      setAnalysisError(null);
+
+      const directionTaskId = `ai-generate-animation-direction-${targetCard.id}-${Date.now()}`;
+      useTaskProgressStore.getState().startTask({
+        id: directionTaskId,
+        category: 'ai-analyze',
+        label: `生成动画指导：${targetCard.title}`,
+        mode: 'indeterminate',
+        progress: 0,
+        phase: '生成动画指导',
+        level: 2,
+        canCancel: false,
+      });
+
+      try {
+        const text = await window.electronAPI.generateAnimationDirection({
+          entries: srtEntries,
+          segment,
+          settings,
+          globalPrompt: analysisResult.globalPrompt?.trim() || undefined,
+          cardPrompt: targetCard.cardPrompt,
+          programSummary: analysisResult.summary,
+          keywords: analysisResult.keywords,
+          projectDir: getProjectDir() ?? undefined,
+          projectBindings: useAIStore.getState().projectBindings,
+        });
+        useTaskProgressStore.getState().completeTask(directionTaskId);
+        return text;
+      } catch (error) {
+        console.error('生成动画指导失败:', error);
+        const errorMessage = error instanceof Error ? error.message : '生成动画指导失败';
+        setAnalysisError(errorMessage);
+        useTaskProgressStore.getState().failTask(directionTaskId, errorMessage);
+        throw error instanceof Error ? error : new Error(errorMessage);
+      }
+    },
+    [analysisResult, setAnalysisError, srtEntries],
+  );
+
   const deleteCard = useCallback(() => {
     if (!card || !analysisResult) {
       return;
@@ -247,6 +311,7 @@ export function useAICardInspector(cardId: string | null) {
     cardSequenceLabel,
     deleteCard,
     errorMessage: analysisError,
+    generateAnimationDirection,
     isPlacedOnTimeline,
     isRegeneratingCard,
     regenerateCard,

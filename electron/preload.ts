@@ -83,6 +83,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     projectDir?: string;
     projectBindings?: PromptBindingMap | null;
   }) => ipcRenderer.invoke('regenerate-ai-card', args),
+  generateAnimationDirection: (args: {
+    entries: SrtEntry[];
+    segment: AISegment;
+    settings: AISettings;
+    globalPrompt?: string;
+    programSummary?: string;
+    keywords?: string[];
+    cardPrompt?: string;
+    projectDir?: string;
+    projectBindings?: PromptBindingMap | null;
+  }) => ipcRenderer.invoke('generate-animation-direction', args),
   generateAICardForSegment: (args: GenerateAICardForSegmentArgs) =>
     ipcRenderer.invoke('generate-ai-card-for-segment', args),
   generateCardFromSubtitles: (args: {
@@ -124,6 +135,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     projectDir?: string;
     projectBindings?: PromptBindingMap | null;
   }) => ipcRenderer.invoke('generate-publish-metadata', args),
+  recommendBilibiliPartition: (args: {
+    settings: AISettings;
+    title: string;
+    desc: string;
+    fallbackSource?: string;
+    projectDir?: string;
+    projectBindings?: PromptBindingMap | null;
+  }) => ipcRenderer.invoke('recommend-bilibili-partition', args),
   generateCardImage: (args: import('../src/lib/electron-api').GenerateCardImageArgs) =>
     ipcRenderer.invoke('generate-card-image', args),
   generateCardVideo: (args: import('../src/lib/electron-api').GenerateCardVideoArgs) =>

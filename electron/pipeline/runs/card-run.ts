@@ -138,12 +138,16 @@ async function buildRegenerateOptions(
   ctx: GenerationRunCtx,
   l: Loaded,
 ): Promise<Record<string, unknown>> {
-  const [cardTemplate, imageTemplate] = await Promise.all([
+  const [cardTemplate, imageTemplate, animationTemplate] = await Promise.all([
     loadEffectivePromptTemplate('cards.segment', {
       userDataPath: ctx.userDataPath,
       projectDir: l.projectPath,
     }),
     loadEffectivePromptTemplate('card.image', {
+      userDataPath: ctx.userDataPath,
+      projectDir: l.projectPath,
+    }),
+    loadEffectivePromptTemplate('cards.animation', {
       userDataPath: ctx.userDataPath,
       projectDir: l.projectPath,
     }),
@@ -158,6 +162,8 @@ async function buildRegenerateOptions(
     keywords: l.result.keywords,
     cardTemplate,
     imageTemplate,
+    animationTemplate,
+    animationDirection: l.card.animationDirection,
     projectBindings: l.projectBindings,
     validateMotionSource: assertCardRenders,
   };
@@ -274,12 +280,16 @@ export async function runConvertCard(ctx: GenerationRunCtx, deps: ConvertDeps = 
     } else {
       const fromSubtitles =
         deps.fromSubtitles ?? (generateSingleCardFromSubtitles as unknown as FromSubtitlesFn);
-      const [cardTemplate, imageTemplate] = await Promise.all([
+      const [cardTemplate, imageTemplate, animationTemplate] = await Promise.all([
         loadEffectivePromptTemplate('cards.segment', {
           userDataPath: ctx.userDataPath,
           projectDir: l.projectPath,
         }),
         loadEffectivePromptTemplate('card.image', {
+          userDataPath: ctx.userDataPath,
+          projectDir: l.projectPath,
+        }),
+        loadEffectivePromptTemplate('cards.animation', {
           userDataPath: ctx.userDataPath,
           projectDir: l.projectPath,
         }),
@@ -293,6 +303,8 @@ export async function runConvertCard(ctx: GenerationRunCtx, deps: ConvertDeps = 
         keywords: l.result.keywords,
         cardTemplate,
         imageTemplate,
+        animationTemplate,
+        animationDirection: l.card.animationDirection,
         projectBindings: l.projectBindings,
         validateMotionSource: assertCardRenders,
       });

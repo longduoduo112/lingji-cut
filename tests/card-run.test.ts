@@ -96,6 +96,32 @@ describe('runRegenerateCard', () => {
     }
   });
 
+  it('loads cards.animation template and passes animationTemplate/animationDirection', async () => {
+    const motionCard = { ...CARD, type: 'summary', animationDirection: '逐拍：先标题后正文' };
+    const dir = project(motionCard, SEG);
+    const u = ud();
+    try {
+      let captured: Record<string, unknown> | undefined;
+      await runRegenerateCard(
+        { projectPath: dir, userDataPath: u, handle: handle() as never, params: { cardId: 'c1' } },
+        {
+          regenerate: async (_e, card, _s, _set, opts) => {
+            captured = opts;
+            return { ...card } as never;
+          },
+        },
+      );
+      expect(captured).toBeDefined();
+      expect((captured!.animationTemplate as { name?: string } | undefined)?.name).toBe(
+        'cards.animation',
+      );
+      expect(captured!.animationDirection).toBe('逐拍：先标题后正文');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(u, { recursive: true, force: true });
+    }
+  });
+
   it('throws card_not_found for missing card', async () => {
     const dir = project(CARD, SEG);
     const u = ud();

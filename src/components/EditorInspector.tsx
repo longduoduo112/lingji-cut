@@ -44,6 +44,7 @@ export function EditorInspector({
     cardSequenceLabel,
     deleteCard,
     errorMessage,
+    generateAnimationDirection,
     isRegeneratingCard,
     regenerateCard,
     saveCard,
@@ -98,6 +99,7 @@ export function EditorInspector({
             onClose();
           }}
           onRegenerate={regenerateCard}
+          onGenerateAnimationDirection={generateAnimationDirection}
           onSave={saveCard}
         />
       );

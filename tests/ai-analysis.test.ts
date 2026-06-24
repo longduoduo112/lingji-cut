@@ -740,8 +740,9 @@ describe('generateCardForSegment auto animationDirection', () => {
     const card = await generateCardForSegment(baseEntries, planning, segment, { autoAnimationDirection: true } as any, { generateText, generateMotionSource, visualType: 'motion', projectBindings: undefined });
     expect(generateText).toHaveBeenCalled();
     expect(card.animationDirection).toBe('视觉母题：折线');
-    const cardUserMsg = generateMotionSource.mock.calls[0][2] as string;
-    expect(cardUserMsg).toContain('视觉母题：折线');
+    // animationDirection 注入 cards.segment 提示词（generateMotionSource 第 2 个参数 = system prompt）
+    const cardPromptMsg = generateMotionSource.mock.calls[0][1] as string;
+    expect(cardPromptMsg).toContain('视觉母题：折线');
   });
 
   it('skips animationDirection when autoAnimationDirection is false', async () => {

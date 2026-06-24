@@ -27,6 +27,7 @@ interface AICardInspectorProps {
   onCancel?: () => void;
   onDelete?: () => void;
   onRegenerate: (updates: Partial<AICard>) => Promise<AICard | null>;
+  onGenerateAnimationDirection?: (card: AICard) => Promise<string>;
   onSave: (cardId: string, updates: Partial<AICard>) => void;
 }
 
@@ -60,11 +61,14 @@ export function AICardInspector({
   onCancel,
   onDelete,
   onRegenerate,
+  onGenerateAnimationDirection,
   onSave,
 }: AICardInspectorProps) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [cardPrompt, setCardPrompt] = useState('');
+  const [animationDirection, setAnimationDirection] = useState('');
+  const [isGeneratingDirection, setIsGeneratingDirection] = useState(false);
   const [type, setType] = useState<AICardType>('summary');
   const [stylePresetId, setStylePresetId] = useState<string | undefined>(undefined);
   const [displayMode, setDisplayMode] = useState<'fullscreen' | 'pip'>('fullscreen');
@@ -80,6 +84,7 @@ export function AICardInspector({
       typeof card.content === 'string' ? card.content : JSON.stringify(card.content, null, 2),
     );
     setCardPrompt(card.cardPrompt ?? '');
+    setAnimationDirection(card.animationDirection ?? '');
     setType(card.type);
     setStylePresetId(card.stylePresetId);
     setDisplayMode(card.displayMode);
@@ -129,6 +134,7 @@ export function AICardInspector({
     displayMode,
     displayDurationMs,
     cardPrompt: cardPrompt.trim() || undefined,
+    animationDirection: animationDirection.trim() || undefined,
     template: `${type}-default`,
   };
 
@@ -147,6 +153,17 @@ export function AICardInspector({
 
   const handleRegenerateClick = async () => {
     await onRegenerate(draftUpdates);
+  };
+
+  const handleGenerateDirection = async () => {
+    if (!card || !onGenerateAnimationDirection) return;
+    setIsGeneratingDirection(true);
+    try {
+      const text = await onGenerateAnimationDirection(card);
+      setAnimationDirection(text);
+    } finally {
+      setIsGeneratingDirection(false);
+    }
   };
 
   return (
@@ -210,6 +227,30 @@ export function AICardInspector({
             placeholder="输入额外的生成指导…"
             onChange={(event) => setCardPrompt(event.target.value)}
           />
+        </label>
+
+        <label className={styles.fieldStack}>
+          <span className={styles.fieldLabel}>动画指导</span>
+          <Textarea
+            size="sm"
+            value={animationDirection}
+            rows={6}
+            resize="none"
+            className={styles.promptArea}
+            placeholder="AI 会自动生成；也可点下方按钮单独生成后再出卡…"
+            onChange={(event) => setAnimationDirection(event.target.value)}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={<AppIcon name="sparkles" size={12} />}
+            disabled={isGeneratingDirection}
+            onClick={() => {
+              void handleGenerateDirection();
+            }}
+          >
+            {isGeneratingDirection ? '生成中...' : '✨ 生成动画指导'}
+          </Button>
         </label>
       </div>
 

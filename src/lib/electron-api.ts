@@ -245,6 +245,17 @@ export interface ElectronAPI {
     projectDir?: string;
     projectBindings?: PromptBindingMap | null;
   }) => Promise<AICard>;
+  generateAnimationDirection: (args: {
+    entries: SrtEntry[];
+    segment: AISegment;
+    settings: AISettings;
+    globalPrompt?: string;
+    programSummary?: string;
+    keywords?: string[];
+    cardPrompt?: string;
+    projectDir?: string;
+    projectBindings?: PromptBindingMap | null;
+  }) => Promise<string>;
   generateAICardForSegment: (args: GenerateAICardForSegmentArgs) => Promise<AICard>;
   generateCardFromSubtitles: (args: {
     entries: SrtEntry[];
@@ -285,6 +296,14 @@ export interface ElectronAPI {
     projectDir?: string;
     projectBindings?: PromptBindingMap | null;
   }) => Promise<{ title: string; desc: string; tags: string[] }>;
+  recommendBilibiliPartition: (args: {
+    settings: AISettings;
+    title: string;
+    desc: string;
+    fallbackSource?: string;
+    projectDir?: string;
+    projectBindings?: PromptBindingMap | null;
+  }) => Promise<{ tid: number }>;
   generateCardImage: (args: GenerateCardImageArgs) => Promise<MediaCardContent>;
   generateCardVideo: (args: GenerateCardVideoArgs) => Promise<MediaCardContent>;
   cancelCardMediaGeneration: (cardId: string) => Promise<{ ok: true }>;

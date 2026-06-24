@@ -7,6 +7,7 @@ export const PROMPT_KINDS = [
   'card.image',
   'card.video',
   'publish.metadata',
+  'publish.partition',
 ] as const;
 
 export type PromptKind = (typeof PROMPT_KINDS)[number];
@@ -198,6 +199,11 @@ const LOCKED_PUBLISH_METADATA = `【系统契约 · 不可修改】
 只返回严格 JSON，不要任何解释、前后缀或多余文本，结构如下：
 { "title": "字符串", "desc": "字符串", "tags": ["标签1", "标签2"] }`;
 
+const LOCKED_PUBLISH_PARTITION = `【系统契约 · 不可修改】
+只返回严格 JSON，不要任何解释、前后缀或多余文本，结构如下：
+{ "tid": 数字 }
+其中 tid 必须是【可选分区清单】里列出的某个 tid，不得自创、不得返回主分区或清单外的数字。`;
+
 export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
   'planning.segment': {
     kind: 'planning.segment',
@@ -346,6 +352,19 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
       position: 'user-tail',
       content: LOCKED_PUBLISH_METADATA,
       reason: '业务侧按 { title, desc, tags } 解析并回填发布表单；修改会导致生成结果无法落库。',
+    },
+  },
+  'publish.partition': {
+    kind: 'publish.partition',
+    label: 'B站分区推荐',
+    description:
+      '发布选项卡「智能推荐分区」根据标题 / 描述自动选 B站投稿分区。本提示词只写选择规则；【标题】【描述】与【可选分区清单】由系统在请求时自动追加为内容消息，无需在此用变量占位。',
+    group: 'project',
+    variables: [],
+    lockedContract: {
+      position: 'user-tail',
+      content: LOCKED_PUBLISH_PARTITION,
+      reason: '业务侧按 { tid } 解析并校验回填分区选择器；修改会导致推荐结果无法落库。',
     },
   },
 };

@@ -11,6 +11,7 @@ import type { MenuContext, MenuEvent, ProjectMetadata } from '../src/lib/electro
 import { addAppLog, configureAppLogger, getAppLogFilePath, getAppLogs } from './app-logger';
 import {
   analyzeSrt,
+  generateAnimationDirection,
   generateCardForSegment,
   generateSingleCardFromSubtitles,
   materializeImageCard,
@@ -23,6 +24,7 @@ import { assertCardRenders } from './remotion/smoke-render';
 import type { ExportConfig } from '../src/lib/export-settings';
 import { generateCoverCandidates } from '../src/lib/cover-generation';
 import { generatePublishMetadata } from '../src/lib/publish-metadata';
+import { recommendBilibiliPartition } from '../src/lib/publish-partition-recommend';
 import { resolvePromptBinding } from '../src/lib/llm/binding-resolver';
 import {
   handleGenerateCardImage,
@@ -838,6 +840,62 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  'generate-animation-direction',
+  async (
+    _event,
+    args: {
+      entries: SrtEntry[];
+      segment: AISegment;
+      settings: AISettings;
+      globalPrompt?: string;
+      programSummary?: string;
+      keywords?: string[];
+      cardPrompt?: string;
+      projectDir?: string;
+      projectBindings?: PromptBindingMap | null;
+    },
+  ) => {
+    writeAppLog(
+      'info',
+      'ai-analysis',
+      '收到动画指导生成请求',
+      `entries=${args.entries.length}`,
+    );
+
+    try {
+      const userDataPath = app.getPath('userData');
+      const animationTemplate = await loadEffectivePromptTemplate('cards.animation', {
+        userDataPath,
+        projectDir: args.projectDir,
+      });
+      return await generateAnimationDirection(
+        args.entries,
+        {
+          summary: args.programSummary ?? '',
+          keywords: args.keywords ?? [],
+          globalPrompt: args.globalPrompt?.trim() || undefined,
+        },
+        args.segment,
+        args.settings,
+        {
+          cardPrompt: args.cardPrompt,
+          animationTemplate,
+          projectBindings: args.projectBindings ?? null,
+        },
+      );
+    } catch (error) {
+      writeAppLog(
+        'error',
+        'ai-analysis',
+        '动画指导生成失败',
+        error instanceof Error ? error.stack ?? error.message : String(error),
+      );
+      throw error;
+    }
+  },
+);
+
+ipcMain.handle(
   'generate-ai-card-for-segment',
   async (
     _event,
@@ -1167,6 +1225,57 @@ ipcMain.handle(
         'error',
         'publish',
         '发布文案生成失败',
+        error instanceof Error ? error.stack ?? error.message : String(error),
+      );
+      throw error;
+    }
+  },
+);
+
+ipcMain.handle(
+  'recommend-bilibili-partition',
+  async (
+    _event,
+    args: {
+      settings: AISettings;
+      title: string;
+      desc: string;
+      fallbackSource?: string;
+      projectDir?: string;
+      projectBindings?: PromptBindingMap | null;
+    },
+  ) => {
+    writeAppLog(
+      'info',
+      'publish',
+      '收到 B站分区推荐请求',
+      `titleLen=${args.title?.length ?? 0} descLen=${args.desc?.length ?? 0}`,
+    );
+    try {
+      const userDataPath = app.getPath('userData');
+      const template = await loadEffectivePromptTemplate('publish.partition', {
+        userDataPath,
+        projectDir: args.projectDir,
+      });
+      const binding = resolvePromptBinding(
+        'publish.partition',
+        args.settings,
+        args.projectBindings ?? null,
+      );
+      return await recommendBilibiliPartition(
+        args.settings,
+        {
+          title: args.title,
+          desc: args.desc,
+          fallbackSource: args.fallbackSource,
+        },
+        { template, binding },
+      );
+    } catch (error) {
+      writeAppLog(
+        'error',
+        'publish',
+        'B站分区推荐失败',
         error instanceof Error ? error.stack ?? error.message : String(error),
       );
       throw error;

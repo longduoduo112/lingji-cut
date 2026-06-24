@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Upload, Film, Image as ImageIcon, Tag, Check, X, Loader2, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
-import { Button, Checkbox, Field, Input } from '../../ui';
+import { Button, Checkbox, Field, Input, Select } from '../../ui';
+import {
+  BILIBILI_PARTITIONS,
+  findPartition,
+} from '../../lib/publish/bilibili-partitions';
 import { Spinner } from '../../ui/primitives/Spinner';
 import { usePublishStore } from '../../store/publish';
 import { loadAISettings, useAIStore } from '../../store/ai';
@@ -165,8 +169,13 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [tagsInput, setTagsInput] = useState('');
-  // B站分区 ID（tid，全平台共享，仅 B站使用）
+  // B站分区 ID（tid，全平台共享，仅 B站使用）— 经分区选择器写入，仍存为字符串
   const [bilibiliTid, setBilibiliTid] = useState('');
+  // 级联选择器的主分区态（由 bilibiliTid 反查同步，picker 切换时维护）
+  const [bilibiliParentId, setBilibiliParentId] = useState<number | null>(null);
+  // AI 智能推荐分区
+  const [isRecommendingPartition, setIsRecommendingPartition] = useState(false);
+  const [partitionError, setPartitionError] = useState<string | null>(null);
 
   // AI 文案生成
   const [isGeneratingMeta, setIsGeneratingMeta] = useState(false);
@@ -313,6 +322,55 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
     }
   };
 
+  // bilibiliTid 变化（hydrate / AI 推荐 / 手选）时，反查并同步主分区态
+  useEffect(() => {
+    const n = parseInt(bilibiliTid, 10);
+    const found = Number.isInteger(n) ? findPartition(n) : null;
+    if (found) setBilibiliParentId(found.parent.id);
+  }, [bilibiliTid]);
+
+  const handleRecommendPartition = async () => {
+    setPartitionError(null);
+    const settings = await loadAISettings();
+    if (!settings) {
+      setPartitionError('请先在「设置 → AI」完成大模型配置');
+      return;
+    }
+    // 标题 / 描述均空时，回退用 AI 分析摘要 / 字幕作为依据
+    let fallbackSource: string | undefined;
+    if (!title.trim() && !desc.trim()) {
+      const analysis = useAIStore.getState().analysisResult;
+      const srtText = useTimelineStore
+        .getState()
+        .srtEntries.map((e) => e.text)
+        .join(' ');
+      fallbackSource = buildMetadataSource(analysis, srtText);
+      if (!fallbackSource.trim()) {
+        setPartitionError('请先填写或生成标题 / 描述');
+        return;
+      }
+    }
+    setIsRecommendingPartition(true);
+    try {
+      const projectBindings = projectDir
+        ? await window.electronAPI.readPromptBindings('project', projectDir).catch(() => null)
+        : null;
+      const { tid } = await window.electronAPI.recommendBilibiliPartition({
+        settings,
+        title: title.trim(),
+        desc: desc.trim(),
+        fallbackSource,
+        projectDir: projectDir || undefined,
+        projectBindings,
+      });
+      setBilibiliTid(String(tid));
+    } catch (e) {
+      setPartitionError(e instanceof Error ? e.message : 'AI 分区推荐失败');
+    } finally {
+      setIsRecommendingPartition(false);
+    }
+  };
+
   const toggleAccount = (accId: string) => {
     setSelectedAccountIds((prev) =>
       prev.includes(accId) ? prev.filter((id) => id !== accId) : [...prev, accId],
@@ -348,7 +406,7 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
     const tid = parseInt(bilibiliTid.trim(), 10);
     if (hasBilibili) {
       if (!bilibiliTid.trim() || isNaN(tid) || tid <= 0) {
-        setValidationError('发布到 B站需要先填写分区 ID（tid）');
+        setValidationError('发布到 B站需要先选择分区');
         return;
       }
       if (!desc.trim()) {
@@ -394,6 +452,20 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
   const jobResults = results;
   const hasResults = Object.keys(jobResults).length > 0;
   const targetCount = selectedAccountIds.length;
+
+  // ── B站分区选择器派生值 ──
+  const parentOptions = BILIBILI_PARTITIONS.map((p) => ({
+    value: String(p.id),
+    label: p.name,
+  }));
+  const childOptions =
+    bilibiliParentId != null
+      ? (BILIBILI_PARTITIONS.find((p) => p.id === bilibiliParentId)?.children ?? []).map((c) => ({
+          value: String(c.id),
+          label: c.name,
+        }))
+      : [];
+  const selectedPartition = findPartition(parseInt(bilibiliTid, 10));
 
   return (
     <div
@@ -649,13 +721,68 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
         {selectedAccountIds.some(
           (id) => accounts.find((a) => a.id === id)?.platform === 'bilibili',
         ) && (
-          <Field label="B站分区 ID（tid）" required hint="发布到 B站必填；常用：17 单机联机 / 21 游戏综合 / 124 娱乐 / 182 影视 / 236 知识">
-            <Input
-              type="number"
-              value={bilibiliTid}
-              onChange={(e) => setBilibiliTid(e.target.value)}
-              placeholder="例如：21（游戏综合）"
-            />
+          <Field label="B站分区" required hint="发布到 B站必填；选择最贴合内容的子分区，或用「智能推荐分区」按标题/描述自动选">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Select
+                    placeholder="主分区"
+                    options={parentOptions}
+                    value={bilibiliParentId != null ? String(bilibiliParentId) : ''}
+                    onChange={(e) => {
+                      const nextParent = parseInt(e.target.value, 10);
+                      setBilibiliParentId(Number.isInteger(nextParent) ? nextParent : null);
+                      // 切换主分区后清空子分区，强制重新选择
+                      setBilibiliTid('');
+                      setPartitionError(null);
+                    }}
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Select
+                    placeholder="子分区"
+                    options={childOptions}
+                    disabled={bilibiliParentId == null}
+                    value={bilibiliTid}
+                    onChange={(e) => {
+                      setBilibiliTid(e.target.value);
+                      setPartitionError(null);
+                    }}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <Button
+                  variant="outline"
+                  onClick={() => void handleRecommendPartition()}
+                  disabled={isRecommendingPartition}
+                  style={{ flexShrink: 0 }}
+                >
+                  {isRecommendingPartition ? (
+                    <>
+                      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite', marginRight: 6 }} />
+                      推荐中…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} style={{ marginRight: 6 }} />
+                      智能推荐分区
+                    </>
+                  )}
+                </Button>
+                {selectedPartition && (
+                  <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                    已选：{selectedPartition.parent.name} / {selectedPartition.sub.name}（tid {selectedPartition.sub.id}）
+                  </span>
+                )}
+                {partitionError && (
+                  <span style={{ fontSize: 12, color: 'var(--color-error, #ef4444)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <X size={12} />
+                    {partitionError}
+                  </span>
+                )}
+              </div>
+            </div>
           </Field>
         )}
 
