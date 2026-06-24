@@ -13,3 +13,9 @@ release/
 resources/pi/
 .DS_Store
 .env
+# 本地运行产物（非源码）
+/main.js
+/project.json
+.acp/
+.lingji/
+.playwright-mcp/
