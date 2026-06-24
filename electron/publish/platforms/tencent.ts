@@ -416,6 +416,28 @@ async function _persistTencentStorageState(
 
 // ─── Upload helpers ───────────────────────────────────────────────────────────
 
+/** 登录态失效时给用户的可操作提示（区别于「页面结构变化」的兜底报错）。 */
+const TENCENT_LOGIN_EXPIRED_MESSAGE =
+  '视频号登录态已失效（页面被重定向到扫码登录），请在「发布账号」中重新登录该视频号后再发布';
+
+/**
+ * 判断当前是否停在扫码登录页。
+ * 视频号 session 被服务端吊销后（即使本地 cookie 未到期），访问 /platform 或
+ * /post/create 都会 302 到 channels.weixin.qq.com/login.html，并渲染
+ * login-for-iframe 扫码子框架。命中任一特征即视为登录态失效。
+ */
+function _isTencentLoginPage(page: Page): boolean {
+  if (page.url().includes('login')) return true;
+  for (const frame of page.frames()) {
+    try {
+      if (frame.url().includes('login-for-iframe') || frame.url().includes('/login')) return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
 /**
  * 遍历所有 frame 查找 input[type="file"]。
  * 视频号 create 页通常渲染在主框架，历史版本也出现过子 iframe，故逐 frame 扫描。
@@ -442,7 +464,8 @@ async function _findFileInput(page: Page): Promise<Locator | null> {
 async function _clickPublishEntry(page: Page): Promise<boolean> {
   for (const frame of page.frames()) {
     try {
-      const btn = frame.getByText('发表视频', { exact: true }).first();
+      // 子串匹配（对齐上游 social-auto-upload，比 exact 更耐按钮文案/图标包裹）
+      const btn = frame.getByText('发表视频').first();
       if (await btn.count()) {
         await btn.click({ timeout: 5_000 });
         return true;
@@ -465,6 +488,9 @@ async function _clickPublishEntry(page: Page): Promise<boolean> {
 async function _openTencentCreatePage(page: Page): Promise<void> {
   await page.goto(TENCENT_HOME_URL, { waitUntil: 'domcontentloaded', timeout: 120_000 });
 
+  // 登录态失效会被重定向到扫码登录页：尽早抛出可操作错误，避免空等 120s 后误报「未找到上传框」
+  if (_isTencentLoginPage(page)) throw new Error(TENCENT_LOGIN_EXPIRED_MESSAGE);
+
   // 深链偶尔仍能直接渲染上传框 → 直接复用
   if (await _findFileInput(page)) return;
 
@@ -472,6 +498,7 @@ async function _openTencentCreatePage(page: Page): Promise<void> {
   const entryDeadline = Date.now() + 60_000;
   while (Date.now() < entryDeadline) {
     if (await _clickPublishEntry(page)) break;
+    if (_isTencentLoginPage(page)) throw new Error(TENCENT_LOGIN_EXPIRED_MESSAGE);
     await sleep(1_000);
   }
 
@@ -479,6 +506,7 @@ async function _openTencentCreatePage(page: Page): Promise<void> {
   const formDeadline = Date.now() + 60_000;
   while (Date.now() < formDeadline) {
     if (await _findFileInput(page)) return;
+    if (_isTencentLoginPage(page)) throw new Error(TENCENT_LOGIN_EXPIRED_MESSAGE);
     await sleep(1_000);
   }
 }
@@ -498,7 +526,11 @@ async function _uploadVideoFile(page: Page, filePath: string): Promise<void> {
       await sleep(1000);
     }
   }
-  if (!fi) throw new Error('未找到视频号文件上传框');
+  if (!fi) {
+    // 区分「登录失效」与「页面结构变化」两类成因，给出对应可操作提示
+    if (_isTencentLoginPage(page)) throw new Error(TENCENT_LOGIN_EXPIRED_MESSAGE);
+    throw new Error('未找到视频号文件上传框（页面结构可能已变化，或上传表单未渲染）');
+  }
   await fi.setInputFiles(filePath);
 }
 

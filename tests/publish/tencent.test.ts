@@ -155,6 +155,54 @@ it('上传框未直接就绪时，点「发表视频」唤出后再上传文件'
   expect(fileLoc.setInputFiles).toHaveBeenCalledWith('/tmp/v.mp4');
 });
 
+/**
+ * 登录态失效回归：视频号 session 被服务端吊销后，/platform 与 /post/create
+ * 都会 302 到 login.html（渲染扫码 iframe）。此时既找不到「发表视频」也找不到
+ * input[type="file"]，旧实现会抛出误导性的「未找到视频号文件上传框」。
+ * 期望：识别登录重定向并抛出明确可操作的重新登录错误。
+ */
+function makeLoginRedirectPage() {
+  const generic = makeSharedLocator();
+  const noFile: any = {
+    first: () => noFile,
+    count: vi.fn().mockResolvedValue(0),
+  };
+  const publishBtn: any = {
+    first: () => publishBtn,
+    count: vi.fn().mockResolvedValue(0), // 登录页没有「发表视频」入口
+    click: vi.fn().mockResolvedValue(undefined),
+  };
+  const page: any = {
+    goto: vi.fn().mockResolvedValue(undefined),
+    url: vi.fn().mockReturnValue('https://channels.weixin.qq.com/login.html'),
+    locator: vi.fn((sel: string) => (sel === 'input[type="file"]' ? noFile : generic)),
+    getByText: vi.fn((t: string) => (t === '发表视频' ? publishBtn : generic)),
+    getByRole: vi.fn().mockReturnValue(generic),
+    getByLabel: vi.fn().mockReturnValue(generic),
+    getByPlaceholder: vi.fn().mockReturnValue(generic),
+    waitForURL: vi.fn().mockResolvedValue(undefined),
+    waitForTimeout: vi.fn().mockResolvedValue(undefined),
+    keyboard: { press: vi.fn(), type: vi.fn() },
+  };
+  page.frames = vi.fn().mockReturnValue([page]);
+  return { page, publishBtn };
+}
+
+it('登录态失效（重定向到 login.html）时抛出明确的重新登录错误，而非「未找到上传框」', async () => {
+  const { page } = makeLoginRedirectPage();
+
+  await expect(
+    uploadTencentVideo(page as any, {
+      storageStatePath: '/c.json',
+      filePath: '/tmp/v.mp4',
+      title: '标题',
+      desc: '描述',
+      tags: [],
+      headless: true,
+    }),
+  ).rejects.toThrow(/登录态已失效|重新登录/);
+});
+
 it('uploadVideo 发布后只在 channels 域落盘，不再访问 qq.com / 公众号平台暖场', async () => {
   const page = makeMockPage();
   // 落盘前的 cookie 体检需满足：含 sessionid/wxuin 且数量 ≥ 阈值 → 立即返回，不空等
