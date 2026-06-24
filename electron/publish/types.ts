@@ -15,11 +15,24 @@ export interface PublishTarget {
   bilibili?: { tid: number };
 }
 
+/** 封面比例键。封面工作台按真实像素归类到这三种比例。 */
+export type CoverRatio = '16:9' | '4:3' | '3:4';
+
+/** 按比例提供的多张封面。各平台按自身需求取用：
+ *  - 视频号：4:3（动态横版）+ 3:4（个人主页卡片）
+ *  - 抖音：3:4（竖封面）+ 16:9（横封面）
+ *  - 快手 / 小红书：单封面（优先 3:4）
+ */
+export type PublishCovers = Partial<Record<CoverRatio, string>>;
+
 export interface PublishShared {
   title: string;
   desc: string;
   tags: string[];
+  /** 单封面兜底（旧字段 / 仅取一张的平台）。 */
   thumbnail?: string;
+  /** 多比例封面，优先于 thumbnail。 */
+  covers?: PublishCovers;
   scheduleAt?: number;
 }
 
@@ -47,6 +60,8 @@ export interface UploadVideoOptions {
   desc: string;
   tags: string[];
   thumbnail?: string;
+  /** 多比例封面，优先于 thumbnail。 */
+  covers?: PublishCovers;
   scheduleAt?: number;
   headless: boolean;
   tid?: number;               // B 站专属：分区 id（runner 从 target.bilibili.tid 透传）

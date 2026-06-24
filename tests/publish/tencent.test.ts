@@ -1,20 +1,23 @@
 import { it, expect, vi } from 'vitest';
-import { uploadTencentVideo } from '../../electron/publish/platforms/tencent';
+
+// 让 tencent.uploadVideo 用一个可观察的假 ctx（不真起浏览器），以验证落盘时的行为
+const hoisted = vi.hoisted(() => ({ ctx: null as any }));
+vi.mock('../../electron/publish/engine', () => ({
+  withContext: async (_opts: any, run: (ctx: any) => Promise<unknown>) => run(hoisted.ctx),
+}));
+
+import { tencent, uploadTencentVideo } from '../../electron/publish/platforms/tencent';
 
 /**
- * Mock page where every page.locator() / getByRole() / getByText() / getByLabel()
- * returns the SAME sharedLocator object so we can spy on setInputFiles across all calls.
- *
- * Key mock values chosen to make all upload-flow loops terminate immediately:
- *   count()       → 1   (locators "exist" → upload loop finds file input, collection > 1 check = 1>1 = false)
- *   isVisible()   → false (login markers absent, content-declaration absent)
- *   isDisabled()  → true  (skip the declare-original checkbox sub-branch)
- *   getAttribute() → 'weui-desktop-btn'  (no "_disabled" → upload-complete loop breaks)
- *   waitForURL()  → resolves (submit loop breaks)
- *   frames()      → [page]  (page acts as its own frame so input[type="file"] is found)
+ * 通用 locator：所有未特殊路由的 page.locator()/getByRole()/getByText()/getByLabel()
+ * 都返回它，让上传流程里各个等待循环都能立即终止：
+ *   count()       → 1   （locator "存在"）
+ *   isVisible()   → false（登录标记/内容声明等不可见）
+ *   isDisabled()  → true （跳过声明原创复选框分支）
+ *   getAttribute()→ 'weui-desktop-btn'（无 _disabled → 上传完成循环 break）
  */
-function makeMockPage() {
-  const sharedLocator: any = {
+function makeSharedLocator() {
+  const loc: any = {
     fill: vi.fn().mockResolvedValue(undefined),
     click: vi.fn().mockResolvedValue(undefined),
     waitFor: vi.fn().mockResolvedValue(undefined),
@@ -22,21 +25,27 @@ function makeMockPage() {
     count: vi.fn().mockResolvedValue(1),
     isVisible: vi.fn().mockResolvedValue(false),
     isDisabled: vi.fn().mockResolvedValue(true),
-    // 'weui-desktop-btn' has no 'weui-desktop-btn_disabled' → upload-complete loop breaks
     getAttribute: vi.fn().mockResolvedValue('weui-desktop-btn'),
     check: vi.fn().mockResolvedValue(undefined),
     innerText: vi.fn().mockResolvedValue(''),
     evaluate: vi.fn().mockResolvedValue(''),
     all: vi.fn().mockResolvedValue([]),
   };
-  sharedLocator.first = () => sharedLocator;
-  sharedLocator.nth = () => sharedLocator;
-  sharedLocator.locator = vi.fn().mockReturnValue(sharedLocator);
-  sharedLocator.getByText = vi.fn().mockReturnValue(sharedLocator);
-  sharedLocator.getByRole = vi.fn().mockReturnValue(sharedLocator);
-  sharedLocator.getByLabel = vi.fn().mockReturnValue(sharedLocator);
-  sharedLocator.filter = vi.fn().mockReturnValue(sharedLocator);
+  loc.first = () => loc;
+  loc.nth = () => loc;
+  loc.locator = vi.fn().mockReturnValue(loc);
+  loc.getByText = vi.fn().mockReturnValue(loc);
+  loc.getByRole = vi.fn().mockReturnValue(loc);
+  loc.getByLabel = vi.fn().mockReturnValue(loc);
+  loc.filter = vi.fn().mockReturnValue(loc);
+  return loc;
+}
 
+/**
+ * 文件上传框「一上来就在」的乐观 mock：frames() = [page]，所有 locator → sharedLocator。
+ */
+function makeMockPage() {
+  const sharedLocator = makeSharedLocator();
   const page: any = {
     goto: vi.fn().mockResolvedValue(undefined),
     locator: vi.fn().mockReturnValue(sharedLocator),
@@ -47,22 +56,20 @@ function makeMockPage() {
     waitForURL: vi.fn().mockResolvedValue(undefined),
     waitForTimeout: vi.fn().mockResolvedValue(undefined),
     waitForSelector: vi.fn().mockResolvedValue(undefined),
+    waitForLoadState: vi.fn().mockResolvedValue(undefined),
     evaluate: vi.fn().mockResolvedValue(undefined),
     keyboard: {
       press: vi.fn().mockResolvedValue(undefined),
       type: vi.fn().mockResolvedValue(undefined),
     },
-    // URL is a manage page (post-login) so any url-based checks pass
-    url: vi.fn().mockReturnValue('https://channels.weixin.qq.com/platform/post/list'),
+    url: vi.fn().mockReturnValue('https://channels.weixin.qq.com/platform/post/create'),
     _sharedLocator: sharedLocator,
   };
-  // frames() returns [page] so _uploadVideoFile finds input[type="file"] on page.locator(...)
   page.frames = vi.fn().mockReturnValue([page]);
-
   return page;
 }
 
-it('uploadTencentVideo 把视频文件设置到 input[type="file"] 上', async () => {
+it('uploadTencentVideo 先打开首页而非深链 /post/create，并把视频文件设置到 input[type="file"] 上', async () => {
   const page = makeMockPage();
 
   await uploadTencentVideo(page as any, {
@@ -74,9 +81,132 @@ it('uploadTencentVideo 把视频文件设置到 input[type="file"] 上', async (
     headless: true,
   });
 
-  // _uploadVideoFile iterates page.frames()[0].locator('input[type="file"]').first()
-  // page.frames()[0] = page (mock), page.locator(...) = sharedLocator, .first() = sharedLocator
-  // So sharedLocator.setInputFiles('/tmp/v.mp4') must have been called.
+  // 入口改为首页 /platform（深链 /post/create 会被重定向回首页）
+  expect(page.goto).toHaveBeenCalledWith(
+    'https://channels.weixin.qq.com/platform',
+    expect.anything(),
+  );
+  // 不应再深链直达 create 页
+  expect(page.goto).not.toHaveBeenCalledWith(
+    'https://channels.weixin.qq.com/platform/post/create',
+    expect.anything(),
+  );
+
   const { _sharedLocator: loc } = page;
   expect(loc.setInputFiles).toHaveBeenCalledWith('/tmp/v.mp4');
+});
+
+/**
+ * 还原真实回归：直达首页时上传框尚未渲染，必须点「发表视频」后才出现 input[type="file"]。
+ * file 输入的 count 在点击发表按钮前为 0、点击后变 1。
+ */
+function makeFlowMockPage() {
+  let publishClicked = false;
+  const generic = makeSharedLocator();
+
+  const fileLoc: any = {
+    first: () => fileLoc,
+    count: vi.fn(async () => (publishClicked ? 1 : 0)),
+    setInputFiles: vi.fn().mockResolvedValue(undefined),
+  };
+  const publishBtn: any = {
+    first: () => publishBtn,
+    count: vi.fn().mockResolvedValue(1),
+    click: vi.fn(async () => {
+      publishClicked = true;
+    }),
+  };
+
+  const page: any = {
+    goto: vi.fn().mockResolvedValue(undefined),
+    url: vi.fn().mockReturnValue('https://channels.weixin.qq.com/platform'),
+    waitForURL: vi.fn().mockResolvedValue(undefined),
+    waitForTimeout: vi.fn().mockResolvedValue(undefined),
+    evaluate: vi.fn().mockResolvedValue(undefined),
+    keyboard: {
+      press: vi.fn().mockResolvedValue(undefined),
+      type: vi.fn().mockResolvedValue(undefined),
+    },
+    locator: vi.fn((sel: string) => (sel === 'input[type="file"]' ? fileLoc : generic)),
+    getByText: vi.fn((t: string) => (t === '发表视频' ? publishBtn : generic)),
+    getByRole: vi.fn().mockReturnValue(generic),
+    getByLabel: vi.fn().mockReturnValue(generic),
+    getByPlaceholder: vi.fn().mockReturnValue(generic),
+  };
+  page.frames = vi.fn().mockReturnValue([page]);
+  return { page, fileLoc, publishBtn };
+}
+
+it('上传框未直接就绪时，点「发表视频」唤出后再上传文件', async () => {
+  const { page, fileLoc, publishBtn } = makeFlowMockPage();
+
+  await uploadTencentVideo(page as any, {
+    storageStatePath: '/c.json',
+    filePath: '/tmp/v.mp4',
+    title: '标题',
+    desc: '描述',
+    tags: ['a'],
+    headless: true,
+  });
+
+  // 必须点过「发表视频」入口
+  expect(publishBtn.click).toHaveBeenCalled();
+  // 点击后才出现的上传框被正确赋值
+  expect(fileLoc.setInputFiles).toHaveBeenCalledWith('/tmp/v.mp4');
+});
+
+it('uploadVideo 发布后只在 channels 域落盘，不再访问 qq.com / 公众号平台暖场', async () => {
+  const page = makeMockPage();
+  // 落盘前的 cookie 体检需满足：含 sessionid/wxuin 且数量 ≥ 阈值 → 立即返回，不空等
+  const cookies = [
+    { name: 'sessionid' },
+    { name: 'wxuin' },
+    { name: 'a' },
+    { name: 'b' },
+    { name: 'c' },
+    { name: 'd' },
+  ];
+  const ctx = {
+    newPage: vi.fn().mockResolvedValue(page),
+    cookies: vi.fn().mockResolvedValue(cookies),
+    storageState: vi.fn().mockResolvedValue(undefined),
+  };
+  hoisted.ctx = ctx;
+
+  await tencent.uploadVideo({
+    storageStatePath: '/c.json',
+    filePath: '/tmp/v.mp4',
+    title: '标题',
+    desc: '描述',
+    tags: ['a'],
+    headless: true,
+  });
+
+  // 只开了主发布页这一个 page；不再为暖场父域 newPage
+  expect(ctx.newPage).toHaveBeenCalledTimes(1);
+  // 没有访问 www.qq.com / mp.weixin.qq.com
+  for (const call of page.goto.mock.calls) {
+    expect(call[0]).not.toContain('www.qq.com');
+    expect(call[0]).not.toContain('mp.weixin.qq.com');
+  }
+  // cookie 仍正常落盘
+  expect(ctx.storageState).toHaveBeenCalledWith({ path: '/c.json' });
+});
+
+it('uploadTencentVideo 传入 covers 时分别上传 4:3 横版 + 3:4 竖版封面', async () => {
+  const page = makeMockPage();
+
+  await uploadTencentVideo(page as any, {
+    storageStatePath: '/c.json',
+    filePath: '/tmp/v.mp4',
+    title: 't',
+    desc: 'd',
+    tags: [],
+    covers: { '4:3': '/land.png', '3:4': '/port.png' },
+    headless: true,
+  });
+
+  const { _sharedLocator: loc } = page;
+  expect(loc.setInputFiles).toHaveBeenCalledWith('/land.png'); // 4:3 横版动态封面
+  expect(loc.setInputFiles).toHaveBeenCalledWith('/port.png'); // 3:4 竖版个人主页卡片
 });

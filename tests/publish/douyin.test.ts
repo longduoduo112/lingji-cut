@@ -79,3 +79,21 @@ it('uploadDouyinVideo 把视频文件设置到 div[class^="container"] input 上
   const { _sharedLocator: loc } = page;
   expect(loc.setInputFiles).toHaveBeenCalledWith('/tmp/v.mp4');
 });
+
+it('uploadDouyinVideo 传入 covers 时上传 3:4 竖封面 + 4:3 横封面', async () => {
+  const page = makeMockPage();
+
+  await uploadDouyinVideo(page as any, {
+    storageStatePath: '/c.json',
+    filePath: '/tmp/v.mp4',
+    title: '标题',
+    desc: '描述',
+    tags: [],
+    covers: { '3:4': '/port.png', '4:3': '/land.png' },
+    headless: true,
+  });
+
+  const { _sharedLocator: loc } = page;
+  expect(loc.setInputFiles).toHaveBeenCalledWith('/port.png'); // 竖封面 3:4
+  expect(loc.setInputFiles).toHaveBeenCalledWith('/land.png'); // 横封面 4:3
+}, 20_000); // _setThumbnail 含真实 sleep（两张封面约 9s），放宽超时

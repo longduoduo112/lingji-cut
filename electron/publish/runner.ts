@@ -33,6 +33,7 @@ export async function runPublishJob(
         desc: target.overrides?.desc ?? job.shared.desc,
         tags: target.overrides?.tags ?? job.shared.tags,
         thumbnail: job.shared.thumbnail,
+        covers: job.shared.covers,
         scheduleAt: job.shared.scheduleAt,
         headless,
         tid: target.bilibili?.tid,

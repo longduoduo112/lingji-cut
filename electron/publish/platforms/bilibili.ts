@@ -14,6 +14,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { runBiliup } from '../biliup-runtime';
+import { loginBiliupViaPty } from '../biliup-login';
 import type { LoginOptions, PlatformModule, UploadVideoOptions } from '../types';
 
 // ─── Pure argv builder (unit-tested) ─────────────────────────────────────────
@@ -69,65 +70,20 @@ export const bilibili: PlatformModule = {
   /**
    * login — port of login_bilibili_account
    *
-   * biliup 会把 qrcode.png 写到 CWD；我们用临时目录控制落盘位置，
-   * 轮询出现后通过 opts.onQrcode 通知 UI，然后等待 biliup 退出。
+   * biliup 1.x 的 login 是交互式 TUI，无 TTY 直接报 `not a terminal`；
+   * 这里通过伪终端(node-pty)驱动菜单选「扫码登录」，biliup 把 qrcode.png 写到
+   * 临时目录，轮询出现后经 opts.onQrcode 通知 UI（详见 biliup-login.ts）。
    */
   async login(opts: LoginOptions): Promise<{ success: boolean; message: string }> {
     // 用临时目录让 biliup 把 qrcode.png 写到可控位置
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lingji-bili-'));
-    const qrPath = path.join(tmpDir, 'qrcode.png');
-
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
-    let qrSurfaced = false;
-
-    if (opts.onQrcode) {
-      // 每 500ms 轮询 qrcode.png 是否出现，出现后立刻回调
-      pollTimer = setInterval(() => {
-        if (qrSurfaced) return;
-        fs.access(qrPath)
-          .then(() => {
-            if (!qrSurfaced) {
-              qrSurfaced = true;
-              opts.onQrcode!(qrPath);
-            }
-          })
-          .catch(() => {
-            // 还没出现，继续等
-          });
-      }, 500);
-    }
-
     try {
-      const { code, stdout, stderr } = await runBiliup(
-        ['-u', opts.storageStatePath, 'login'],
-        { cwd: tmpDir },
-      );
-
-      // biliup 已退出，停止轮询
-      if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = null;
-      }
-
-      // 最后再查一次（轮询间隔内可能刚好错过）
-      if (opts.onQrcode && !qrSurfaced) {
-        try {
-          await fs.access(qrPath);
-          opts.onQrcode(qrPath);
-        } catch {
-          // 没有就算了
-        }
-      }
-
-      if (code === 0) {
-        return { success: true, message: '登录完成' };
-      }
-      return {
-        success: false,
-        message: (stderr || stdout || '').trim() || 'B站登录失败',
-      };
+      return await loginBiliupViaPty({
+        storageStatePath: opts.storageStatePath,
+        cwd: tmpDir,
+        onQrcode: opts.onQrcode,
+      });
     } finally {
-      if (pollTimer) clearInterval(pollTimer);
       // 异步清理临时目录（不阻塞返回；qrcode 已被扫描，UI 已经处理完毕）
       fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }

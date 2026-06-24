@@ -1,8 +1,11 @@
 // 发布文案（标题 / 描述 / 标签）的 AI 一键生成。
-// 在主进程内通过 generateStructuredData 调用默认 LLM（与封面提示词重生成同源）。
+// 提示词走配置中心（kind: publish.metadata），主进程加载 effective 模板 + 解析
+// 每提示词模型绑定后调用 generateStructuredData（与封面提示词重生成同源）。
 
 import type { AISettings } from '../types/ai';
 import { generateStructuredData } from './llm';
+import type { ResolvedBinding } from './llm/binding-resolver';
+import { renderUserPromptWithLock, type PromptTemplate } from './prompts';
 
 export interface PublishMetadataInput {
   /** 节目内容素材：摘要 / 关键词 / 字幕摘录拼接而成。 */
@@ -17,25 +20,29 @@ export interface PublishMetadata {
   tags: string[];
 }
 
-const SYSTEM_PROMPT = `你是一名短视频 / 中视频平台的运营文案专家，服务于抖音、视频号、小红书、快手、B站等平台。
-请根据提供的节目内容，产出一套可直接发布的文案，目标是高完播与高点击。
-
-要求：
-- title：一条有点击欲的标题，12-24 个汉字，可用悬念 / 数字 / 反差 / 痛点，但不要标题党到偏离内容；不要书名号、不要表情符号。
-- desc：一段简介，60-150 字，自然口语、信息密度高，结尾可引导互动（点赞 / 关注 / 评论）；可包含 1-3 个话题词（以 # 开头），但话题词请放在 desc 末尾。
-- tags：3-8 个关键词标签，输出纯文本，不要带 # 前缀、不要标点；覆盖主题、领域、人群、热点。
-- 全部使用简体中文（专有名词、品牌名除外）。
-
-只返回严格 JSON，不要附加任何解释，结构如下：
-{ "title": "字符串", "desc": "字符串", "tags": ["标签1", "标签2"] }`;
-
-export function buildPublishMetadataUserText(input: PublishMetadataInput): string {
+/** 把输入素材拼成"内容消息"（节目内容 + 可选的已有标题参考）。 */
+function buildPublishMetadataContent(input: PublishMetadataInput): string {
   const parts: string[] = [];
   if (input.currentTitle?.trim()) {
-    parts.push(`【已有标题，可参考其风格】\n${input.currentTitle.trim()}`);
+    parts.push(`【已有标题，可参考其风格，但不要照抄】\n${input.currentTitle.trim()}`);
   }
   parts.push(`【节目内容】\n${input.sourceText.trim()}`);
   return parts.join('\n\n');
+}
+
+/**
+ * 渲染 system / user 两段消息：
+ * - systemPrompt：配置中心可编辑的约束规则（user 段）+ 末尾自动拼接的 JSON 输出契约；
+ * - userMessage：本次请求的节目内容（与可选的已有标题），由系统注入，不在模板里。
+ * 与 planning.segment 同构：规则进 system 位，数据进 user 位。
+ */
+export function buildPublishMetadataMessages(
+  template: PromptTemplate,
+  input: PublishMetadataInput,
+): { systemPrompt: string; userMessage: string } {
+  const systemPrompt = renderUserPromptWithLock('publish.metadata', template, {});
+  const userMessage = buildPublishMetadataContent(input);
+  return { systemPrompt, userMessage };
 }
 
 function coerceString(value: unknown): string {
@@ -71,6 +78,10 @@ export function parsePublishMetadata(payload: Record<string, unknown>): PublishM
 }
 
 export interface GeneratePublishMetadataOptions {
+  /** 配置中心解析出的 effective 模板（publish.metadata）。 */
+  template: PromptTemplate;
+  /** 每提示词模型绑定；缺省时 generateStructuredData 回退到全局默认 LLM。 */
+  binding?: ResolvedBinding;
   /** 注入点：默认使用 generateStructuredData，测试可替换。 */
   generateStructuredData?: typeof generateStructuredData;
 }
@@ -78,18 +89,18 @@ export interface GeneratePublishMetadataOptions {
 export async function generatePublishMetadata(
   settings: AISettings,
   input: PublishMetadataInput,
-  options: GeneratePublishMetadataOptions = {},
+  options: GeneratePublishMetadataOptions,
 ): Promise<PublishMetadata> {
   if (!input.sourceText.trim()) {
     throw new Error('没有可用于生成文案的节目内容');
   }
+  if (!options.template) {
+    throw new Error('缺少发布文案提示词模板');
+  }
   const generate = options.generateStructuredData ?? generateStructuredData;
-  const payload = await generate(
-    settings,
-    SYSTEM_PROMPT,
-    buildPublishMetadataUserText(input),
-    undefined,
-    { label: 'publish-metadata' },
-  );
+  const { systemPrompt, userMessage } = buildPublishMetadataMessages(options.template, input);
+  const payload = await generate(settings, systemPrompt, userMessage, options.binding, {
+    label: 'publish-metadata',
+  });
   return parsePublishMetadata(payload);
 }

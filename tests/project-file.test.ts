@@ -126,6 +126,37 @@ describe('saveProjectSection', () => {
     expect(raw.script).toBeDefined();
   });
 
+  it('project.json 损坏时拒绝保存，不清空其它段，并备份原文', async () => {
+    // 模拟 torn write / 损坏：文件存在但不是合法 JSON
+    const corrupt = '{ "version": 1, "timeline": { "overlays": [  // 截断';
+    await fs.writeFile(path.join(tmpDir, 'project.json'), corrupt);
+
+    await expect(
+      saveProjectSection(tmpDir, 'publish', {
+        title: 't',
+        desc: '',
+        tagsInput: '',
+        thumbnail: '',
+        overrides: {},
+      }),
+    ).rejects.toThrow(/损坏|并发写入/);
+
+    // 损坏原文未被默认工程覆盖
+    expect(await fs.readFile(path.join(tmpDir, 'project.json'), 'utf-8')).toBe(corrupt);
+    // 备份文件已生成
+    const files = await fs.readdir(tmpDir);
+    expect(files.some((f) => f.startsWith('project.json.corrupt-'))).toBe(true);
+  });
+
+  it('loadProjectFile 遇到损坏文件抛错而非静默重置', async () => {
+    await fs.writeFile(path.join(tmpDir, 'project.json'), '{ not valid json');
+    await expect(loadProjectFile(tmpDir)).rejects.toThrow(/损坏|并发写入/);
+    // 原文保留，备份生成
+    expect(await fs.readFile(path.join(tmpDir, 'project.json'), 'utf-8')).toBe('{ not valid json');
+    const files = await fs.readdir(tmpDir);
+    expect(files.some((f) => f.startsWith('project.json.corrupt-'))).toBe(true);
+  });
+
   it('并发写入不损坏文件', async () => {
     await loadProjectFile(tmpDir);
     await Promise.all([

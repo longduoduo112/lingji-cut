@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   type ProjectData,
+  type ProjectPublishMeta,
+  DEFAULT_PUBLISH_META,
   createDefaultProjectData,
   extractTimelineSection,
   extractAIAnalysisSection,
   extractScriptSection,
+  extractPublishSection,
   mergeProjectSection,
 } from '../src/lib/project-persistence';
 
@@ -66,6 +69,31 @@ describe('project-persistence', () => {
     const data = mergeProjectSection(createDefaultProjectData(), 'stylePresetId', 'editorial-eink');
     const roundTripped = JSON.parse(JSON.stringify(data)) as ProjectData;
     expect(roundTripped.stylePresetId).toBe('editorial-eink');
+  });
+
+  it('mergeProjectSection 合并 publish 段并经序列化保留', () => {
+    const publish: ProjectPublishMeta = {
+      title: 'AI 生成标题',
+      desc: 'AI 生成简介',
+      tagsInput: '标签1, 标签2',
+      thumbnail: '/covers/16x9.png',
+      overrides: { douyin_a: { title: '抖音专属', desc: '', tagsInput: '', bilibiliTid: '' } },
+    };
+    const merged = mergeProjectSection(createDefaultProjectData(), 'publish', publish);
+    const roundTripped = JSON.parse(JSON.stringify(merged)) as ProjectData;
+    expect(roundTripped.publish).toEqual(publish);
+  });
+
+  it('extractPublishSection 对旧工程缺字段补默认值', () => {
+    const data = createDefaultProjectData();
+    // 默认结构不写入 publish，模拟旧工程
+    expect(extractPublishSection(data)).toEqual(DEFAULT_PUBLISH_META);
+    // 部分字段也会与默认值合并
+    const partial = { ...data, publish: { title: '仅标题' } as ProjectPublishMeta };
+    expect(extractPublishSection(partial)).toEqual({
+      ...DEFAULT_PUBLISH_META,
+      title: '仅标题',
+    });
   });
 
   it('旧工程缺 stylePresetId 字段时反序列化为 undefined', () => {

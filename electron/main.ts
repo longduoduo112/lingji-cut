@@ -77,6 +77,8 @@ import { registerConversationIpc } from './conversations/ipc';
 import { registerMcpIpc } from './mcp/ipc';
 import { registerScriptHistoryIpc } from './script-history/ipc';
 import { registerPublishIpc } from './publish/ipc';
+import { configureBiliupRoot } from './publish/biliup-runtime';
+import { getBiliupDestRoot } from './publish/biliup-install';
 import { LockMonitor } from './ai-edit/lock-watcher';
 import { validateTimeline, type EditError } from '../src/lib/external-edit-validate';
 import { buildEditResult, writeEditResult } from './ai-edit/result-writer';
@@ -1131,6 +1133,8 @@ ipcMain.handle(
       settings: AISettings;
       sourceText: string;
       currentTitle?: string;
+      projectDir?: string;
+      projectBindings?: PromptBindingMap | null;
     },
   ) => {
     writeAppLog(
@@ -1140,10 +1144,24 @@ ipcMain.handle(
       `sourceLen=${args.sourceText?.length ?? 0}`,
     );
     try {
-      return await generatePublishMetadata(args.settings, {
-        sourceText: args.sourceText,
-        currentTitle: args.currentTitle,
+      const userDataPath = app.getPath('userData');
+      const template = await loadEffectivePromptTemplate('publish.metadata', {
+        userDataPath,
+        projectDir: args.projectDir,
       });
+      const binding = resolvePromptBinding(
+        'publish.metadata',
+        args.settings,
+        args.projectBindings ?? null,
+      );
+      return await generatePublishMetadata(
+        args.settings,
+        {
+          sourceText: args.sourceText,
+          currentTitle: args.currentTitle,
+        },
+        { template, binding },
+      );
     } catch (error) {
       writeAppLog(
         'error',
@@ -1256,7 +1274,7 @@ ipcMain.handle(
     const parsed = JSON.parse(data);
     await saveProjectSection(
       projectDir,
-      section as 'timeline' | 'aiAnalysis' | 'script' | 'workflowMeta' | 'stylePresetId',
+      section as 'timeline' | 'aiAnalysis' | 'script' | 'workflowMeta' | 'publish' | 'stylePresetId',
       parsed,
     );
   },
@@ -2590,19 +2608,41 @@ ipcMain.handle('refresh-recent-projects', async () => {
   return projects;
 });
 
-ipcMain.handle('render-video', async (_event, args: RenderVideoArgs) => {
-  return renderVideoHeadless(args, {
-    onProgress: (f) => mainWindow?.webContents.send('render-progress', f),
-    onMotionCardCompileErrors: (errors, total) => {
-      const firstError = errors[0];
-      writeAppLog(
-        'warn',
-        'motion-card',
-        `导出编译失败 ${errors.length}/${total}，首个失败卡片=${firstError?.overlayId ?? '<unknown>'}`,
-        firstError?.error,
-      );
-    },
+ipcMain.handle('render-video', async (_event, args: RenderVideoArgs & { telemetryRunId?: string }) => {
+  // 与 tts/cover/analyze 一样接 auto-run jsonl：renderer 可选传 telemetryRunId，
+  // 在主进程发 run.start / stage.* / run.end，方便后续"导出慢"诊断时直接读 jsonl 找瓶颈。
+  const tel = makeMainTelemetry(args.telemetryRunId);
+  const startedAt = Date.now();
+  tel.emit('run.start', {
+    stage: 'export',
+    resolution: args.exportConfig?.resolution,
+    quality: args.exportConfig?.quality,
   });
+  try {
+    const result = await renderVideoHeadless(args, {
+      onProgress: (f) => mainWindow?.webContents.send('render-progress', f),
+      onMotionCardCompileErrors: (errors, total) => {
+        const firstError = errors[0];
+        writeAppLog(
+          'warn',
+          'motion-card',
+          `导出编译失败 ${errors.length}/${total}，首个失败卡片=${firstError?.overlayId ?? '<unknown>'}`,
+          firstError?.error,
+        );
+      },
+      telemetry: tel,
+    });
+    tel.emit('run.end', { stage: 'export', durationMs: Date.now() - startedAt, ok: true });
+    return result;
+  } catch (err) {
+    tel.emit('run.end', {
+      stage: 'export',
+      durationMs: Date.now() - startedAt,
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 });
 
 ipcMain.handle('save-cover-edit', async (_event, args) => {
@@ -2642,6 +2682,8 @@ app.setName('灵机剪影');
 
 app.whenReady().then(async () => {
   refreshAppConfig();
+  // biliup 二进制按需下载到用户可写目录，注入该目录作为解析根
+  configureBiliupRoot(getBiliupDestRoot());
   // 开发模式下显式设置 Dock 图标；打包后 macOS 会使用 .app 自带的 icns
   if (process.platform === 'darwin' && !app.isPackaged) {
     const iconPath = resolveAppIconPath();

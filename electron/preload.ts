@@ -121,6 +121,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     settings: AISettings;
     sourceText: string;
     currentTitle?: string;
+    projectDir?: string;
+    projectBindings?: PromptBindingMap | null;
   }) => ipcRenderer.invoke('generate-publish-metadata', args),
   generateCardImage: (args: import('../src/lib/electron-api').GenerateCardImageArgs) =>
     ipcRenderer.invoke('generate-card-image', args),
@@ -201,6 +203,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     outputPath: string;
     exportConfig: ExportConfig;
     srtEntries?: SrtEntry[];
+    /** 可选 auto-run jsonl runId；主进程据此写 stage.* / run.* 事件。不传则不记录。 */
+    telemetryRunId?: string;
   }) => ipcRenderer.invoke('render-video', args),
   onRenderProgress: (callback: (progress: number) => void) => {
     const handler = (_event: unknown, progress: number) => callback(progress);
@@ -745,5 +749,17 @@ contextBridge.exposeInMainWorld('publishAPI', {
     ) => cb(payload);
     ipcRenderer.on('publish:progress', handler);
     return () => ipcRenderer.removeListener('publish:progress', handler);
+  },
+  getBiliupStatus: () => ipcRenderer.invoke('publish:biliup-status'),
+  downloadBiliup: () => ipcRenderer.invoke('publish:download-biliup'),
+  onBiliupDownloadProgress: (
+    cb: (p: { phase: string; received?: number; total?: number; speed?: number }) => void,
+  ) => {
+    const handler = (
+      _e: unknown,
+      p: { phase: string; received?: number; total?: number; speed?: number },
+    ) => cb(p);
+    ipcRenderer.on('publish:biliup-download-progress', handler);
+    return () => ipcRenderer.removeListener('publish:biliup-download-progress', handler);
   },
 });

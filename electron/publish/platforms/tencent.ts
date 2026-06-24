@@ -7,13 +7,14 @@
  */
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { BrowserContext, Page } from 'playwright';
+import type { BrowserContext, Locator, Page } from 'playwright';
 import { withContext } from '../engine';
 import type { LoginOptions, PlatformModule, UploadVideoOptions } from '../types';
 
 // ─── URLs ─────────────────────────────────────────────────────────────────────
 
 const TENCENT_LOGIN_URL = 'https://channels.weixin.qq.com';
+const TENCENT_HOME_URL = 'https://channels.weixin.qq.com/platform';
 const TENCENT_UPLOAD_URL = 'https://channels.weixin.qq.com/platform/post/create';
 const TENCENT_MANAGE_URL = 'https://channels.weixin.qq.com/platform/post/list';
 
@@ -416,32 +417,83 @@ async function _persistTencentStorageState(
 // ─── Upload helpers ───────────────────────────────────────────────────────────
 
 /**
- * upload_video_file
- * Searches all frames for input[type="file"]; falls back to clicking "发表视频"
+ * 遍历所有 frame 查找 input[type="file"]。
+ * 视频号 create 页通常渲染在主框架，历史版本也出现过子 iframe，故逐 frame 扫描。
+ * 找到返回第一个 Locator，否则 null。
  */
-async function _uploadVideoFile(page: Page, filePath: string): Promise<void> {
-  async function findFileInput() {
-    for (const frame of page.frames()) {
-      try {
-        const fi = frame.locator('input[type="file"]');
-        if (await fi.count()) return fi.first();
-      } catch {
-        continue;
-      }
+async function _findFileInput(page: Page): Promise<Locator | null> {
+  for (const frame of page.frames()) {
+    try {
+      const fi = frame.locator('input[type="file"]');
+      if (await fi.count()) return fi.first();
+    } catch {
+      continue;
     }
-    return null;
+  }
+  return null;
+}
+
+/**
+ * 遍历所有 frame 点击「发表视频」入口。
+ * 新版视频号助手把首页发表按钮渲染在主框架或 post-card 子 iframe；
+ * 旧实现只在主框架 page.getByText 找 → 深链重定向落到首页后点不到按钮，
+ * 进而找不到上传框。这里逐 frame 尝试以覆盖两种渲染形态。
+ */
+async function _clickPublishEntry(page: Page): Promise<boolean> {
+  for (const frame of page.frames()) {
+    try {
+      const btn = frame.getByText('发表视频', { exact: true }).first();
+      if (await btn.count()) {
+        await btn.click({ timeout: 5_000 });
+        return true;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
+/**
+ * 打开视频号发表页。
+ * 关键变化：直接深链 /platform/post/create 现在会被重定向回首页 /platform，
+ * 上传表单只在点击首页「发表视频」后才渲染。因此改为：
+ *   1. 打开首页 /platform
+ *   2. 若表单已就绪则直接复用；否则逐 frame 点击「发表视频」
+ *   3. 轮询直到出现 input[type="file"]
+ */
+async function _openTencentCreatePage(page: Page): Promise<void> {
+  await page.goto(TENCENT_HOME_URL, { waitUntil: 'domcontentloaded', timeout: 120_000 });
+
+  // 深链偶尔仍能直接渲染上传框 → 直接复用
+  if (await _findFileInput(page)) return;
+
+  // 首页点击「发表视频」唤出 create 编辑器
+  const entryDeadline = Date.now() + 60_000;
+  while (Date.now() < entryDeadline) {
+    if (await _clickPublishEntry(page)) break;
+    await sleep(1_000);
   }
 
-  let fi = await findFileInput();
+  // 等待 create 页渲染出文件上传框
+  const formDeadline = Date.now() + 60_000;
+  while (Date.now() < formDeadline) {
+    if (await _findFileInput(page)) return;
+    await sleep(1_000);
+  }
+}
+
+/**
+ * upload_video_file
+ * 优先直接找 input[type="file"]；找不到再兜底点「发表视频」唤出上传控件
+ */
+async function _uploadVideoFile(page: Page, filePath: string): Promise<void> {
+  let fi = await _findFileInput(page);
   if (!fi) {
-    // 助手落在首页：先点「发表视频」唤出编辑器与上传控件
-    const publishBtn = page.getByText('发表视频').first();
-    if (await publishBtn.count()) {
-      await publishBtn.click();
-      await sleep(3000);
-    }
+    // 兜底：仍停在首页/卡片态时再点一次入口
+    await _clickPublishEntry(page);
     for (let i = 0; i < 20; i++) {
-      fi = await findFileInput();
+      fi = await _findFileInput(page);
       if (fi) break;
       await sleep(1000);
     }
@@ -852,9 +904,8 @@ async function _submitPublish(page: Page): Promise<void> {
  * Port of TencentVideo.upload() (page interaction portion).
  */
 export async function uploadTencentVideo(page: Page, opts: UploadVideoOptions): Promise<void> {
-  // 1. Open upload page
-  await page.goto(TENCENT_UPLOAD_URL, { waitUntil: 'domcontentloaded', timeout: 120_000 });
-  await page.waitForURL(TENCENT_UPLOAD_URL, { timeout: 120_000 });
+  // 1. Open upload page（首页 → 发表视频；深链 /post/create 现已不可直达）
+  await _openTencentCreatePage(page);
 
   // 2. Upload video file (search all frames for input[type="file"])
   await _uploadVideoFile(page, opts.filePath);
@@ -874,9 +925,12 @@ export async function uploadTencentVideo(page: Page, opts: UploadVideoOptions): 
   // 7. Apply original statement
   await _applyOriginalStatement(page);
 
-  // 8. Set thumbnail if provided (use as both landscape + portrait like Python thumbnail_path fallback)
-  if (opts.thumbnail) {
-    await _setThumbnail(page, opts.thumbnail, opts.thumbnail);
+  // 8. 设置封面：4:3 横版动态封面 + 3:4 竖版个人主页卡片。
+  //    优先用 covers 里对应比例图；缺哪个用单图 thumbnail 兜底（与旧行为兼容）。
+  const landscapeCover = opts.covers?.['4:3'] ?? opts.thumbnail;
+  const portraitCover = opts.covers?.['3:4'] ?? opts.thumbnail;
+  if (landscapeCover || portraitCover) {
+    await _setThumbnail(page, landscapeCover, portraitCover);
   }
 
   // 9. Schedule time
@@ -977,9 +1031,12 @@ export const tencent: PlatformModule = {
       async (ctx) => {
         const page = await ctx.newPage();
         await uploadTencentVideo(page, opts);
-        // After publish, visit parent domains and poll until renewed cookies settle.
+        // 发布后只在 channels 域刷新落盘 cookie。
+        // 关键登录态（sessionid/wxuin）来自 channels.weixin.qq.com，停留发布页时即已刷新；
+        // 不再访问 www.qq.com / mp.weixin.qq.com 暖场（那只会抓回 .qq.com 埋点 cookie，
+        // 对维持登录态无意义，徒增耗时与异常自动化痕迹）。登录路径仍保留暖场以建立完整 cookie 集。
         await _persistTencentStorageState(ctx, page, opts.storageStatePath, {
-          warmupParents: true,
+          warmupParents: false,
           settleTimeout: 10_000,
         });
       },

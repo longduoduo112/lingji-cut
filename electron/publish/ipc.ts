@@ -4,6 +4,7 @@ import { AccountStore } from './accounts';
 import { getPlatform } from './platforms';
 import { parseAccountId } from './account-id';
 import { runPublishJob } from './runner';
+import { getBiliupStatus, downloadBiliup } from './biliup-install';
 import type { PublishJob, PublishPlatform } from './types';
 
 let store: AccountStore | null = null;
@@ -53,5 +54,23 @@ export function registerPublishIpc(): void {
   // ─── publish:cancel ─────────────────────────────────────────────────────────
   ipcMain.handle('publish:cancel', () => {
     cancelled = true;
+  });
+
+  // ─── biliup 运行时按需下载（B 站） ────────────────────────────────────────────
+  ipcMain.handle('publish:biliup-status', () => getBiliupStatus());
+
+  let downloading = false;
+  ipcMain.handle('publish:download-biliup', async (e) => {
+    if (downloading) {
+      return { success: false, error: '正在下载中，请稍候' };
+    }
+    downloading = true;
+    try {
+      return await downloadBiliup((p) => {
+        e.sender.send('publish:biliup-download-progress', p);
+      });
+    } finally {
+      downloading = false;
+    }
   });
 }

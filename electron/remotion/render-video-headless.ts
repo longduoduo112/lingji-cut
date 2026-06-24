@@ -6,6 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { app } from 'electron';
 import type { ExportConfig } from '../../src/lib/export-settings';
+import { buildExportRenderConfig } from '../../src/lib/export-settings';
 import type { SrtEntry, TimelineData } from '../../src/types';
 import { parseSrt } from '../../src/lib/srt-parser';
 import { compileCards, type CompiledCard } from './compile-card-node';
@@ -86,9 +87,15 @@ export async function renderVideoHeadless(
   opts: {
     onProgress?: (fraction: number) => void;
     onMotionCardCompileErrors?: (errors: CompiledCard[], total: number) => void;
+    /**
+     * 可选 telemetry 钩子，签名与 main.ts 的 makeMainTelemetry 产物兼容。
+     * 缺省 no-op。发出 4 个 stage：export.assets / export.compile-cards / export.bundle / export.render。
+     */
+    telemetry?: { emit: (kind: string, extra?: Record<string, unknown>) => void };
   } = {},
 ): Promise<{ outputPath: string }> {
   const onProgress = opts.onProgress ?? (() => {});
+  const tel = opts.telemetry ?? { emit: () => undefined };
 
   const isDev = !app.isPackaged;
   const renderLogPrefix = '[render-video]';
@@ -104,13 +111,36 @@ export async function renderVideoHeadless(
         : [];
 
   const cpuCount = os.cpus().length;
-  const explicitConcurrency = Math.max(1, Math.floor(cpuCount / 2));
+  // 帧渲染是 Chromium 截图主导的 CPU 任务；cpu-2 给系统留一点喘息，避免输入卡顿。
+  const explicitConcurrency = Math.max(1, cpuCount - 2);
+
+  // 把 UI 档位（resolution + quality）展开成完整的渲染配置：
+  // - x264Preset / videoBitrate / audioBitrate 直接落到 renderMedia；
+  // - 三档统一走 videoBitrate + hardwareAcceleration:'if-possible'，能 GPU 编码就 GPU，
+  //   不能则自动回退软编（Remotion crf.js:50 校验：videoBitrate 与 crf 互斥）。
+  const renderConfig = buildExportRenderConfig({
+    timelineWidth: timelineData.width,
+    timelineHeight: timelineData.height,
+    resolution: args.exportConfig.resolution,
+    quality: args.exportConfig.quality,
+  });
+  // 用 scale 而不是覆盖 composition 尺寸：React 树仍按 timeline.width/height 渲染，
+  // 所有 px 字号/padding/位置完全等同预览；renderMedia 拍照时按 scale 像素化输出。
+  // 这样字幕字号在 720p / 540p / 480p 上视觉占比与预览一致，不会变大变小。
+  const exportScale = Math.max(0.05, Math.min(1, renderConfig.renderWidth / timelineData.width));
 
   if (isDev) {
     console.log(`${renderLogPrefix} 开始导出`, {
       outputPath: args.outputPath,
       resolution: args.exportConfig.resolution,
       quality: args.exportConfig.quality,
+      timelineSize: `${timelineData.width}x${timelineData.height}`,
+      exportSize: `${renderConfig.renderWidth}x${renderConfig.renderHeight}`,
+      scale: exportScale,
+      x264Preset: renderConfig.x264Preset,
+      videoBitrate: renderConfig.videoBitrate,
+      audioBitrate: renderConfig.audioBitrate,
+      hardwareAcceleration: 'if-possible',
       cpuCount,
       explicitConcurrency,
       platform: process.platform,
@@ -118,7 +148,17 @@ export async function renderVideoHeadless(
     });
   }
 
-  const projectPrepStart = Date.now();
+  // ── stage: export.assets ──────────────────────────────────────────
+  const assetsStart = Date.now();
+  tel.emit('stage.start', {
+    stage: 'export.assets',
+    resolution: args.exportConfig.resolution,
+    quality: args.exportConfig.quality,
+    renderWidth: renderConfig.renderWidth,
+    renderHeight: renderConfig.renderHeight,
+    scale: exportScale,
+  });
+  const projectPrepStart = assetsStart;
   // materialize 资源到临时 publicDir，并把 timeline 内绝对素材路径改写为 assets/... 相对路径。
   const { timeline: renderTimeline, publicDir } = await createRenderPublicDir(timelineData);
   // 防御性 hydrate：若上游传来的是磁盘态（只有 tsxPath 没有内存 tsx），读回源码，保证 collectMotionCards 能拿到卡片。
@@ -164,36 +204,99 @@ export async function renderVideoHeadless(
       `${renderLogPrefix} 外置卡片内联图片 ${externalizedCardAssets.size} 个 → ${publicDir}/card-assets`,
     );
   }
-  // 编译 motion 卡片 TSX → CJS，随 inputProps 传入 Remotion，由 CardHost 在无头 Chrome 内求值。
-  const cardSources = collectMotionCards(hydratedTimeline);
-  const compiledCards = await compileCards(cardSources, {
-    onCompileErrors: opts.onMotionCardCompileErrors,
+  tel.emit('stage.end', {
+    stage: 'export.assets',
+    durationMs: Date.now() - assetsStart,
+    ok: true,
+    externalizedCardAssets: externalizedCardAssets.size,
   });
-  const remotionEntry = path.join(app.getAppPath(), 'src', 'remotion', 'index.ts');
-
-  if (isDev) {
-    console.log(
-      `${renderLogPrefix} 资源准备完成 耗时=${(
-        (Date.now() - projectPrepStart) / 1000
-      ).toFixed(2)}s cards=${cardSources.length} @${timestamp()}`,
-    );
-  }
 
   try {
-    const renderStart = Date.now();
-    onProgress(0.05);
-    const serveUrl = await getRemotionBundle(remotionEntry, publicDir);
-    await renderRemotionVideo({
-      serveUrl,
-      outputPath: args.outputPath,
-      timeline: renderTimeline,
-      srtEntries,
-      compiledCards,
-      quality: args.exportConfig.quality === 'quality' ? 'high' : 'standard',
-      concurrency: explicitConcurrency,
-      onProgress: (ratio) => onProgress(Math.max(0.05, Math.min(0.98, ratio))),
+    // ── stage: export.compile-cards ─────────────────────────────────
+    const compileStart = Date.now();
+    // 编译 motion 卡片 TSX → CJS，随 inputProps 传入 Remotion，由 CardHost 在无头 Chrome 内求值。
+    const cardSources = collectMotionCards(hydratedTimeline);
+    tel.emit('stage.start', { stage: 'export.compile-cards', total: cardSources.length });
+    const compiledCards = await compileCards(cardSources, {
+      onCompileErrors: opts.onMotionCardCompileErrors,
     });
-    onProgress(1);
+    tel.emit('stage.end', {
+      stage: 'export.compile-cards',
+      durationMs: Date.now() - compileStart,
+      ok: true,
+      total: cardSources.length,
+      compiled: Object.keys(compiledCards).length,
+    });
+    const remotionEntry = path.join(app.getAppPath(), 'src', 'remotion', 'index.ts');
+
+    if (isDev) {
+      console.log(
+        `${renderLogPrefix} 资源准备完成 耗时=${(
+          (Date.now() - projectPrepStart) / 1000
+        ).toFixed(2)}s cards=${cardSources.length} @${timestamp()}`,
+      );
+    }
+
+    // ── stage: export.bundle ────────────────────────────────────────
+    const bundleStart = Date.now();
+    tel.emit('stage.start', { stage: 'export.bundle' });
+    let serveUrl: string;
+    try {
+      serveUrl = await getRemotionBundle(remotionEntry, publicDir);
+      tel.emit('stage.end', {
+        stage: 'export.bundle',
+        durationMs: Date.now() - bundleStart,
+        ok: true,
+      });
+    } catch (err) {
+      tel.emit('stage.end', {
+        stage: 'export.bundle',
+        durationMs: Date.now() - bundleStart,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+
+    // ── stage: export.render ────────────────────────────────────────
+    const renderStart = Date.now();
+    tel.emit('stage.start', {
+      stage: 'export.render',
+      concurrency: explicitConcurrency,
+      hardwareAcceleration: 'if-possible',
+    });
+    onProgress(0.05);
+    try {
+      await renderRemotionVideo({
+        serveUrl,
+        outputPath: args.outputPath,
+        timeline: renderTimeline,
+        srtEntries,
+        compiledCards,
+        width: renderConfig.renderWidth,
+        height: renderConfig.renderHeight,
+        x264Preset: renderConfig.x264Preset,
+        videoBitrate: renderConfig.videoBitrate,
+        audioBitrate: renderConfig.audioBitrate,
+        concurrency: explicitConcurrency,
+        hardwareAcceleration: 'if-possible',
+        onProgress: (ratio) => onProgress(Math.max(0.05, Math.min(0.98, ratio))),
+      });
+      onProgress(1);
+      tel.emit('stage.end', {
+        stage: 'export.render',
+        durationMs: Date.now() - renderStart,
+        ok: true,
+      });
+    } catch (err) {
+      tel.emit('stage.end', {
+        stage: 'export.render',
+        durationMs: Date.now() - renderStart,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
 
     if (isDev) {
       console.log(

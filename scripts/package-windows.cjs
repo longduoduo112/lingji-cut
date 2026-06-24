@@ -8,7 +8,6 @@ const {
   buildReleaseManifest,
   shouldStageProjectPath,
 } = require('./package-mac-helpers.cjs');
-const { fetchBiliup } = require('./fetch-biliup.cjs');
 
 const rootDir = path.resolve(__dirname, '..');
 const packageJsonPath = path.join(rootDir, 'package.json');
@@ -378,10 +377,8 @@ async function packageWindows() {
   await createStageDirectory(stageDir, arch);
   await installPlaywrightChromium(stageDir);
 
-  // 下载 biliup Windows 二进制到 stageDir/biliup/<platform-key>/<binary>
-  // 打包后经 asar.unpackDir 解包到 app.asar.unpacked/biliup/...
-  console.log('下载 biliup 二进制到随包目录...');
-  await fetchBiliup(stageDir, { platform: 'win32', arch });
+  // biliup 二进制不再随包内置：改为运行时按需下载到 <userData>/publish/biliup/，
+  // 由设置页「发布账号」首次选中 B 站时引导下载（electron/publish/biliup-install.ts）。
 
   try {
     const appPaths = await packager(

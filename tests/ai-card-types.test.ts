@@ -7,6 +7,14 @@ import {
   type AICard,
   type MediaCardContent,
 } from '../src/types/ai';
+import { PROMPT_KINDS, isPromptKind } from '../src/lib/prompts/types';
+
+describe('cards.animation prompt kind', () => {
+  it('registers cards.animation as a valid prompt kind', () => {
+    expect(PROMPT_KINDS).toContain('cards.animation');
+    expect(isPromptKind('cards.animation')).toBe(true);
+  });
+});
 
 describe('AICardType extension', () => {
   it('image 与 video 是合法的 AICardType', () => {

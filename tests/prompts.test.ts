@@ -77,6 +77,18 @@ describe('PROMPT_KINDS and metadata', () => {
   });
 });
 
+describe('cards.animation default template', () => {
+  it('has a builtin template mentioning 逐拍 and segmentCues', () => {
+    const tpl = getBuiltinPromptTemplate('cards.animation');
+    expect(tpl.user).toContain('{{segmentCues}}');
+    expect(tpl.user).toContain('逐拍');
+  });
+  it('cards.segment template exposes an animationDirection injection point', () => {
+    const seg = getBuiltinPromptTemplate('cards.segment');
+    expect(seg.user).toContain('{{animationDirection}}');
+  });
+});
+
 describe('renderUserPromptWithLock', () => {
   it('appends lockedContract.content to user-tail when declared', () => {
     const tpl = getBuiltinPromptTemplate('script.review');

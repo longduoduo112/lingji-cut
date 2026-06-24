@@ -152,6 +152,8 @@ export interface AICard {
   style: CardStyle;
   renderMode?: AICardRenderMode;
   cardPrompt?: string;
+  /** AI 生成的逐拍动画脚本，由 cards.animation 元提示词产出，注入 cards.segment 指导出卡。仅 motion 卡使用。 */
+  animationDirection?: string;
   motionCard?: MotionCardPayload;
   /** 单卡级风格覆盖；缺省继承项目 / 全局 / 内置默认 */
   stylePresetId?: string;
@@ -393,6 +395,8 @@ export interface AISettings {
    * 必须 >= 1，默认 2。
    */
   cardGenerationConcurrency?: number;
+  /** 出卡前是否自动为 motion 卡生成动画指导（cards.animation）。缺省视为 true。 */
+  autoAnimationDirection?: boolean;
 }
 
 export const DEFAULT_JIMENG_MODEL = 'jimeng-5.0';

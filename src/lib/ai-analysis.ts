@@ -918,6 +918,8 @@ export function buildSegmentCardPrompt(
     stylePresetId?: string;
     /** 本段逐句字幕节拍块（[k] +秒数 文本；索引与运行时 cues 对齐），注入 {{segmentCues}}。 */
     segmentCues?: string;
+    /** cards.animation 产出的逐拍动画脚本，注入 {{animationDirection}} 指导出卡动效。 */
+    animationDirection?: string;
   },
   template?: PromptTemplate,
 ): string {
@@ -932,6 +934,7 @@ export function buildSegmentCardPrompt(
     visualType,
     stylePresetId,
     segmentCues,
+    animationDirection,
   } = params;
   const tpl = template ?? getBuiltinPromptTemplate('cards.segment');
 
@@ -974,6 +977,69 @@ export function buildSegmentCardPrompt(
     sandboxReference:
       'Remotion 单文件 TSX 组件（export default）；从 "remotion" 引入 useCurrentFrame/useVideoConfig/interpolate/spring/Easing/AbsoluteFill/Sequence/Img，输出到 motionCard.tsx；动画必须是 useCurrentFrame() 的纯函数；禁止 fetch/setTimeout/Math.random/new Date 等非确定性 API。图片资源：用全局函数 cardAsset(\'assets/文件名\')（项目相对路径，文件须已存在于项目 assets/ 目录）解析后传给 <Img src={cardAsset(\'assets/x.png\')} />；严禁内联大体积 base64 data URI、严禁绝对路径、严禁 staticFile() 传绝对路径。',
   });
+}
+
+/** 渲染 cards.animation 模板：把段落级 / 节目级信息注入动画指导元提示词。 */
+export function buildAnimationDirectionPrompt(
+  params: {
+    segment: AISegment;
+    globalPrompt?: string;
+    programSummary?: string;
+    keywords?: string[];
+    cardPrompt?: string;
+    segmentCues?: string;
+  },
+  template?: PromptTemplate,
+): string {
+  const { segment, globalPrompt, programSummary, keywords = [], cardPrompt, segmentCues } = params;
+  const tpl = template ?? getBuiltinPromptTemplate('cards.animation');
+  return renderUserPromptWithLock('cards.animation', tpl, {
+    globalPrompt: truncatePromptValue(globalPrompt ?? '', 240) || '无',
+    programSummary: truncatePromptValue(programSummary ?? '', 180) || '无',
+    keywords: keywords.length > 0 ? keywords.join('、') : '无',
+    segmentId: segment.id,
+    segmentTitle: truncatePromptValue(segment.title, 60),
+    segmentStartMs: segment.startMs,
+    segmentEndMs: segment.endMs,
+    segmentSummary: truncatePromptValue(segment.summary, 180),
+    segmentTranscriptExcerpt: truncatePromptValue(segment.transcriptExcerpt ?? '', 260) || '无',
+    segmentCues: segmentCues?.trim() ? segmentCues : '  （无逐句字幕节拍可用）',
+    cardPrompt: truncatePromptValue(cardPrompt ?? '', 240) || '无',
+  });
+}
+
+/**
+ * 用 cards.animation 模板单独请求 LLM，产出本卡的「逐拍动画脚本」（动画指导）。
+ * 仅 motion 卡使用；返回脚本注入 cards.segment 的 {{animationDirection}}，指导出卡动效。
+ */
+export async function generateAnimationDirection(
+  entries: SrtEntry[],
+  planning: Pick<SegmentPlanningResult, 'summary' | 'keywords' | 'globalPrompt'>,
+  segment: AISegment,
+  settings: AISettings,
+  options: {
+    generateText?: typeof generateText;
+    cardPrompt?: string;
+    animationTemplate?: PromptTemplate;
+    projectBindings?: PromptBindingMap | null;
+  } = {},
+): Promise<string> {
+  const { generateText: requestText = generateText, cardPrompt, animationTemplate, projectBindings } = options;
+  const binding = maybeResolveBinding('cards.animation', settings, projectBindings);
+  const userMessage = buildAnimationDirectionPrompt(
+    {
+      segment,
+      globalPrompt: planning.globalPrompt,
+      programSummary: planning.summary,
+      keywords: planning.keywords,
+      cardPrompt,
+      segmentCues: buildSegmentCuesBlock(entries, segment.startMs, segment.endMs),
+    },
+    animationTemplate,
+  );
+  // cards.animation 的指令全在 user 段，传空 system。
+  const text = await requestText(settings, '', userMessage, binding);
+  return text.trim();
 }
 
 /**

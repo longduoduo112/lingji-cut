@@ -138,12 +138,14 @@ function CoverThumb({
 
 export function PublishCoverPanel({
   projectDir,
-  selectedThumbnail,
-  onSelectThumbnail,
+  selectedByRatio,
+  onSelectRatio,
 }: {
   projectDir: string | null;
-  selectedThumbnail: string;
-  onSelectThumbnail: (path: string) => void;
+  /** 每个比例当前选中的封面路径（视频号 4:3+3:4，抖音 3:4+16:9）。 */
+  selectedByRatio: Partial<Record<ImageAspectRatio, string>>;
+  /** 点选某比例的封面：同图再点为取消该比例。 */
+  onSelectRatio: (ratio: ImageAspectRatio, path: string) => void;
 }) {
   const studio = useCoverStudio(projectDir);
   const [expandedPrompt, setExpandedPrompt] = useState<Record<string, boolean>>({});
@@ -174,7 +176,7 @@ export function PublishCoverPanel({
           全部重新生成
         </button>
         <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-          点选任意封面即设为发布缩略图
+          视频号 / 抖音都用 4:3 横版 + 3:4 竖版各选一张
         </span>
       </div>
 
@@ -290,9 +292,9 @@ export function PublishCoverPanel({
                     candidate={c}
                     ratio={ratio}
                     canRegenerate={canGenerate}
-                    isThumbnail={Boolean(c.imageUrl) && c.imageUrl === selectedThumbnail}
+                    isThumbnail={Boolean(c.imageUrl) && c.imageUrl === selectedByRatio[ratio]}
                     busy={studio.busyCandidateIds.includes(c.id)}
-                    onSelect={() => onSelectThumbnail(c.imageUrl)}
+                    onSelect={() => onSelectRatio(ratio, c.imageUrl)}
                     onRegenerate={() => void studio.regenerateOne(c.id)}
                   />
                 ))}

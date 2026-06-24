@@ -7,7 +7,7 @@ import { springs, durations } from "../lib/motion";
 
 interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'size'> {
 	boxClassName?: string;
-	label?: string;
+	label?: React.ReactNode;
 	checked?: boolean;
 	indeterminate?: boolean;
 	onChange?: (checked: boolean) => void;

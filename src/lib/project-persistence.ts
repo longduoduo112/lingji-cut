@@ -34,6 +34,33 @@ export interface ProjectWorkflowMeta {
   lastPodcastScriptHash: string | null;
 }
 
+/** 单个发布账号的文案覆盖（与发布工作台的 AccountOverride 同构）。 */
+export interface ProjectPublishOverride {
+  title: string;
+  desc: string;
+  tagsInput: string;
+  bilibiliTid: string;
+}
+
+/**
+ * 发布选项卡的文案元数据。
+ * AI 生成或手动填写的标题 / 描述 / 标签 / 封面随项目持久化，
+ * 重开项目时自动回填，避免用户每次都要重新生成。
+ */
+export interface ProjectPublishMeta {
+  title: string;
+  desc: string;
+  /** 标签原始输入串（逗号分隔），原样存储以无损回填。 */
+  tagsInput: string;
+  thumbnail: string;
+  /** 多比例发布封面（16:9 / 4:3 / 3:4），缺省视为未选。 */
+  covers?: Partial<Record<'16:9' | '4:3' | '3:4', string>>;
+  /** B站分区 ID（tid，B站必填，全平台共享）。 */
+  bilibiliTid?: string;
+  /** @deprecated 已移除按账号文案覆盖，仅保留以兼容旧工程读取。 */
+  overrides?: Record<string, ProjectPublishOverride>;
+}
+
 export interface ProjectData {
   version: 1;
   createdAt: string;
@@ -42,6 +69,8 @@ export interface ProjectData {
   aiAnalysis: ProjectAIAnalysis;
   script: ProjectScriptState;
   workflowMeta?: ProjectWorkflowMeta;
+  /** 发布选项卡文案元数据；缺省视为空。 */
+  publish?: ProjectPublishMeta;
   /** 项目级默认风格预设 id；缺省继承全局 */
   stylePresetId?: string;
 }
@@ -51,12 +80,21 @@ export type ProjectSection =
   | 'aiAnalysis'
   | 'script'
   | 'workflowMeta'
+  | 'publish'
   | 'stylePresetId';
 
 export const DEFAULT_WORKFLOW_META: ProjectWorkflowMeta = {
   lastAutoParams: null,
   lastAutoRunAt: null,
   lastPodcastScriptHash: null,
+};
+
+export const DEFAULT_PUBLISH_META: ProjectPublishMeta = {
+  title: '',
+  desc: '',
+  tagsInput: '',
+  thumbnail: '',
+  bilibiliTid: '',
 };
 
 /** 单调递增时间戳，保证在同一毫秒内多次调用也不重复 */
@@ -107,6 +145,10 @@ export function extractScriptSection(data: ProjectData): ProjectScriptState {
 
 export function extractWorkflowMetaSection(data: ProjectData): ProjectWorkflowMeta {
   return data.workflowMeta ?? { ...DEFAULT_WORKFLOW_META };
+}
+
+export function extractPublishSection(data: ProjectData): ProjectPublishMeta {
+  return { ...DEFAULT_PUBLISH_META, ...(data.publish ?? {}) };
 }
 
 export function mergeProjectSection<S extends ProjectSection>(

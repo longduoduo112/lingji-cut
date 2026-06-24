@@ -65,10 +65,26 @@ export function biliupBinaryName(platform?: string): string {
 // 路径解析（resourcesRoot 可注入，方便测试）
 // ---------------------------------------------------------------------------
 
+// 运行时注入的安装根目录。biliup 改为按需下载到用户可写目录后，
+// main.ts 启动时通过 configureBiliupRoot() 注入 `<userData>/publish`，
+// 三端（dev / 正式包）统一从该目录解析二进制。未注入时回退旧逻辑。
+let installRootOverride: string | null = null;
+
+/**
+ * 注入 biliup 安装根目录（destRoot）。由主进程在 app ready 后调用一次。
+ * 注入后 resolveBiliupPath() 默认从此目录解析；传入空值可清除（便于测试）。
+ */
+export function configureBiliupRoot(root: string | null): void {
+  installRootOverride = root && root.trim() ? root : null;
+}
+
 function defaultResourcesRoot(): string {
-  // Electron 生产环境：process.resourcesPath 由 Electron 注入。
-  // biliup 通过 asar.unpackDir 解包到 app.asar.unpacked/biliup/，
-  // 因此根目录必须包含 app.asar.unpacked 中间段。
+  // 运行时按需下载方案：优先用注入的用户安装目录。
+  if (installRootOverride) {
+    return installRootOverride;
+  }
+  // 兼容旧路径：Electron 生产环境 process.resourcesPath 由 Electron 注入，
+  // biliup 曾随包经 asar.unpackDir 解包到 app.asar.unpacked/biliup/。
   const rp = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
   if (typeof rp === 'string' && rp) {
     return join(rp, 'app.asar.unpacked');

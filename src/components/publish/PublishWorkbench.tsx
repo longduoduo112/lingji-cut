@@ -1,12 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Upload, Film, Image as ImageIcon, Tag, Check, X, Loader2, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
-import { Button, Field, Input } from '../../ui';
+import { Button, Checkbox, Field, Input } from '../../ui';
 import { Spinner } from '../../ui/primitives/Spinner';
 import { usePublishStore } from '../../store/publish';
 import { loadAISettings, useAIStore } from '../../store/ai';
 import { useTimelineStore } from '../../store/timeline';
 import type { PublishAccount, PublishTarget } from '../../lib/electron-api';
 import type { AIAnalysisResult } from '../../types/ai';
+import {
+  extractPublishSection,
+  type ProjectData,
+  type ProjectPublishMeta,
+} from '../../lib/project-persistence';
 import { PublishCoverPanel } from './PublishCoverPanel';
 
 /** 拼接 AI 分析摘要 / 关键词 / 段落，兜底用字幕原文，作为发布文案生成素材。 */
@@ -146,188 +151,6 @@ function ResultRow({
   );
 }
 
-// ─── Per-account override panel ────────────────────────────────────────────────
-
-interface AccountOverride {
-  title: string;
-  desc: string;
-  tagsInput: string;
-  bilibiliTid: string; // B站分区 ID（字符串形式，提交时转 number）
-}
-
-function AccountOverridePanel({
-  accountId,
-  platform,
-  override,
-  expanded,
-  onToggle,
-  onChange,
-}: {
-  accountId: string;
-  platform: string;
-  override: AccountOverride;
-  expanded: boolean;
-  onToggle: () => void;
-  onChange: (next: AccountOverride) => void;
-}) {
-  return (
-    <div
-      style={{
-        marginTop: 6,
-        borderRadius: 6,
-        border: '1px solid var(--color-border-subtle, rgba(0,0,0,0.08))',
-        overflow: 'hidden',
-        background: 'var(--color-bg-elevated)',
-      }}
-    >
-      {/* Toggle header */}
-      <button
-        type="button"
-        onClick={onToggle}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          width: '100%',
-          padding: '6px 10px',
-          fontSize: 12,
-          color: 'var(--color-text-secondary)',
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          textAlign: 'left',
-        }}
-      >
-        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        文案覆盖
-        {(override.title || override.desc || override.tagsInput || override.bilibiliTid) && (
-          <span
-            style={{
-              fontSize: 10,
-              padding: '1px 5px',
-              borderRadius: 3,
-              background: 'color-mix(in srgb, var(--color-system-blue) 15%, transparent)',
-              color: 'var(--color-system-blue)',
-              fontWeight: 500,
-            }}
-          >
-            已设置
-          </span>
-        )}
-      </button>
-
-      {/* Override fields */}
-      {expanded && (
-        <div
-          style={{
-            padding: '8px 10px 10px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            borderTop: '1px solid var(--color-border-subtle, rgba(0,0,0,0.06))',
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>
-              标题（留空则用共享标题）
-            </div>
-            <Input
-              value={override.title}
-              onChange={(e) => onChange({ ...override, title: e.target.value })}
-              placeholder="覆盖标题…"
-              style={{ fontSize: 12 }}
-            />
-          </div>
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>
-              描述（留空则用共享描述）
-            </div>
-            <textarea
-              value={override.desc}
-              onChange={(e) => onChange({ ...override, desc: e.target.value })}
-              placeholder="覆盖描述…"
-              rows={2}
-              style={{
-                width: '100%',
-                resize: 'vertical',
-                padding: '6px 8px',
-                fontSize: 12,
-                border: '1px solid var(--color-border, rgba(0,0,0,0.15))',
-                borderRadius: 6,
-                background: 'var(--color-input-bg, var(--color-bg-elevated))',
-                color: 'var(--color-text-primary)',
-                fontFamily: 'inherit',
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>
-              标签（留空则用共享标签）
-            </div>
-            <Input
-              value={override.tagsInput}
-              onChange={(e) => onChange({ ...override, tagsInput: e.target.value })}
-              placeholder="标签1, 标签2…"
-              leftIcon={<Tag size={12} />}
-              style={{ fontSize: 12 }}
-            />
-          </div>
-          {/* B站专属：分区 ID（必填） */}
-          {platform === 'bilibili' && (
-            <div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: 'var(--color-text-tertiary)',
-                  marginBottom: 3,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                分区 ID（tid，B站必填）
-                <span
-                  style={{
-                    fontSize: 10,
-                    padding: '1px 4px',
-                    borderRadius: 3,
-                    background: 'color-mix(in srgb, var(--color-error, #ef4444) 15%, transparent)',
-                    color: 'var(--color-error, #ef4444)',
-                    fontWeight: 500,
-                  }}
-                >
-                  必填
-                </span>
-              </div>
-              <Input
-                type="number"
-                value={override.bilibiliTid}
-                onChange={(e) => onChange({ ...override, bilibiliTid: e.target.value })}
-                placeholder="例如：21（游戏综合），17（单机联机）"
-                style={{ fontSize: 12 }}
-              />
-              <div
-                style={{
-                  fontSize: 10,
-                  color: 'var(--color-text-tertiary)',
-                  marginTop: 3,
-                }}
-              >
-                常用分区：17 单机联机 / 21 游戏综合 / 124 娱乐 / 182 影视 / 236 知识
-              </div>
-            </div>
-          )}
-          <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontStyle: 'italic' }}>
-            账号 ID：{accountId}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function PublishWorkbench({ projectDir }: { projectDir: string | null }) {
@@ -337,9 +160,13 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
   // Form state
   const [filePath, setFilePath] = useState('');
   const [thumbnail, setThumbnail] = useState('');
+  // 多比例封面：每个比例各选一张（视频号 4:3+3:4，抖音 3:4+16:9）
+  const [covers, setCovers] = useState<Record<string, string>>({});
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [tagsInput, setTagsInput] = useState('');
+  // B站分区 ID（tid，全平台共享，仅 B站使用）
+  const [bilibiliTid, setBilibiliTid] = useState('');
 
   // AI 文案生成
   const [isGeneratingMeta, setIsGeneratingMeta] = useState(false);
@@ -349,14 +176,13 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
 
   // Multi-select: set of checked account IDs
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
-
-  // Per-account override state
-  const [accountOverrides, setAccountOverrides] = useState<Record<string, AccountOverride>>({});
-  const [expandedOverrides, setExpandedOverrides] = useState<Record<string, boolean>>({});
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Derive publishing state from store job — no local state needed
   const isPublishing = !!job;
+
+  // 文案持久化：hydrate 完成前禁止 autosave，避免用空值覆盖磁盘上的已存文案
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
     void loadAccounts();
@@ -383,12 +209,70 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
       const selectedCover = useAIStore
         .getState()
         .coverCandidates.find((c) => c.selected && c.imageUrl);
-      if (selectedCover && !cancelled) setThumbnail((prev) => prev || selectedCover.imageUrl);
+      if (selectedCover && !cancelled) {
+        setThumbnail((prev) => prev || selectedCover.imageUrl);
+        // 编辑器选定封面为 16:9 整期封面 → 预填 16:9 槽
+        setCovers((prev) => (prev['16:9'] ? prev : { ...prev, '16:9': selectedCover.imageUrl }));
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, [projectDir]);
+
+  // ── 文案持久化：项目切换时从 project.json 回填已存的标题/描述/标签/封面/覆盖 ──
+  useEffect(() => {
+    hydratedRef.current = false;
+    if (!projectDir) {
+      hydratedRef.current = true;
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      let saved: ProjectPublishMeta | null = null;
+      try {
+        const raw = await window.electronAPI.loadProject(projectDir);
+        saved = extractPublishSection(JSON.parse(raw) as ProjectData);
+      } catch {
+        saved = null;
+      }
+      if (cancelled) return;
+      if (saved) {
+        // 已存文案优先于派生预填（派生预填仍用 prev|| 兜底空值）
+        if (saved.title) setTitle((prev) => prev || saved!.title);
+        if (saved.desc) setDesc((prev) => prev || saved!.desc);
+        if (saved.tagsInput) setTagsInput((prev) => prev || saved!.tagsInput);
+        if (saved.thumbnail) setThumbnail((prev) => prev || saved!.thumbnail);
+        if (saved.covers && Object.keys(saved.covers).length) {
+          setCovers((prev) => ({ ...saved!.covers, ...prev }));
+        }
+        if (saved.bilibiliTid) setBilibiliTid((prev) => prev || saved!.bilibiliTid!);
+      }
+      hydratedRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectDir]);
+
+  // ── 文案持久化：标题/描述/标签/封面/覆盖变更时防抖写回 project.json ──
+  useEffect(() => {
+    if (!projectDir || !hydratedRef.current) return;
+    const meta: ProjectPublishMeta = {
+      title,
+      desc,
+      tagsInput,
+      thumbnail,
+      covers,
+      bilibiliTid,
+    };
+    const timer = setTimeout(() => {
+      window.electronAPI
+        .saveProjectSection(projectDir, 'publish', JSON.stringify(meta))
+        .catch(() => {});
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [projectDir, title, desc, tagsInput, thumbnail, covers, bilibiliTid]);
 
   const handleGenerateMeta = async () => {
     setMetaError(null);
@@ -409,10 +293,15 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
     }
     setIsGeneratingMeta(true);
     try {
+      const projectBindings = projectDir
+        ? await window.electronAPI.readPromptBindings('project', projectDir).catch(() => null)
+        : null;
       const md = await window.electronAPI.generatePublishMetadata({
         settings,
         sourceText,
         currentTitle: title.trim() || undefined,
+        projectDir: projectDir || undefined,
+        projectBindings,
       });
       if (md.title) setTitle(md.title);
       if (md.desc) setDesc(md.desc);
@@ -425,30 +314,11 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
   };
 
   const toggleAccount = (accId: string) => {
-    setSelectedAccountIds((prev) => {
-      const next = prev.includes(accId) ? prev.filter((id) => id !== accId) : [...prev, accId];
-      // B站账号首次选中时自动展开 override 面板（tid 必填提示）
-      if (!prev.includes(accId)) {
-        const acc = accounts.find((a) => a.id === accId);
-        if (acc?.platform === 'bilibili') {
-          setExpandedOverrides((exPrev) => ({ ...exPrev, [accId]: true }));
-        }
-      }
-      return next;
-    });
+    setSelectedAccountIds((prev) =>
+      prev.includes(accId) ? prev.filter((id) => id !== accId) : [...prev, accId],
+    );
     setValidationError(null);
   };
-
-  const toggleOverrideExpanded = (accId: string) => {
-    setExpandedOverrides((prev) => ({ ...prev, [accId]: !prev[accId] }));
-  };
-
-  const updateOverride = (accId: string, next: AccountOverride) => {
-    setAccountOverrides((prev) => ({ ...prev, [accId]: next }));
-  };
-
-  const getOverride = (accId: string): AccountOverride =>
-    accountOverrides[accId] ?? { title: '', desc: '', tagsInput: '', bilibiliTid: '' };
 
   const handlePickFile = async () => {
     const path = await window.electronAPI.selectMediaFile('video');
@@ -471,62 +341,44 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
       .map((t) => t.trim())
       .filter(Boolean);
 
-    // ── B站专项校验 ──────────────────────────────────────────────────────────
-    for (const accountId of selectedAccountIds) {
-      const acc = accounts.find((a) => a.id === accountId);
-      if (!acc || acc.platform !== 'bilibili') continue;
-      const ov = getOverride(accountId);
-
-      // tid 必填
-      const tid = parseInt(ov.bilibiliTid.trim(), 10);
-      if (!ov.bilibiliTid.trim() || isNaN(tid) || tid <= 0) {
-        const label = acc.accountName || accountId;
-        setValidationError(`B站账号「${label}」必须填写分区 ID (tid)，请展开"文案覆盖"面板填写`);
-        // 自动展开对应的 override 面板
-        setExpandedOverrides((prev) => ({ ...prev, [accountId]: true }));
+    // ── B站专项校验（全平台共享文案，B站额外需要 tid + 描述）─────────────────────
+    const hasBilibili = selectedAccountIds.some(
+      (id) => accounts.find((a) => a.id === id)?.platform === 'bilibili',
+    );
+    const tid = parseInt(bilibiliTid.trim(), 10);
+    if (hasBilibili) {
+      if (!bilibiliTid.trim() || isNaN(tid) || tid <= 0) {
+        setValidationError('发布到 B站需要先填写分区 ID（tid）');
         return;
       }
-
-      // desc 必填（共享或覆盖二者有其一即可）
-      const effectiveDesc = ov.desc.trim() || desc.trim();
-      if (!effectiveDesc) {
-        const label = acc.accountName || accountId;
-        setValidationError(`B站账号「${label}」必须填写描述（共享描述或该账号的覆盖描述）`);
+      if (!desc.trim()) {
+        setValidationError('发布到 B站需要填写描述');
         return;
       }
     }
 
+    // 多比例封面：仅收集已选比例；单图 thumbnail 作为兜底（优先竖图，兼容旧/单封面平台）
+    const ratios = ['16:9', '4:3', '3:4'] as const;
+    const coversObj = ratios.reduce<Record<string, string>>((acc, r) => {
+      if (covers[r]) acc[r] = covers[r];
+      return acc;
+    }, {});
+    const primaryThumb = covers['3:4'] || covers['16:9'] || covers['4:3'] || thumbnail || undefined;
     const shared = {
       title,
       desc,
       tags: sharedTags,
-      thumbnail: thumbnail || undefined,
+      thumbnail: primaryThumb,
+      covers: Object.keys(coversObj).length ? coversObj : undefined,
     };
 
-    // Build targets — only include overrides for filled fields
+    // Build targets — 全平台共用 shared 文案，B站附加 tid
     const targets: PublishTarget[] = selectedAccountIds.map((accountId) => {
-      const ov = getOverride(accountId);
       const acc = accounts.find((a) => a.id === accountId);
-      const overrideTags = ov.tagsInput
-        .split(/[,，]/)
-        .map((t) => t.trim())
-        .filter(Boolean);
-
-      const overrides: PublishTarget['overrides'] = {};
-      if (ov.title.trim()) overrides.title = ov.title.trim();
-      if (ov.desc.trim()) overrides.desc = ov.desc.trim();
-      if (overrideTags.length > 0) overrides.tags = overrideTags;
-
-      const hasOverrides = Object.keys(overrides).length > 0;
-
-      // B站：附加 bilibili.tid（校验已保证有效）
-      const tid = acc?.platform === 'bilibili' ? parseInt(ov.bilibiliTid.trim(), 10) : NaN;
       const bilibiliExtra: PublishTarget['bilibili'] =
         acc?.platform === 'bilibili' && !isNaN(tid) ? { tid } : undefined;
-
       return {
         accountId,
-        ...(hasOverrides ? { overrides } : {}),
         ...(bilibiliExtra ? { bilibili: bilibiliExtra } : {}),
       };
     });
@@ -597,7 +449,10 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
         </Field>
 
         {/* Thumbnail (optional) + 封面联动面板 */}
-        <Field label="封面缩略图" hint="与编辑器封面联动，支持 16:9 / 4:3 / 3:4 三种比例">
+        <Field
+          label="封面缩略图"
+          hint="视频号 / 抖音都用 4:3 横版 + 3:4 竖版各选一张；16:9 为编辑器整期封面 / 单图兜底"
+        >
           <div style={{ display: 'flex', gap: 8 }}>
             <Input
               value={thumbnail}
@@ -633,8 +488,15 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
             <div style={{ marginTop: 8 }}>
               <PublishCoverPanel
                 projectDir={projectDir}
-                selectedThumbnail={thumbnail}
-                onSelectThumbnail={setThumbnail}
+                selectedByRatio={covers}
+                onSelectRatio={(ratio, path) =>
+                  setCovers((prev) => {
+                    const next = { ...prev };
+                    if (next[ratio] === path) delete next[ratio];
+                    else next[ratio] = path;
+                    return next;
+                  })
+                }
               />
             </div>
           )}
@@ -669,20 +531,20 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
         </div>
 
         {/* Title */}
-        <Field label="共享标题" required>
+        <Field label="标题" required hint="所有平台共用同一份标题">
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="视频标题（各账号共用，可在下方单独覆盖）"
+            placeholder="视频标题"
           />
         </Field>
 
         {/* Description */}
-        <Field label="共享描述">
+        <Field label="描述">
           <textarea
             value={desc}
             onChange={(e) => setDesc(e.target.value)}
-            placeholder="视频描述（可选，可在下方单独覆盖）"
+            placeholder="视频描述（可选）"
             rows={3}
             style={{
               width: '100%',
@@ -701,7 +563,7 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
         </Field>
 
         {/* Tags */}
-        <Field label="共享标签" hint="用逗号分隔多个标签，可在下方单独覆盖">
+        <Field label="标签" hint="用逗号分隔多个标签，所有平台共用">
           <Input
             value={tagsInput}
             onChange={(e) => setTagsInput(e.target.value)}
@@ -741,6 +603,10 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
                   <div
                     key={acc.id}
                     style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '10px 14px',
                       borderBottom: isLast ? 'none' : '1px solid var(--color-border-subtle, rgba(0,0,0,0.06))',
                       background: isChecked
                         ? 'color-mix(in srgb, var(--color-system-blue) 6%, transparent)'
@@ -748,53 +614,29 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
                       opacity: !isValid ? 0.55 : 1,
                     }}
                   >
-                    {/* Account row */}
-                    <label
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: '10px 14px',
-                        cursor: isValid ? 'pointer' : 'not-allowed',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        disabled={!isValid}
-                        onChange={() => toggleAccount(acc.id)}
-                        style={{ accentColor: 'var(--color-system-blue)', width: 14, height: 14 }}
-                      />
-                      <span style={{ flex: 1, fontSize: 13 }}>
-                        <span style={{ fontWeight: 500 }}>
-                          {PLATFORM_LABEL[acc.platform] ?? acc.platform}
+                    <Checkbox
+                      checked={isChecked}
+                      disabled={!isValid}
+                      onChange={() => toggleAccount(acc.id)}
+                      className="flex-1 min-w-0"
+                      label={
+                        <span style={{ fontSize: 13 }}>
+                          <span style={{ fontWeight: 500 }}>
+                            {PLATFORM_LABEL[acc.platform] ?? acc.platform}
+                          </span>
+                          {' '}
+                          <span style={{ color: 'var(--color-text-secondary)' }}>{acc.accountName}</span>
                         </span>
-                        {' '}
-                        <span style={{ color: 'var(--color-text-secondary)' }}>{acc.accountName}</span>
+                      }
+                    />
+                    <AccountStatusBadge status={acc.status} />
+                    {!isValid && (
+                      <span
+                        style={{ fontSize: 11, color: 'var(--color-system-blue)', cursor: 'pointer' }}
+                        title="前往设置重新登录"
+                      >
+                        去设置
                       </span>
-                      <AccountStatusBadge status={acc.status} />
-                      {!isValid && (
-                        <span
-                          style={{ fontSize: 11, color: 'var(--color-system-blue)', cursor: 'pointer' }}
-                          title="前往设置重新登录"
-                        >
-                          去设置
-                        </span>
-                      )}
-                    </label>
-
-                    {/* Per-account override panel — only visible when checked */}
-                    {isChecked && (
-                      <div style={{ padding: '0 14px 10px' }}>
-                        <AccountOverridePanel
-                          accountId={acc.id}
-                          platform={acc.platform}
-                          override={getOverride(acc.id)}
-                          expanded={!!expandedOverrides[acc.id]}
-                          onToggle={() => toggleOverrideExpanded(acc.id)}
-                          onChange={(next) => updateOverride(acc.id, next)}
-                        />
-                      </div>
                     )}
                   </div>
                 );
@@ -802,6 +644,20 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
             </div>
           )}
         </Field>
+
+        {/* B站分区 ID — 仅选中 B站账号时显示，全平台共享一份 */}
+        {selectedAccountIds.some(
+          (id) => accounts.find((a) => a.id === id)?.platform === 'bilibili',
+        ) && (
+          <Field label="B站分区 ID（tid）" required hint="发布到 B站必填；常用：17 单机联机 / 21 游戏综合 / 124 娱乐 / 182 影视 / 236 知识">
+            <Input
+              type="number"
+              value={bilibiliTid}
+              onChange={(e) => setBilibiliTid(e.target.value)}
+              placeholder="例如：21（游戏综合）"
+            />
+          </Field>
+        )}
 
         {/* Publish button */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

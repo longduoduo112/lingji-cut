@@ -282,6 +282,8 @@ export interface ElectronAPI {
     settings: AISettings;
     sourceText: string;
     currentTitle?: string;
+    projectDir?: string;
+    projectBindings?: PromptBindingMap | null;
   }) => Promise<{ title: string; desc: string; tags: string[] }>;
   generateCardImage: (args: GenerateCardImageArgs) => Promise<MediaCardContent>;
   generateCardVideo: (args: GenerateCardVideoArgs) => Promise<MediaCardContent>;
@@ -357,6 +359,8 @@ export interface ElectronAPI {
     outputPath: string;
     exportConfig: ExportConfig;
     srtEntries?: SrtEntry[];
+    /** 可选 auto-run jsonl runId；主进程据此写 stage.* / run.* 事件。 */
+    telemetryRunId?: string;
   }) => Promise<{ outputPath: string }>;
   getAppLogs: () => Promise<AppLogEntry[]>;
   getAppLogFilePath: () => Promise<string>;
@@ -639,11 +643,19 @@ export interface PublishProgressPayload {
   message?: string;
 }
 
+/** 发布封面比例键（封面工作台按真实像素归类到这三种）。 */
+export type PublishCoverRatio = '16:9' | '4:3' | '3:4';
+/** 按比例提供的多张封面；各平台按需取用（视频号 4:3+3:4，抖音 3:4+16:9）。 */
+export type PublishCovers = Partial<Record<PublishCoverRatio, string>>;
+
 export interface PublishShared {
   title: string;
   desc: string;
   tags: string[];
+  /** 单封面兜底（旧字段 / 仅取一张的平台）。 */
   thumbnail?: string;
+  /** 多比例封面，优先于 thumbnail。 */
+  covers?: PublishCovers;
   scheduleAt?: number;
 }
 
@@ -669,6 +681,29 @@ export interface PublishAPI {
   cancel(): Promise<void>;
   onQrcode(cb: (p: { platform: string; accountName: string; png: string }) => void): () => void;
   onProgress(cb: (payload: PublishProgressPayload) => void): () => void;
+  /** 查询 B 站 biliup 二进制是否已安装到用户目录。 */
+  getBiliupStatus(): Promise<BiliupStatus>;
+  /** 下载并安装 biliup 到用户目录；过程经 onBiliupDownloadProgress 回报。 */
+  downloadBiliup(): Promise<BiliupDownloadResult>;
+  onBiliupDownloadProgress(cb: (p: BiliupDownloadProgress) => void): () => void;
+}
+
+export interface BiliupStatus {
+  installed: boolean;
+  path: string;
+}
+
+export interface BiliupDownloadResult {
+  success: boolean;
+  path?: string;
+  error?: string;
+}
+
+export interface BiliupDownloadProgress {
+  phase: 'resolve' | 'download' | 'extract' | 'install' | string;
+  received?: number;
+  total?: number;
+  speed?: number;
 }
 
 declare global {

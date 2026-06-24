@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Share2, RefreshCw, Trash2, LogIn } from 'lucide-react';
+import { Share2, RefreshCw, Trash2, LogIn, Download } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -13,8 +13,20 @@ import {
 import type { SelectOption } from '../../ui';
 import { Spinner } from '../../ui/primitives/Spinner';
 import { usePublishStore } from '../../store/publish';
+import { useTaskProgressStore } from '../../store/task-progress';
 import type { PublishAccount, PublishPlatform } from '../../lib/electron-api';
 import styles from './PublishAccountsTab.module.css';
+
+const BILIUP_TASK_ID = 'biliup-download';
+
+function formatMB(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec >= 1024 * 1024) return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`;
+  return `${Math.max(1, Math.round(bytesPerSec / 1024))} KB/s`;
+}
 
 // ─── Platform labels ─────────────────────────────────────────────────────────
 
@@ -87,6 +99,10 @@ export function PublishAccountsTab() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [reloginTarget, setReloginTarget] = useState<string | null>(null);
 
+  // B 站 biliup 组件安装状态：null=未知/检测中，true/false=已知
+  const [biliupInstalled, setBiliupInstalled] = useState<boolean | null>(null);
+  const [biliupDownloading, setBiliupDownloading] = useState(false);
+
   const unsubQrcodeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -96,6 +112,71 @@ export function PublishAccountsTab() {
       unsubQrcodeRef.current = null;
     };
   }, []);
+
+  // 选中 B 站时检测 biliup 是否已安装
+  useEffect(() => {
+    if (platform !== 'bilibili') return;
+    let cancelled = false;
+    setBiliupInstalled(null);
+    window.publishAPI
+      .getBiliupStatus()
+      .then((s) => {
+        if (!cancelled) setBiliupInstalled(s.installed);
+      })
+      .catch(() => {
+        if (!cancelled) setBiliupInstalled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [platform]);
+
+  const handleDownloadBiliup = async () => {
+    const { startTask, updateTask, completeTask, failTask } = useTaskProgressStore.getState();
+    setBiliupDownloading(true);
+    startTask({
+      id: BILIUP_TASK_ID,
+      category: 'publish',
+      label: '下载 B 站上传组件',
+      mode: 'indeterminate',
+      progress: 0,
+      phase: '准备中',
+      level: 0,
+      canCancel: false,
+    });
+    const unsub = window.publishAPI.onBiliupDownloadProgress((p) => {
+      if (p.phase === 'download' && p.total && p.received != null) {
+        // 进度系统约定 progress 取值 0~100；取整避免出现一长串小数
+        const pct = Math.min(100, Math.round((p.received / p.total) * 100));
+        updateTask(BILIUP_TASK_ID, {
+          mode: 'determinate',
+          progress: pct,
+          phase: `${formatMB(p.received)} / ${formatMB(p.total)}${p.speed ? ` · ${formatSpeed(p.speed)}` : ''}`,
+        });
+      } else {
+        const phaseLabel =
+          p.phase === 'resolve' ? '解析版本' : p.phase === 'extract' ? '解压中' : p.phase === 'install' ? '安装中' : '下载中';
+        updateTask(BILIUP_TASK_ID, { mode: 'indeterminate', phase: phaseLabel });
+      }
+    });
+    try {
+      const res = await window.publishAPI.downloadBiliup();
+      if (res.success) {
+        completeTask(BILIUP_TASK_ID);
+        setBiliupInstalled(true);
+        setLoginMsg({ text: 'B 站上传组件安装完成，可以登录了', isError: false });
+      } else {
+        failTask(BILIUP_TASK_ID, res.error || '下载失败');
+        setLoginMsg({ text: res.error || 'B 站上传组件下载失败', isError: true });
+      }
+    } catch (err: unknown) {
+      failTask(BILIUP_TASK_ID, err instanceof Error ? err.message : '下载异常');
+      setLoginMsg({ text: err instanceof Error ? err.message : '下载异常', isError: true });
+    } finally {
+      unsub();
+      setBiliupDownloading(false);
+    }
+  };
 
   // Subscribe to qrcode events during login
   const subscribeQrcode = () => {
@@ -184,6 +265,9 @@ export function PublishAccountsTab() {
   };
 
   const deleteTargetAcc = accounts.find((a) => a.id === deleteTarget);
+
+  // B 站需要 biliup 组件：未安装时禁用登录，引导先下载
+  const biliupMissing = platform === 'bilibili' && biliupInstalled === false;
 
   return (
     <div className={styles.container}>
@@ -289,7 +373,7 @@ export function PublishAccountsTab() {
             type="button"
             variant="primary"
             onClick={() => void handleLogin()}
-            disabled={loginBusy}
+            disabled={loginBusy || biliupMissing}
             leftIcon={
               loginBusy ? (
                 <Spinner size={13} className={styles.spinning} />
@@ -301,6 +385,30 @@ export function PublishAccountsTab() {
             {loginBusy ? '登录中…' : '登录'}
           </Button>
         </div>
+
+        {biliupMissing ? (
+          <div className={styles.biliupNotice}>
+            <span className={styles.biliupNoticeText}>
+              B 站登录需要 biliup 上传组件，首次使用请先下载（约几 MB，国内已走代理加速）。
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              onClick={() => void handleDownloadBiliup()}
+              disabled={biliupDownloading}
+              leftIcon={
+                biliupDownloading ? (
+                  <Spinner size={12} className={styles.spinning} />
+                ) : (
+                  <Download size={12} />
+                )
+              }
+            >
+              {biliupDownloading ? '下载中…' : '下载 B 站上传组件'}
+            </Button>
+          </div>
+        ) : null}
 
         {loginMsg ? (
           <p className={`${styles.loginStatus} ${loginMsg.isError ? styles.loginError : ''}`}>

@@ -2,9 +2,11 @@ export const PROMPT_KINDS = [
   'planning.segment',
   'cover.regeneration',
   'cards.segment',
+  'cards.animation',
   'script.review',
   'card.image',
   'card.video',
+  'publish.metadata',
 ] as const;
 
 export type PromptKind = (typeof PROMPT_KINDS)[number];
@@ -192,6 +194,10 @@ const LOCKED_CARD_IMAGE = `【系统契约 · 不可修改】
 不要包裹引号；不要换行；不要标注"提示词："或"Prompt:"等前导文本。
 画面中禁止出现任何文字 / UI 元素 / Logo / 水印 / 字幕条。`;
 
+const LOCKED_PUBLISH_METADATA = `【系统契约 · 不可修改】
+只返回严格 JSON，不要任何解释、前后缀或多余文本，结构如下：
+{ "title": "字符串", "desc": "字符串", "tags": ["标签1", "标签2"] }`;
+
 export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
   'planning.segment': {
     kind: 'planning.segment',
@@ -241,6 +247,7 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
       { name: 'segmentCues', description: '本段逐句字幕节拍列表（[k] +秒数 文本；索引 k 与运行时 cues 数组对齐），供模型把焦点元素锚到讲出它的那一句' },
       { name: 'segmentVisualType', description: '上游判定的卡片形式：motion 或 image' },
       { name: 'cardPrompt', description: '单卡追加提示词' },
+      { name: 'animationDirection', description: '本卡逐拍动画脚本（cards.animation 产出；无则为"无"）' },
       { name: 'currentCardSection', description: '当前卡片线索多行块（由调用方构造）' },
       { name: 'programContext', description: '节目级浓缩上下文（节目摘要、关键词、当前段在整期中的位置）' },
       { name: 'fullTranscript', description: '兼容旧模板：与 programContext 同值，不再注入完整全文，避免 token 爆炸' },
@@ -252,6 +259,25 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
       content: LOCKED_CARDS_SEGMENT,
       reason: '业务侧按此结构创建 AICard 并对 motionCard.tsx 做 Remotion 组件校验；修改会导致卡片无法渲染。',
     },
+  },
+  'cards.animation': {
+    kind: 'cards.animation',
+    label: '动画指导生成',
+    description: '为单个 motion 段落生成逐拍动画脚本（自然语言），供 cards.segment 出卡时遵循其节拍与形变意图',
+    group: 'ai-analysis',
+    variables: [
+      { name: 'globalPrompt', description: '整期创作提示词（为空填"无"）' },
+      { name: 'programSummary', description: '节目级总结（为空填"无"）' },
+      { name: 'keywords', description: '节目关键词（顿号分隔，无则为"无"）' },
+      { name: 'segmentId', description: 'segment id' },
+      { name: 'segmentTitle', description: 'segment 标题' },
+      { name: 'segmentStartMs', description: 'segment 起始毫秒' },
+      { name: 'segmentEndMs', description: 'segment 结束毫秒' },
+      { name: 'segmentSummary', description: 'segment 摘要' },
+      { name: 'segmentTranscriptExcerpt', description: 'segment 原始摘录' },
+      { name: 'segmentCues', description: '本段逐句字幕节拍列表（[k] +秒数 文本；索引 k 与运行时 cues 对齐）' },
+      { name: 'cardPrompt', description: '用户单卡追加提示词（风格/语气参考；无则为"无"）' },
+    ],
   },
   'script.review': {
     kind: 'script.review',
@@ -308,5 +334,18 @@ export const PROMPT_KIND_META: Record<PromptKind, PromptKindMeta> = {
       { name: 'aspectRatio', description: '画幅比例：16:9 / 9:16 / 1:1' },
       { name: 'durationSeconds', description: '视频时长（秒），档位由 provider capabilities 决定' },
     ],
+  },
+  'publish.metadata': {
+    kind: 'publish.metadata',
+    label: '发布文案生成',
+    description:
+      '发布选项卡「AI 一键生成」标题 / 简介 / 标签。一次调用同时产出三者，标题按爆款资讯标题统计标准校准。本提示词只写约束规则；【节目内容】与可选的【已有标题】由系统在请求时自动追加为内容消息，无需在此用变量占位。',
+    group: 'project',
+    variables: [],
+    lockedContract: {
+      position: 'user-tail',
+      content: LOCKED_PUBLISH_METADATA,
+      reason: '业务侧按 { title, desc, tags } 解析并回填发布表单；修改会导致生成结果无法落库。',
+    },
   },
 };

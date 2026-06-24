@@ -675,6 +675,9 @@ export function Editor({
 
     const exportStartedAt = Date.now();
     const exportTaskId = `export-video-${exportStartedAt}`;
+    // 给本次导出生成 auto-run jsonl runId，主进程会写 stage.assets/compile-cards/bundle/render
+    // 与 run.start/end，后续"导出慢"诊断时按 AGENTS.md 流程直接读 jsonl 找瓶颈。
+    const telemetryRunId = `export-${exportStartedAt}-${(globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)).slice(0, 8)}`;
     useTaskProgressStore.getState().startTask({
       id: exportTaskId,
       category: 'export',
@@ -694,6 +697,7 @@ export function Editor({
         // 切分后的字幕仅存在于内存 store 中（磁盘 .srt 保持原始 MiniMax 输出），
         // 必须显式传给主进程，导出才能与预览播放器使用同一套切分字幕。
         srtEntries: useTimelineStore.getState().srtEntries,
+        telemetryRunId,
       });
       setExportProgress(1);
       const elapsedMs = Date.now() - exportStartedAt;

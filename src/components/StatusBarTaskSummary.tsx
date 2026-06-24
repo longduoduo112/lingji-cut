@@ -11,6 +11,7 @@ const CATEGORY_ICONS: Record<TaskCategory, string> = {
   'tts': '🎙️',
   'cover': '🖼️',
   'io': '📁',
+  'publish': '📤',
 };
 
 export function StatusBarTaskSummary() {

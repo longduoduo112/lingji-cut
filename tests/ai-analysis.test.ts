@@ -7,6 +7,7 @@ import {
   buildSegmentPlanningPrompt,
   buildPlainTranscriptRange,
   buildSrtText,
+  generateAnimationDirection,
   generateCardForSegment,
   planTranscriptSegments,
   regenerateAICard,
@@ -709,5 +710,53 @@ describe('anchorSegmentsToTranscript', () => {
     );
     // later 段虽含"关键指标"，但单调游标保证它锚到第 3 条（10_000）而非第 1 条
     expect(out.find((s) => s.id === 'later')!.startMs).toBe(10_000);
+  });
+});
+
+describe('generateAnimationDirection', () => {
+  const segment = { id: 'seg-1', title: '增长拐点', summary: '讲三组数据', startMs: 0, endMs: 8000, transcriptExcerpt: '今年用户翻倍', visualType: 'motion' } as any;
+  const entries = [
+    { index: 1, startMs: 0, endMs: 2000, text: '今年用户翻倍' },
+    { index: 2, startMs: 2000, endMs: 4000, text: '硕士28842人' },
+  ] as any;
+  it('renders cards.animation prompt and returns trimmed model text', async () => {
+    const generateText = vi.fn().mockResolvedValue('  视觉母题：折线\n拍1 ｜ 入场 ｜ ...  ');
+    const result = await generateAnimationDirection(entries, { summary: '总结', keywords: ['增长'], globalPrompt: '' }, segment, {} as any, { generateText, projectBindings: undefined });
+    expect(result).toBe('视觉母题：折线\n拍1 ｜ 入场 ｜ ...');
+    const userMessage = generateText.mock.calls[0][2] as string;
+    expect(userMessage).toContain('增长拐点');
+    expect(userMessage).toContain('今年用户翻倍');
+  });
+});
+
+describe('generateCardForSegment auto animationDirection', () => {
+  const baseEntries = [{ index: 1, startMs: 0, endMs: 2000, text: '今年用户翻倍' }] as any;
+  const segment = { id: 's1', title: 'T', summary: 'S', startMs: 0, endMs: 2000, transcriptExcerpt: '今年用户翻倍', visualType: 'motion' } as any;
+  const planning = { summary: 'S', keywords: [], globalPrompt: '' };
+
+  it('auto-generates animationDirection for motion cards and injects it into the card prompt', async () => {
+    const generateText = vi.fn().mockResolvedValue('视觉母题：折线');
+    const generateMotionSource = vi.fn().mockResolvedValue('export default function Card(){return null}');
+    const card = await generateCardForSegment(baseEntries, planning, segment, { autoAnimationDirection: true } as any, { generateText, generateMotionSource, visualType: 'motion', projectBindings: undefined });
+    expect(generateText).toHaveBeenCalled();
+    expect(card.animationDirection).toBe('视觉母题：折线');
+    const cardUserMsg = generateMotionSource.mock.calls[0][2] as string;
+    expect(cardUserMsg).toContain('视觉母题：折线');
+  });
+
+  it('skips animationDirection when autoAnimationDirection is false', async () => {
+    const generateText = vi.fn().mockResolvedValue('视觉母题：折线');
+    const generateMotionSource = vi.fn().mockResolvedValue('export default function Card(){return null}');
+    const card = await generateCardForSegment(baseEntries, planning, segment, { autoAnimationDirection: false } as any, { generateText, generateMotionSource, visualType: 'motion', projectBindings: undefined });
+    expect(generateText).not.toHaveBeenCalled();
+    expect(card.animationDirection).toBeUndefined();
+  });
+
+  it('does not block card generation when animationDirection generation throws', async () => {
+    const generateText = vi.fn().mockRejectedValue(new Error('llm down'));
+    const generateMotionSource = vi.fn().mockResolvedValue('export default function Card(){return null}');
+    const card = await generateCardForSegment(baseEntries, planning, segment, { autoAnimationDirection: true } as any, { generateText, generateMotionSource, visualType: 'motion', projectBindings: undefined });
+    expect(generateMotionSource).toHaveBeenCalled();
+    expect(card.animationDirection).toBeUndefined();
   });
 });

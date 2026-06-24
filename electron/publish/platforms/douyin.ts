@@ -117,10 +117,41 @@ async function _setSelfDeclaration(
 }
 
 /**
- * set_thumbnail (DouYinVideo.set_thumbnail)
- * thumbnail → 竖封面（portrait），opts.thumbnail 对应 Python thumbnail_portrait_path
+ * 在已打开的封面弹窗内，切到指定 tab 并上传一张封面图。
+ * tabText: '设置竖封面'（3:4）/ '设置横封面'（16:9）。
+ * 单张失败不抛出，避免影响另一比例与后续发布。
  */
-async function _setThumbnail(page: Page, thumbnail: string): Promise<void> {
+async function _setDouyinCoverTab(
+  coverLocator: ReturnType<Page['locator']>,
+  tabText: string,
+  imagePath: string,
+): Promise<void> {
+  try {
+    // 切到目标封面 tab（已激活或 tab 不存在时忽略）
+    try {
+      await coverLocator.getByText(tabText, { exact: true }).first().click({ timeout: 3000 });
+      await sleep(800);
+    } catch {
+      /* 已在该 tab 或 tab 不存在 */
+    }
+    // version_2 封面弹窗：input.semi-upload-hidden-input 的 nth(1) 为真正封面上传输入
+    // （nth(0) 为 AI 参考图）。切 tab 后该输入会绑定当前 tab 的封面槽。
+    const coverUpload = coverLocator.locator('input.semi-upload-hidden-input').nth(1);
+    await coverUpload.setInputFiles(imagePath);
+    await sleep(3000);
+  } catch {
+    /* 该比例封面设置失败，跳过 */
+  }
+}
+
+/**
+ * set_thumbnail (DouYinVideo.set_thumbnail)
+ * portrait → 竖封面（3:4），landscape → 横封面（4:3）。两者可只传其一。
+ * 弹窗内有「设置竖封面」「设置横封面」两个 tab，切到对应 tab 后上传到同一隐藏 input。
+ */
+async function _setThumbnail(page: Page, portrait?: string, landscape?: string): Promise<void> {
+  if (!portrait && !landscape) return;
+
   // 先清掉 shepherd 新手引导浮层，否则拦截"选择封面"点击
   await page.evaluate(
     "() => document.querySelectorAll('.shepherd-element,.shepherd-modal-overlay-container').forEach(e=>e.remove())",
@@ -130,22 +161,11 @@ async function _setThumbnail(page: Page, thumbnail: string): Promise<void> {
   const coverLocatorStr = 'div.dy-creator-content-modal';
   const coverLocator = page.locator(coverLocatorStr).first();
   await page.waitForSelector(coverLocatorStr, { timeout: 20_000 });
-
   await sleep(1500);
-  // version_2 封面弹窗有 4 个隐藏 file input；[0]/[1] 是 AI 参考图，[2]/[3] 才是封面。
-  // 取 input.semi-upload-hidden-input 的 nth(1) 即真正封面上传输入。
-  const coverUpload = coverLocator.locator('input.semi-upload-hidden-input').nth(1);
 
-  // 默认走竖封面 tab（与 Python thumbnail_portrait_path 对应）
-  try {
-    await coverLocator.getByText('设置竖封面', { exact: true }).first().click({ timeout: 3000 });
-    await sleep(800);
-  } catch {
-    /* 已在竖封面 tab 或 tab 不存在 */
-  }
-
-  await coverUpload.setInputFiles(thumbnail);
-  await sleep(3000);
+  // 先竖封面（主），再横封面；横封面 tab 文案以站点为准，失败不影响竖封面
+  if (portrait) await _setDouyinCoverTab(coverLocator, '设置竖封面', portrait);
+  if (landscape) await _setDouyinCoverTab(coverLocator, '设置横封面', landscape);
 
   // 点"完成"应用封面（exact 避免误中"完成编辑"）
   await coverLocator.getByRole('button', { name: '完成', exact: true }).first().click();
@@ -334,9 +354,12 @@ export async function uploadDouyinVideo(page: Page, opts: UploadVideoOptions): P
     }
   }
 
-  // 封面
-  if (opts.thumbnail) {
-    await _setThumbnail(page, opts.thumbnail);
+  // 封面：3:4 竖封面 + 4:3 横封面（实测抖音封面弹窗「设置横封面」为 4:3，非 16:9）。
+  // 缺哪个跳过；旧单图走 thumbnail 兜底竖封面。
+  const portraitCover = opts.covers?.['3:4'] ?? opts.thumbnail;
+  const landscapeCover = opts.covers?.['4:3'];
+  if (portraitCover || landscapeCover) {
+    await _setThumbnail(page, portraitCover, landscapeCover);
   }
 
   // 自主声明（抖音必填项，失败自动跳过）

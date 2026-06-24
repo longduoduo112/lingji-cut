@@ -9,7 +9,6 @@ const {
   buildReleaseManifest,
   shouldStageProjectPath,
 } = require('./package-mac-helpers.cjs');
-const { fetchBiliup } = require('./fetch-biliup.cjs');
 
 const rootDir = path.resolve(__dirname, '..');
 const packageJsonPath = path.join(rootDir, 'package.json');
@@ -119,11 +118,23 @@ async function writeStageManifest(stageDir) {
   );
 }
 
+// node-pty 预编译 spawn-helper 经 npm 安装/拷贝后常丢失可执行位（运行时 posix_spawnp failed）。
+// 打包后 .app 可能位于只读位置无法运行时 chmod，故在构建期对 stage 内的 spawn-helper 补 +x。
+function ensureNodePtySpawnHelperExecutable(stageDir) {
+  for (const key of ['darwin-arm64', 'darwin-x64']) {
+    const helper = path.join(stageDir, 'node_modules', 'node-pty', 'prebuilds', key, 'spawn-helper');
+    if (fs.existsSync(helper)) {
+      fs.chmodSync(helper, 0o755);
+    }
+  }
+}
+
 async function createStageDirectory(stageDir) {
   await resetDirectory(stageDir);
   await writeStageManifest(stageDir);
   await stageProjectFiles(stageDir);
   await stageNodeModules(stageDir);
+  ensureNodePtySpawnHelperExecutable(stageDir);
 }
 
 /**
@@ -167,10 +178,8 @@ async function main() {
   await createStageDirectory(stageDir);
   installPlaywrightChromium(stageDir);
 
-  // 下载 biliup 二进制到 stageDir/biliup/<platform-key>/<binary>
-  // 打包后经 asar.unpackDir 解包到 app.asar.unpacked/biliup/...
-  console.log('下载 biliup 二进制到随包目录...');
-  await fetchBiliup(stageDir, { platform: 'darwin', arch });
+  // biliup 二进制不再随包内置：改为运行时按需下载到 <userData>/publish/biliup/，
+  // 由设置页「发布账号」首次选中 B 站时引导下载（electron/publish/biliup-install.ts）。
 
   try {
     const appPaths = await packager({

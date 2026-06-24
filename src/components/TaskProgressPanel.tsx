@@ -12,6 +12,7 @@ const CATEGORY_ICONS: Record<TaskCategory, string> = {
   'tts': '🎙️',
   'cover': '🖼️',
   'io': '📁',
+  'publish': '📤',
 };
 
 const CATEGORY_COLORS: Record<TaskCategory, string> = {
@@ -23,6 +24,7 @@ const CATEGORY_COLORS: Record<TaskCategory, string> = {
   'tts': '#f472b6',
   'cover': '#c084fc',
   'io': '#9ca3af',
+  'publish': '#64d2ff',
 };
 
 function TaskRow({ task }: { task: TaskProgressItem }) {
