@@ -128,6 +128,10 @@ interface RegenerateCardOptions {
   keywords?: string[];
   cardTemplate?: PromptTemplate;
   imageTemplate?: PromptTemplate;
+  /** cards.animation 模板（动画指导）；缺省回退内置默认。 */
+  animationTemplate?: PromptTemplate;
+  /** 手动传入的逐拍动画脚本；缺省沿用既有卡片的 animationDirection。 */
+  animationDirection?: string;
   projectBindings?: PromptBindingMap | null;
 }
 
@@ -398,8 +402,9 @@ function buildMotionCardShell(params: {
   cardPrompt?: string;
   currentCard?: AICard;
   content?: string;
+  animationDirection?: string;
 }): AICard {
-  const { segment, tsx, cardPrompt, currentCard, content } = params;
+  const { segment, tsx, cardPrompt, currentCard, content, animationDirection } = params;
   // 沿用既有卡片的语义类型（重生成保持一致）；新卡片默认 'motion'。image/video 不属于 motion 流程。
   const type: AICardType =
     currentCard && currentCard.type !== 'image' && currentCard.type !== 'video'
@@ -423,6 +428,7 @@ function buildMotionCardShell(params: {
     enabled: currentCard?.enabled !== false,
     style: currentCard?.style ?? getDefaultCardStyle(type),
     cardPrompt: cardPrompt?.trim() || currentCard?.cardPrompt,
+    animationDirection: animationDirection?.trim() || undefined,
     content: content ?? '',
     renderMode: 'motion-card',
     motionCard,
@@ -967,6 +973,7 @@ export function buildSegmentCardPrompt(
     segmentTranscriptExcerpt: truncatePromptValue(segment.transcriptExcerpt ?? '', 260) || '无',
     segmentCues: segmentCues?.trim() ? segmentCues : '  （无逐句字幕节拍可用，按兜底均匀铺满）',
     cardPrompt: truncatePromptValue(cardPrompt ?? '', 240) || '无',
+    animationDirection: truncatePromptValue(animationDirection ?? '', 1200) || '无',
     currentCardSection,
     programContext,
     segmentVisualType: visualType ?? 'motion',
@@ -1253,6 +1260,10 @@ export async function generateCardForSegment(
     currentCard?: AICard;
     cardTemplate?: PromptTemplate;
     imageTemplate?: PromptTemplate;
+    /** cards.animation 模板（动画指导）；缺省回退内置默认。 */
+    animationTemplate?: PromptTemplate;
+    /** 手动传入的逐拍动画脚本；提供则跳过自动生成，直接注入 cards.segment。 */
+    animationDirection?: string;
     projectBindings?: PromptBindingMap | null;
     segmentIndex?: number;
     totalSegments?: number;
@@ -1273,6 +1284,8 @@ export async function generateCardForSegment(
     currentCard,
     cardTemplate,
     imageTemplate,
+    animationTemplate,
+    animationDirection,
     projectBindings,
     segmentIndex,
     totalSegments,
@@ -1307,6 +1320,28 @@ export async function generateCardForSegment(
       currentCard,
     });
   } else {
+    // 动画指导：手动传入优先；否则按开关自动生成（仅 motion 卡）。失败兜底为空串，不阻断出卡。
+    let resolvedAnimationDirection = animationDirection?.trim() || undefined;
+    if (!resolvedAnimationDirection && settings.autoAnimationDirection !== false) {
+      try {
+        resolvedAnimationDirection =
+          (await generateAnimationDirection(entries, planning, segment, settings, {
+            generateText: requestText,
+            cardPrompt,
+            animationTemplate,
+            projectBindings,
+          })) || undefined;
+      } catch (err) {
+        telemetry?.emit('llm.end', {
+          label: `cards.animation(${segment.id})`,
+          attempt: 0,
+          durationMs: 0,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     // 只发段内逐字稿（含 ±2s 缓冲），而不是整篇 SRT，显著降低单次请求体积
     const segmentTranscript = buildSrtTextRange(entries, segment.startMs, segment.endMs);
 
@@ -1331,6 +1366,7 @@ export async function generateCardForSegment(
           keywords: planning.keywords,
           visualType,
           segmentCues: buildSegmentCuesBlock(entries, segment.startMs, segment.endMs),
+          animationDirection: resolvedAnimationDirection,
         },
         cardTemplate,
       ),
@@ -1347,6 +1383,7 @@ export async function generateCardForSegment(
       cardPrompt,
       currentCard,
       content: verbatim || segment.summary,
+      animationDirection: resolvedAnimationDirection,
     });
   }
 
@@ -1746,6 +1783,8 @@ export async function regenerateAICard(
     keywords = [],
     cardTemplate,
     imageTemplate,
+    animationTemplate,
+    animationDirection = card.animationDirection,
     projectBindings,
   } = options;
 
