@@ -18,6 +18,9 @@ import type { PublishAccount, PublishPlatform } from '../../lib/electron-api';
 import styles from './PublishAccountsTab.module.css';
 
 const BILIUP_TASK_ID = 'biliup-download';
+const CHROMIUM_TASK_ID = 'chromium-download';
+// 需要 Chromium 自动化的平台（B 站走 biliup，不在此列）
+const CHROMIUM_PLATFORMS = new Set<PublishPlatform>(['douyin', 'tencent', 'xiaohongshu', 'kuaishou']);
 
 function formatMB(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -103,6 +106,10 @@ export function PublishAccountsTab() {
   const [biliupInstalled, setBiliupInstalled] = useState<boolean | null>(null);
   const [biliupDownloading, setBiliupDownloading] = useState(false);
 
+  // Chromium 自动化组件安装状态：null=未知/检测中
+  const [chromiumInstalled, setChromiumInstalled] = useState<boolean | null>(null);
+  const [chromiumDownloading, setChromiumDownloading] = useState(false);
+
   const unsubQrcodeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -125,6 +132,24 @@ export function PublishAccountsTab() {
       })
       .catch(() => {
         if (!cancelled) setBiliupInstalled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [platform]);
+
+  // 选中需要 Chromium 的平台时检测是否已安装
+  useEffect(() => {
+    if (!CHROMIUM_PLATFORMS.has(platform)) return;
+    let cancelled = false;
+    setChromiumInstalled(null);
+    window.publishAPI
+      .getChromiumStatus()
+      .then((s) => {
+        if (!cancelled) setChromiumInstalled(s.installed);
+      })
+      .catch(() => {
+        if (!cancelled) setChromiumInstalled(false);
       });
     return () => {
       cancelled = true;
@@ -175,6 +200,50 @@ export function PublishAccountsTab() {
     } finally {
       unsub();
       setBiliupDownloading(false);
+    }
+  };
+
+  const handleDownloadChromium = async () => {
+    const { startTask, updateTask, completeTask, failTask } = useTaskProgressStore.getState();
+    setChromiumDownloading(true);
+    startTask({
+      id: CHROMIUM_TASK_ID,
+      category: 'publish',
+      label: '下载浏览器组件（Chromium）',
+      mode: 'indeterminate',
+      progress: 0,
+      phase: '准备中',
+      level: 0,
+      canCancel: false,
+    });
+    const unsub = window.publishAPI.onChromiumDownloadProgress((p) => {
+      if (p.phase === 'download' && typeof p.percent === 'number') {
+        updateTask(CHROMIUM_TASK_ID, {
+          mode: 'determinate',
+          progress: Math.min(100, Math.round(p.percent)),
+          phase: p.total ? `下载中 · 共 ${formatMB(p.total)}` : '下载中',
+        });
+      } else {
+        const phaseLabel = p.phase === 'resolve' ? '解析版本' : p.phase === 'install' ? '安装中' : '下载中';
+        updateTask(CHROMIUM_TASK_ID, { mode: 'indeterminate', phase: phaseLabel });
+      }
+    });
+    try {
+      const res = await window.publishAPI.downloadChromium();
+      if (res.success) {
+        completeTask(CHROMIUM_TASK_ID);
+        setChromiumInstalled(true);
+        setLoginMsg({ text: '浏览器组件安装完成，可以登录/发布了', isError: false });
+      } else {
+        failTask(CHROMIUM_TASK_ID, res.error || '下载失败');
+        setLoginMsg({ text: res.error || '浏览器组件下载失败', isError: true });
+      }
+    } catch (err: unknown) {
+      failTask(CHROMIUM_TASK_ID, err instanceof Error ? err.message : '下载异常');
+      setLoginMsg({ text: err instanceof Error ? err.message : '下载异常', isError: true });
+    } finally {
+      unsub();
+      setChromiumDownloading(false);
     }
   };
 
@@ -268,6 +337,9 @@ export function PublishAccountsTab() {
 
   // B 站需要 biliup 组件：未安装时禁用登录，引导先下载
   const biliupMissing = platform === 'bilibili' && biliupInstalled === false;
+
+  // 需要 Chromium 的平台：未安装时禁用登录，引导先下载
+  const chromiumMissing = CHROMIUM_PLATFORMS.has(platform) && chromiumInstalled === false;
 
   return (
     <div className={styles.container}>
@@ -373,7 +445,7 @@ export function PublishAccountsTab() {
             type="button"
             variant="primary"
             onClick={() => void handleLogin()}
-            disabled={loginBusy || biliupMissing}
+            disabled={loginBusy || biliupMissing || chromiumMissing}
             leftIcon={
               loginBusy ? (
                 <Spinner size={13} className={styles.spinning} />
@@ -406,6 +478,30 @@ export function PublishAccountsTab() {
               }
             >
               {biliupDownloading ? '下载中…' : '下载 B 站上传组件'}
+            </Button>
+          </div>
+        ) : null}
+
+        {chromiumMissing ? (
+          <div className={styles.biliupNotice}>
+            <span className={styles.biliupNoticeText}>
+              抖音 / 视频号 / 小红书 / 快手发布需要浏览器组件（Chromium），首次使用请先下载（约 150MB，已走国内镜像加速）。
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              onClick={() => void handleDownloadChromium()}
+              disabled={chromiumDownloading}
+              leftIcon={
+                chromiumDownloading ? (
+                  <Spinner size={12} className={styles.spinning} />
+                ) : (
+                  <Download size={12} />
+                )
+              }
+            >
+              {chromiumDownloading ? '下载中…' : '下载浏览器组件'}
             </Button>
           </div>
         ) : null}

@@ -781,4 +781,17 @@ contextBridge.exposeInMainWorld('publishAPI', {
     ipcRenderer.on('publish:biliup-download-progress', handler);
     return () => ipcRenderer.removeListener('publish:biliup-download-progress', handler);
   },
+  getChromiumStatus: () => ipcRenderer.invoke('publish:chromium-status'),
+  downloadChromium: () => ipcRenderer.invoke('publish:download-chromium'),
+  cancelChromiumDownload: () => ipcRenderer.invoke('publish:cancel-chromium-download'),
+  onChromiumDownloadProgress: (
+    cb: (p: { phase: string; percent?: number; received?: number; total?: number }) => void,
+  ) => {
+    const handler = (
+      _e: unknown,
+      p: { phase: string; percent?: number; received?: number; total?: number },
+    ) => cb(p);
+    ipcRenderer.on('publish:chromium-download-progress', handler);
+    return () => ipcRenderer.removeListener('publish:chromium-download-progress', handler);
+  },
 });

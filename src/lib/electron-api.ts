@@ -705,6 +705,12 @@ export interface PublishAPI {
   /** 下载并安装 biliup 到用户目录；过程经 onBiliupDownloadProgress 回报。 */
   downloadBiliup(): Promise<BiliupDownloadResult>;
   onBiliupDownloadProgress(cb: (p: BiliupDownloadProgress) => void): () => void;
+  /** 查询 Chromium（playwright 浏览器）是否已安装到用户目录。 */
+  getChromiumStatus(): Promise<ChromiumStatus>;
+  /** 下载并安装 Chromium 到用户目录；过程经 onChromiumDownloadProgress 回报。 */
+  downloadChromium(): Promise<ChromiumDownloadResult>;
+  cancelChromiumDownload(): Promise<void>;
+  onChromiumDownloadProgress(cb: (p: ChromiumDownloadProgress) => void): () => void;
 }
 
 export interface BiliupStatus {
@@ -723,6 +729,24 @@ export interface BiliupDownloadProgress {
   received?: number;
   total?: number;
   speed?: number;
+}
+
+export interface ChromiumStatus {
+  installed: boolean;
+  path: string;
+  executablePath?: string;
+}
+
+export interface ChromiumDownloadResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface ChromiumDownloadProgress {
+  phase: 'resolve' | 'download' | 'install' | string;
+  percent?: number;
+  received?: number;
+  total?: number;
 }
 
 declare global {

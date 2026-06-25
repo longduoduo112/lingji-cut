@@ -5,6 +5,7 @@ import { getPlatform } from './platforms';
 import { parseAccountId } from './account-id';
 import { runPublishJob } from './runner';
 import { getBiliupStatus, downloadBiliup } from './biliup-install';
+import { getChromiumStatus, downloadChromium } from './chromium-install';
 import type { PublishJob, PublishPlatform } from './types';
 
 let store: AccountStore | null = null;
@@ -72,5 +73,27 @@ export function registerPublishIpc(): void {
     } finally {
       downloading = false;
     }
+  });
+
+  // ─── Chromium 运行时按需下载（抖音/视频号/小红书/快手自动化所需） ───────────────
+  ipcMain.handle('publish:chromium-status', () => getChromiumStatus());
+
+  let chromiumAbort: AbortController | null = null;
+  ipcMain.handle('publish:download-chromium', async (e) => {
+    if (chromiumAbort) {
+      return { success: false, error: '正在下载中，请稍候' };
+    }
+    chromiumAbort = new AbortController();
+    try {
+      return await downloadChromium(
+        (p) => e.sender.send('publish:chromium-download-progress', p),
+        chromiumAbort.signal,
+      );
+    } finally {
+      chromiumAbort = null;
+    }
+  });
+  ipcMain.handle('publish:cancel-chromium-download', () => {
+    chromiumAbort?.abort();
   });
 }

@@ -1,6 +1,7 @@
 import type { BrowserContext } from 'playwright';
 import { join } from 'node:path';
 import { applyStealth } from './stealth';
+import { getChromiumStatus } from './chromium-install';
 
 interface ContextOpts {
   storageStatePath?: string;
@@ -8,7 +9,7 @@ interface ContextOpts {
 }
 
 /**
- * 在打包 Electron 环境下，将 PLAYWRIGHT_BROWSERS_PATH 指向 app.asar.unpacked 内的随包 Chromium。
+ * 在打包 Electron 环境下，将 PLAYWRIGHT_BROWSERS_PATH 指向 userData/publish/chromium（运行时下载）。
  * - 仅在真实 launch 路径调用（测试注入 playwrightModule 时整个函数不会被调用）。
  * - 开发模式（app.isPackaged === false）不设置，使用开发机已安装的浏览器。
  * - 纯 Node/Vitest 环境：process.resourcesPath 未定义，提前 return，无副作用。
@@ -20,11 +21,8 @@ async function ensurePlaywrightBrowsersPath(): Promise<void> {
   try {
     const { app } = await import('electron');
     if (!app.isPackaged) return; // 开发模式，playwright 用系统已安装浏览器
-    process.env.PLAYWRIGHT_BROWSERS_PATH = join(
-      resourcesPath,
-      'app.asar.unpacked',
-      'playwright-browsers',
-    );
+    // Chromium 改为运行时下载到 userData/publish/chromium（见 chromium-install.ts getChromiumRoot）
+    process.env.PLAYWRIGHT_BROWSERS_PATH = join(app.getPath('userData'), 'publish', 'chromium');
   } catch {
     // 非 Electron 运行时（理论上不会到这里），忽略
   }
@@ -38,6 +36,9 @@ export async function withContext<T>(
 ): Promise<T> {
   if (!playwrightModule) {
     await ensurePlaywrightBrowsersPath();
+    if (!getChromiumStatus().installed) {
+      throw new Error('CHROMIUM_NOT_INSTALLED');
+    }
   }
   const pw = playwrightModule ?? (await import('playwright'));
   const browser = await pw.chromium.launch({ headless: opts.headless });
