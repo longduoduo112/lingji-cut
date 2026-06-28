@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build and upload, for example v1.3.1'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -16,10 +22,12 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.19.0
 
       - name: Install dependencies (official registry)
         run: npm install --registry https://registry.npmjs.org/
@@ -29,6 +37,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Build CLI
+        run: npm run build:cli
+
+      - name: Bundle Remotion
+        run: npm run bundle:remotion
 
       - name: Package macOS app
         run: npm run package:mac
@@ -45,15 +59,18 @@ jobs:
         with:
           name: mac-${{ matrix.arch }}
           path: release/*.dmg
+          if-no-files-found: error
 
   build-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.19.0
 
       - name: Install dependencies (official registry)
         run: npm install --registry https://registry.npmjs.org/
@@ -63,6 +80,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Build CLI
+        run: npm run build:cli
+
+      - name: Bundle Remotion
+        run: npm run bundle:remotion
 
       - name: Package Windows app
         run: npm run package:win
@@ -84,6 +107,7 @@ jobs:
         with:
           name: win-x64
           path: release/*.zip
+          if-no-files-found: error
 
   publish-release:
     needs: [build-mac, build-windows]
@@ -103,4 +127,6 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           files: artifacts/*
+          fail_on_unmatched_files: true
