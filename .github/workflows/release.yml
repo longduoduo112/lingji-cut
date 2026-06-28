@@ -124,9 +124,32 @@ jobs:
       - name: List artifacts
         run: ls -lhR artifacts/
 
+      - name: Normalize release asset names
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          version="${tag#v}"
+          mkdir -p release-assets
+
+          mac_arm64="$(find artifacts -type f -name '*arm64.dmg' -print -quit)"
+          mac_x64="$(find artifacts -type f -name '*x64.dmg' -print -quit)"
+          win_x64="$(find artifacts -type f -name '*win-x64.zip' -print -quit)"
+
+          test -n "$mac_arm64"
+          test -n "$mac_x64"
+          test -n "$win_x64"
+
+          cp "$mac_arm64" "release-assets/lingji-cut-${version}-mac-arm64.dmg"
+          cp "$mac_x64" "release-assets/lingji-cut-${version}-mac-x64.dmg"
+          cp "$win_x64" "release-assets/lingji-cut-${version}-win-x64.zip"
+
+          ls -lh release-assets/
+
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          files: artifacts/*
+          files: release-assets/*
           fail_on_unmatched_files: true
