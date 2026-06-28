@@ -18,6 +18,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Download,
 } from 'lucide-react';
 import { Alert, Button, ConfirmDialog } from '../../ui';
 import {
@@ -32,6 +33,9 @@ interface SonarInboxPanelProps {
 }
 
 const COLLAPSE_KEY = 'sonar-inbox-collapsed';
+const SONAR_EXTENSION_VERSION = '0.1.0';
+const SONAR_EXTENSION_DOWNLOAD_URL =
+  'https://yoqu.github.io/lingji-cut-homepage/downloads/lingji-caifeng-chrome-extension-v0.1.0.zip';
 
 const STATUS_LABEL: Record<SonarInboxItem['status'], string> = {
   pending: '待创作',
@@ -103,6 +107,7 @@ export function SonarInboxPanel({ onRequestDraft }: SonarInboxPanelProps) {
   const [showBridge, setShowBridge] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [downloadUrlCopied, setDownloadUrlCopied] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -182,6 +187,21 @@ export function SonarInboxPanel({ onRequestDraft }: SonarInboxPanelProps) {
     });
   }, [bridge]);
 
+  const openExtensionDownload = useCallback(() => {
+    if (api?.openExternal) {
+      api.openExternal(SONAR_EXTENSION_DOWNLOAD_URL);
+      return;
+    }
+    window.open(SONAR_EXTENSION_DOWNLOAD_URL, '_blank', 'noopener,noreferrer');
+  }, [api]);
+
+  const copyExtensionDownloadUrl = useCallback(() => {
+    void navigator.clipboard?.writeText(SONAR_EXTENSION_DOWNLOAD_URL).then(() => {
+      setDownloadUrlCopied(true);
+      setTimeout(() => setDownloadUrlCopied(false), 1500);
+    });
+  }, []);
+
   // 桌面端 IPC 不可用（如纯 web）或为空且无桥信息：不渲染。
   if (!api?.sonarInboxList) return null;
   if (!loading && items.length === 0 && !bridge) return null;
@@ -234,6 +254,22 @@ export function SonarInboxPanel({ onRequestDraft }: SonarInboxPanelProps) {
       </header>
       <p className={styles.subtitle}>来自声呐监听的二创素材</p>
 
+      <div className={styles.extensionBox}>
+        <div className={styles.extensionInfo}>
+          <span className={styles.extensionTitle}>灵机采风插件 v{SONAR_EXTENSION_VERSION}</span>
+          <code className={styles.extensionUrl}>{SONAR_EXTENSION_DOWNLOAD_URL}</code>
+        </div>
+        <div className={styles.extensionActions}>
+          <button className={styles.downloadBtn} onClick={openExtensionDownload}>
+            <Download size={13} />
+            下载
+          </button>
+          <button className={styles.iconBtn} onClick={copyExtensionDownloadUrl} title="复制下载地址">
+            <Copy size={13} className={downloadUrlCopied ? styles.copiedIcon : undefined} />
+          </button>
+        </div>
+      </div>
+
       {showBridge && bridge ? (
         <div className={styles.bridgeBox}>
           <div className={styles.bridgeRow}>
@@ -249,8 +285,8 @@ export function SonarInboxPanel({ onRequestDraft }: SonarInboxPanelProps) {
             {copied ? <span className={styles.copied}>已复制</span> : null}
           </div>
           <p className={styles.bridgeHint}>
-            ① 安装并打开「声呐」浏览器扩展（Chrome → 扩展程序 → 加载 <code>extensions/sonar/dist</code>）。
-            ② 在扩展「设置 → 灵机剪影联动」点「🔗 一键连接灵机剪影」即可，无需手动复制以上 token。
+            ① 下载 ZIP 并解压。② 打开 Chrome → 扩展程序 → 开发者模式 → 加载已解压的扩展程序。
+            ③ 在扩展「设置 → 灵机剪影联动」点「一键连接灵机剪影」即可。
           </p>
         </div>
       ) : null}

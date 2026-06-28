@@ -21,9 +21,32 @@
 ### 环境要求
 
 - Chrome / Chromium **116 及以上**
-- Node.js + npm（仅构建时需要）
+- Node.js + npm（仅源码构建时需要）
 
-### 构建并加载
+### 官网 ZIP 安装（推荐）
+
+下载地址：
+
+```text
+https://yoqu.github.io/lingji-cut-homepage/downloads/lingji-caifeng-chrome-extension-v0.1.0.zip
+```
+
+安装到 Chrome：
+
+1. 下载 ZIP 后解压，得到 `lingji-caifeng-chrome-extension-v0.1.0` 文件夹。
+2. 打开 `chrome://extensions/`。
+3. 右上角打开「开发者模式」。
+4. 点击「加载已解压的扩展程序」。
+5. 选择刚解压出来的 `lingji-caifeng-chrome-extension-v0.1.0` 文件夹。
+6. 工具栏出现「灵机采风」图标即安装成功。
+
+可选校验：
+
+```text
+SHA256 5e6451ed56e7202e52a961c3b7e665d7756551e7ee0f8c4624914731929b8a3e
+```
+
+### 源码构建并加载
 
 ```bash
 cd extensions/sonar
@@ -33,7 +56,7 @@ npm run build    # 类型检查 + Vite 构建，输出到 extensions/sonar/dist/
 
 > `prebuild` / `predev` 会自动执行 `scripts/copy-ffmpeg-assets.mjs`，把 `ffmpeg.wasm` 资源拷进工程（这些资源不入库）。
 
-加载到 Chrome：
+源码加载到 Chrome：
 
 1. 打开 `chrome://extensions/`。
 2. 右上角打开「开发者模式」。
