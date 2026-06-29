@@ -332,8 +332,11 @@ docs/superpowers/        设计规格与实施计划沉淀
 
 - X / Twitter：[@LYoqu60097](https://x.com/LYoqu60097)
 - 微信：`yoqu2020`
+- 微信群：扫码加入灵机剪影交流
 
-  ![微信二维码](docs/contact/wechat-qr.png)
+| 微信群交流 | 联系作者 |
+| --- | --- |
+| <img src="https://raw.githubusercontent.com/yoqu/lingji-cut/main/docs/assets/wechat-group-qr.jpg" alt="灵机剪影微信群二维码" width="220" /> | <img src="https://raw.githubusercontent.com/yoqu/lingji-cut/main/docs/assets/wechat-author-qr.png" alt="作者微信二维码" width="220" /> |
 
 ## License
 
