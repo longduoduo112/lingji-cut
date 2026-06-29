@@ -8,11 +8,13 @@
 
 它不是单一的视频播放器或字幕工具，而是面向内容创作者的桌面端创作环境。你可以从一份原始素材开始，逐步生成口播稿、音频、字幕、信息卡和最终视频，也可以直接导入已有音频 / 字幕进入编辑器。
 
-## 微信群交流
+## 交流与联系
 
-欢迎扫码加入灵机剪影微信群，交流使用体验、功能建议和 AI 视频创作工作流。
+欢迎扫码加入灵机剪影微信群，交流使用体验、功能建议和 AI 视频创作工作流；也可以通过作者微信直接联系我。
 
-<img src="docs/assets/wechat-group-qr.jpg" alt="灵机剪影微信群二维码" width="240" />
+| 微信群交流 | 联系作者 |
+| --- | --- |
+| <img src="https://raw.githubusercontent.com/yoqu/lingji-cut/main/docs/assets/wechat-group-qr.jpg" alt="灵机剪影微信群二维码" width="220" /> | <img src="https://raw.githubusercontent.com/yoqu/lingji-cut/main/docs/assets/wechat-author-qr.png" alt="作者微信二维码" width="220" /> |
 
 ### AI 视频创作全流程
 
