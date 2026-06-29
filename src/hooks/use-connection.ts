@@ -18,6 +18,7 @@ export function useConnection(conversationId: number) {
     sendPrompt: (contents: PromptInputBlock[], opts?: { model?: string; reasoning?: string; skillIds?: string[] }) =>
       connections.sendPrompt(conversationId, contents, opts),
     cancelTurn: () => connections.cancelTurn(conversationId),
+    reportError: (message: string) => connections.reportError(conversationId, message),
     setMode: (modeId: string) => connections.setMode(conversationId, modeId),
     setConfigOption: (configId: string, valueId: string) =>
       connections.setConfigOption(conversationId, configId, valueId),

@@ -267,6 +267,8 @@ export interface AcpConnectionsContextValue {
     opts?: { model?: string; reasoning?: string; skillIds?: string[] },
   ) => Promise<void>;
   cancelTurn: (conversationId: number) => Promise<void>;
+  /** 把一条错误注入会话流（error block），用于发送/连接动作失败时给用户可见反馈。 */
+  reportError: (conversationId: number, message: string) => void;
   setMode: (conversationId: number, modeId: string) => Promise<void>;
   setConfigOption: (conversationId: number, configId: string, valueId: string) => Promise<void>;
   respondPermission: (conversationId: number, requestId: string, optionId: string) => Promise<void>;
@@ -601,6 +603,9 @@ export function AcpConnectionsProvider({ children }: AcpConnectionsProviderProps
       ...current,
       status: 'prompting',
       error: null,
+      // 上一轮以 error 终态残留的 liveMessage（含 error block）在新一轮起始时清掉，
+      // 避免旧错误块与本轮回复混在一起。prompting 中途追加消息则保留 liveMessage。
+      liveMessage: current.status === 'error' ? null : current.liveMessage,
     }));
 
     // 首条消息自动命名：提取文本内容作为会话标题（截取前 80 字符）
@@ -632,6 +637,20 @@ export function AcpConnectionsProvider({ children }: AcpConnectionsProviderProps
       }));
       throw error;
     }
+  }
+
+  // 发送 / 连接动作失败时的统一可见反馈：清掉活跃轮标记，置 error 终态，并把错误
+  // 作为 error block 追加进 liveMessage——与 runtime emit 'error' 事件同一渲染路径
+  // （MessageList → AssistantMessage → ErrorBlock），避免错误只进 connection.error
+  // 却无处呈现，导致面板静默停止。
+  function reportError(conversationId: number, message: string): void {
+    activePromptIdsRef.current.delete(conversationId);
+    updateConversationState(conversationId, (current) =>
+      nextLiveMessageBlock(
+        { ...current, status: 'error', error: message },
+        { type: 'error', message },
+      ),
+    );
   }
 
   async function cancelTurn(conversationId: number): Promise<void> {
@@ -688,6 +707,7 @@ export function AcpConnectionsProvider({ children }: AcpConnectionsProviderProps
     disconnect,
     sendPrompt,
     cancelTurn,
+    reportError,
     setMode,
     setConfigOption,
     respondPermission,

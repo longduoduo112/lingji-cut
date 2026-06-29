@@ -219,7 +219,6 @@ export function ChatPane({
   const handleSend = useCallback(
     async (blocks: PromptInputBlock[]) => {
       if (!conversationId || !projectDir) return;
-      await ensureConnected();
       const opts: { model?: string; reasoning?: string; skillIds?: string[] } = {};
       if (selectedModel) opts.model = selectedModel;
       if (selectedReasoning) opts.reasoning = selectedReasoning;
@@ -230,7 +229,14 @@ export function ChatPane({
         .join(' ');
       const skillIds = parseSkillTokens(text);
       if (skillIds.length > 0) opts.skillIds = skillIds;
-      await connection.send(blocks, Object.keys(opts).length > 0 ? opts : undefined);
+      // 连接 / 发送任一步失败（模型不可用、未连接、IPC 报错等）都在此统一兜底，
+      // 把错误 surface 成会话流内的 error block，避免面板静默停止、用户无从判断。
+      try {
+        await ensureConnected();
+        await connection.send(blocks, Object.keys(opts).length > 0 ? opts : undefined);
+      } catch (error) {
+        connection.reportError(error instanceof Error ? error.message : String(error));
+      }
     },
     [conversationId, projectDir, ensureConnected, connection, selectedModel, selectedReasoning],
   );
