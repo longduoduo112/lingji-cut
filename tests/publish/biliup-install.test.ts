@@ -11,6 +11,7 @@ import {
   withProxy,
   buildDownloadCandidates,
   getBiliupDestRoot,
+  downloadBiliup,
 } from '../../electron/publish/biliup-install';
 
 const ASSETS = [
@@ -76,5 +77,14 @@ describe('代理优先 URL 生成', () => {
 describe('getBiliupDestRoot', () => {
   it('落在 userData/publish 下', () => {
     expect(getBiliupDestRoot()).toBe('/tmp/userData-userData/publish');
+  });
+});
+
+describe('downloadBiliup 取消', () => {
+  it('signal 已 abort 时直接返回已取消，不触发网络解析', async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const res = await downloadBiliup(undefined, ac.signal);
+    expect(res).toEqual({ success: false, error: '已取消' });
   });
 });

@@ -776,6 +776,7 @@ contextBridge.exposeInMainWorld('publishAPI', {
   },
   getBiliupStatus: () => ipcRenderer.invoke('publish:biliup-status'),
   downloadBiliup: () => ipcRenderer.invoke('publish:download-biliup'),
+  cancelBiliupDownload: () => ipcRenderer.invoke('publish:cancel-biliup-download'),
   onBiliupDownloadProgress: (
     cb: (p: { phase: string; received?: number; total?: number; speed?: number }) => void,
   ) => {

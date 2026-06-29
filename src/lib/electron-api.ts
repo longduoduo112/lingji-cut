@@ -715,53 +715,55 @@ export interface PublishAPI {
   onQrcode(cb: (p: { platform: string; accountName: string; png: string }) => void): () => void;
   onProgress(cb: (payload: PublishProgressPayload) => void): () => void;
   /** 查询 B 站 biliup 二进制是否已安装到用户目录。 */
-  getBiliupStatus(): Promise<BiliupStatus>;
+  getBiliupStatus(): Promise<DependencyStatus>;
   /** 下载并安装 biliup 到用户目录；过程经 onBiliupDownloadProgress 回报。 */
-  downloadBiliup(): Promise<BiliupDownloadResult>;
-  onBiliupDownloadProgress(cb: (p: BiliupDownloadProgress) => void): () => void;
+  downloadBiliup(): Promise<DependencyDownloadResult>;
+  cancelBiliupDownload(): Promise<void>;
+  onBiliupDownloadProgress(cb: (p: DependencyDownloadProgress) => void): () => void;
   /** 查询 Chromium（playwright 浏览器）是否已安装到用户目录。 */
-  getChromiumStatus(): Promise<ChromiumStatus>;
+  getChromiumStatus(): Promise<DependencyStatus>;
   /** 下载并安装 Chromium 到用户目录；过程经 onChromiumDownloadProgress 回报。 */
-  downloadChromium(): Promise<ChromiumDownloadResult>;
+  downloadChromium(): Promise<DependencyDownloadResult>;
   cancelChromiumDownload(): Promise<void>;
-  onChromiumDownloadProgress(cb: (p: ChromiumDownloadProgress) => void): () => void;
+  onChromiumDownloadProgress(cb: (p: DependencyDownloadProgress) => void): () => void;
 }
 
-export interface BiliupStatus {
+/** 依赖（biliup / chromium）安装状态。 */
+export interface DependencyStatus {
   installed: boolean;
   path: string;
+  /** 可执行文件完整路径（chromium 提供）。 */
+  executablePath?: string;
 }
 
-export interface BiliupDownloadResult {
+/** 依赖下载结果。 */
+export interface DependencyDownloadResult {
   success: boolean;
   path?: string;
   error?: string;
 }
 
-export interface BiliupDownloadProgress {
+/** 依赖下载进度。biliup 走 received/total/speed 字节型；chromium 走 percent 百分比型。 */
+export interface DependencyDownloadProgress {
   phase: 'resolve' | 'download' | 'extract' | 'install' | string;
+  percent?: number;
   received?: number;
   total?: number;
   speed?: number;
 }
 
-export interface ChromiumStatus {
-  installed: boolean;
-  path: string;
-  executablePath?: string;
-}
-
-export interface ChromiumDownloadResult {
-  success: boolean;
-  error?: string;
-}
-
-export interface ChromiumDownloadProgress {
-  phase: 'resolve' | 'download' | 'install' | string;
-  percent?: number;
-  received?: number;
-  total?: number;
-}
+/** @deprecated 改用 DependencyStatus。 */
+export type BiliupStatus = DependencyStatus;
+/** @deprecated 改用 DependencyStatus。 */
+export type ChromiumStatus = DependencyStatus;
+/** @deprecated 改用 DependencyDownloadResult。 */
+export type BiliupDownloadResult = DependencyDownloadResult;
+/** @deprecated 改用 DependencyDownloadResult。 */
+export type ChromiumDownloadResult = DependencyDownloadResult;
+/** @deprecated 改用 DependencyDownloadProgress。 */
+export type BiliupDownloadProgress = DependencyDownloadProgress;
+/** @deprecated 改用 DependencyDownloadProgress。 */
+export type ChromiumDownloadProgress = DependencyDownloadProgress;
 
 declare global {
   interface Window {

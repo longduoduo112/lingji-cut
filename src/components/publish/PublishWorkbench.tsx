@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Upload, Film, Image as ImageIcon, Tag, Check, X, Loader2, ChevronDown, ChevronRight, Sparkles, Download, History, RotateCcw, LogIn } from 'lucide-react';
+import { Upload, Film, Image as ImageIcon, Tag, Check, X, Loader2, ChevronDown, ChevronRight, Sparkles, History, RotateCcw, LogIn } from 'lucide-react';
 import { Button, Checkbox, ConfirmDialog, Field, Input, Select } from '../../ui';
 import {
   BILIBILI_PARTITIONS,
   findPartition,
 } from '../../lib/publish/bilibili-partitions';
 import { CHROMIUM_PLATFORMS } from '../../lib/publish/chromium-platforms';
+import { DependencyDownloadNotice } from './DependencyDownloadCard';
 import { Spinner } from '../../ui/primitives/Spinner';
 import { usePublishStore, type PublishResult } from '../../store/publish';
-import { useTaskProgressStore } from '../../store/task-progress';
 import { loadAISettings, useAIStore } from '../../store/ai';
 import { useTimelineStore } from '../../store/timeline';
 import type { PublishAccount, PublishShared, PublishTarget } from '../../lib/electron-api';
@@ -62,8 +62,6 @@ function buildMetadataSource(analysis: AIAnalysisResult | null, srtText: string)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const CHROMIUM_TASK_ID = 'chromium-download';
 
 const PLATFORM_LABEL: Record<string, string> = {
   douyin: '抖音',
@@ -394,7 +392,6 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
 
   // Chromium 自动化组件安装状态：null=未知/检测中
   const [chromiumInstalled, setChromiumInstalled] = useState<boolean | null>(null);
-  const [chromiumDownloading, setChromiumDownloading] = useState(false);
 
   // 发布历史（随项目持久化，新→旧）
   const [historyEntries, setHistoryEntries] = useState<PublishHistoryEntry[]>([]);
@@ -463,46 +460,6 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
       cancelled = true;
     };
   }, [needsChromium]);
-
-  const handleDownloadChromium = async () => {
-    const { startTask, updateTask, completeTask, failTask } = useTaskProgressStore.getState();
-    setChromiumDownloading(true);
-    startTask({
-      id: CHROMIUM_TASK_ID,
-      category: 'publish',
-      label: '下载浏览器组件（Chromium）',
-      mode: 'indeterminate',
-      progress: 0,
-      phase: '准备中',
-      level: 0,
-      canCancel: false,
-    });
-    const unsub = window.publishAPI.onChromiumDownloadProgress((p) => {
-      if (p.phase === 'download' && typeof p.percent === 'number') {
-        updateTask(CHROMIUM_TASK_ID, { mode: 'determinate', progress: Math.min(100, Math.round(p.percent)), phase: '下载中' });
-      } else {
-        const phaseLabel = p.phase === 'resolve' ? '解析版本' : p.phase === 'install' ? '安装中' : '下载中';
-        updateTask(CHROMIUM_TASK_ID, { mode: 'indeterminate', phase: phaseLabel });
-      }
-    });
-    try {
-      const res = await window.publishAPI.downloadChromium();
-      if (res.success) {
-        completeTask(CHROMIUM_TASK_ID);
-        setChromiumInstalled(true);
-        setValidationError(null);
-      } else {
-        failTask(CHROMIUM_TASK_ID, res.error || '下载失败');
-        setValidationError(res.error || '浏览器组件下载失败');
-      }
-    } catch (err) {
-      failTask(CHROMIUM_TASK_ID, err instanceof Error ? err.message : '下载异常');
-      setValidationError(err instanceof Error ? err.message : '浏览器组件下载异常');
-    } finally {
-      unsub();
-      setChromiumDownloading(false);
-    }
-  };
 
   // ── 联动编辑器：同会话刚导出且属于当前项目时，立即反映到视频文件输入 ──
   // lastExportPath 为全局态、跨项目不清空，必须按当前 projectDir 过滤，避免串用上一个项目的成片。
@@ -1309,40 +1266,14 @@ export function PublishWorkbench({ projectDir }: { projectDir: string | null }) 
 
         {/* Chromium 组件门控提示：未安装时引导下载，禁用发布 */}
         {chromiumMissing && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              flexWrap: 'wrap',
-              padding: '12px 14px',
-              borderRadius: 8,
-              border: '1px solid color-mix(in srgb, var(--color-warning, #f59e0b) 40%, transparent)',
-              background: 'color-mix(in srgb, var(--color-warning, #f59e0b) 8%, transparent)',
+          <DependencyDownloadNotice
+            kind="chromium"
+            onSuccess={() => {
+              setChromiumInstalled(true);
+              setValidationError(null);
             }}
-          >
-            <span style={{ flex: 1, minWidth: 240, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-              抖音 / 视频号 / 小红书 / 快手发布需要浏览器组件（Chromium），首次使用请先下载（约 150MB，已走国内镜像加速）。
-            </span>
-            <Button
-              variant="primary"
-              onClick={() => void handleDownloadChromium()}
-              disabled={chromiumDownloading}
-              style={{ flexShrink: 0 }}
-            >
-              {chromiumDownloading ? (
-                <>
-                  <Spinner size={12} />
-                  <span style={{ marginLeft: 6 }}>下载中…</span>
-                </>
-              ) : (
-                <>
-                  <Download size={12} style={{ marginRight: 6 }} />
-                  下载浏览器组件
-                </>
-              )}
-            </Button>
-          </div>
+            onError={(msg) => setValidationError(msg)}
+          />
         )}
 
         {/* Publish button */}

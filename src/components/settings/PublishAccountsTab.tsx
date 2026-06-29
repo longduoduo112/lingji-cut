@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Share2, RefreshCw, Trash2, LogIn, Download } from 'lucide-react';
+import { Share2, RefreshCw, Trash2, LogIn } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -14,22 +14,10 @@ import {
 import type { SelectOption } from '../../ui';
 import { Spinner } from '../../ui/primitives/Spinner';
 import { usePublishStore } from '../../store/publish';
-import { useTaskProgressStore } from '../../store/task-progress';
 import type { PublishAccount, PublishPlatform } from '../../lib/electron-api';
 import { CHROMIUM_PLATFORMS } from '../../lib/publish/chromium-platforms';
+import { DependencyDownloadNotice } from '../publish/DependencyDownloadCard';
 import styles from './PublishAccountsTab.module.css';
-
-const BILIUP_TASK_ID = 'biliup-download';
-const CHROMIUM_TASK_ID = 'chromium-download';
-
-function formatMB(bytes: number): string {
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function formatSpeed(bytesPerSec: number): string {
-  if (bytesPerSec >= 1024 * 1024) return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`;
-  return `${Math.max(1, Math.round(bytesPerSec / 1024))} KB/s`;
-}
 
 // ─── Platform labels ─────────────────────────────────────────────────────────
 
@@ -107,11 +95,9 @@ export function PublishAccountsTab() {
 
   // B 站 biliup 组件安装状态：null=未知/检测中，true/false=已知
   const [biliupInstalled, setBiliupInstalled] = useState<boolean | null>(null);
-  const [biliupDownloading, setBiliupDownloading] = useState(false);
 
   // Chromium 自动化组件安装状态：null=未知/检测中
   const [chromiumInstalled, setChromiumInstalled] = useState<boolean | null>(null);
-  const [chromiumDownloading, setChromiumDownloading] = useState(false);
 
   const unsubQrcodeRef = useRef<(() => void) | null>(null);
 
@@ -159,97 +145,6 @@ export function PublishAccountsTab() {
       cancelled = true;
     };
   }, [platform]);
-
-  const handleDownloadBiliup = async () => {
-    const { startTask, updateTask, completeTask, failTask } = useTaskProgressStore.getState();
-    setBiliupDownloading(true);
-    startTask({
-      id: BILIUP_TASK_ID,
-      category: 'publish',
-      label: '下载 B 站上传组件',
-      mode: 'indeterminate',
-      progress: 0,
-      phase: '准备中',
-      level: 0,
-      canCancel: false,
-    });
-    const unsub = window.publishAPI.onBiliupDownloadProgress((p) => {
-      if (p.phase === 'download' && p.total && p.received != null) {
-        // 进度系统约定 progress 取值 0~100；取整避免出现一长串小数
-        const pct = Math.min(100, Math.round((p.received / p.total) * 100));
-        updateTask(BILIUP_TASK_ID, {
-          mode: 'determinate',
-          progress: pct,
-          phase: `${formatMB(p.received)} / ${formatMB(p.total)}${p.speed ? ` · ${formatSpeed(p.speed)}` : ''}`,
-        });
-      } else {
-        const phaseLabel =
-          p.phase === 'resolve' ? '解析版本' : p.phase === 'extract' ? '解压中' : p.phase === 'install' ? '安装中' : '下载中';
-        updateTask(BILIUP_TASK_ID, { mode: 'indeterminate', phase: phaseLabel });
-      }
-    });
-    try {
-      const res = await window.publishAPI.downloadBiliup();
-      if (res.success) {
-        completeTask(BILIUP_TASK_ID);
-        setBiliupInstalled(true);
-        setLoginMsg({ text: 'B 站上传组件安装完成，可以登录了', isError: false });
-      } else {
-        failTask(BILIUP_TASK_ID, res.error || '下载失败');
-        setLoginMsg({ text: res.error || 'B 站上传组件下载失败', isError: true });
-      }
-    } catch (err: unknown) {
-      failTask(BILIUP_TASK_ID, err instanceof Error ? err.message : '下载异常');
-      setLoginMsg({ text: err instanceof Error ? err.message : '下载异常', isError: true });
-    } finally {
-      unsub();
-      setBiliupDownloading(false);
-    }
-  };
-
-  const handleDownloadChromium = async () => {
-    const { startTask, updateTask, completeTask, failTask } = useTaskProgressStore.getState();
-    setChromiumDownloading(true);
-    startTask({
-      id: CHROMIUM_TASK_ID,
-      category: 'publish',
-      label: '下载浏览器组件（Chromium）',
-      mode: 'indeterminate',
-      progress: 0,
-      phase: '准备中',
-      level: 0,
-      canCancel: false,
-    });
-    const unsub = window.publishAPI.onChromiumDownloadProgress((p) => {
-      if (p.phase === 'download' && typeof p.percent === 'number') {
-        updateTask(CHROMIUM_TASK_ID, {
-          mode: 'determinate',
-          progress: Math.min(100, Math.round(p.percent)),
-          phase: p.total ? `下载中 · 共 ${formatMB(p.total)}` : '下载中',
-        });
-      } else {
-        const phaseLabel = p.phase === 'resolve' ? '解析版本' : p.phase === 'install' ? '安装中' : '下载中';
-        updateTask(CHROMIUM_TASK_ID, { mode: 'indeterminate', phase: phaseLabel });
-      }
-    });
-    try {
-      const res = await window.publishAPI.downloadChromium();
-      if (res.success) {
-        completeTask(CHROMIUM_TASK_ID);
-        setChromiumInstalled(true);
-        setLoginMsg({ text: '浏览器组件安装完成，可以登录/发布了', isError: false });
-      } else {
-        failTask(CHROMIUM_TASK_ID, res.error || '下载失败');
-        setLoginMsg({ text: res.error || '浏览器组件下载失败', isError: true });
-      }
-    } catch (err: unknown) {
-      failTask(CHROMIUM_TASK_ID, err instanceof Error ? err.message : '下载异常');
-      setLoginMsg({ text: err instanceof Error ? err.message : '下载异常', isError: true });
-    } finally {
-      unsub();
-      setChromiumDownloading(false);
-    }
-  };
 
   // Subscribe to qrcode events during login
   const subscribeQrcode = () => {
@@ -485,51 +380,25 @@ export function PublishAccountsTab() {
         </div>
 
         {biliupMissing ? (
-          <div className={styles.biliupNotice}>
-            <span className={styles.biliupNoticeText}>
-              B 站登录需要 biliup 上传组件，首次使用请先下载（约几 MB，国内已走代理加速）。
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="primary"
-              onClick={() => void handleDownloadBiliup()}
-              disabled={biliupDownloading}
-              leftIcon={
-                biliupDownloading ? (
-                  <Spinner size={12} className={styles.spinning} />
-                ) : (
-                  <Download size={12} />
-                )
-              }
-            >
-              {biliupDownloading ? '下载中…' : '下载 B 站上传组件'}
-            </Button>
-          </div>
+          <DependencyDownloadNotice
+            kind="biliup"
+            onSuccess={() => {
+              setBiliupInstalled(true);
+              setLoginMsg({ text: 'B 站上传组件安装完成，可以登录了', isError: false });
+            }}
+            onError={(msg) => setLoginMsg({ text: msg, isError: true })}
+          />
         ) : null}
 
         {chromiumMissing ? (
-          <div className={styles.biliupNotice}>
-            <span className={styles.biliupNoticeText}>
-              抖音 / 视频号 / 小红书 / 快手发布需要浏览器组件（Chromium），首次使用请先下载（约 150MB，已走国内镜像加速）。
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="primary"
-              onClick={() => void handleDownloadChromium()}
-              disabled={chromiumDownloading}
-              leftIcon={
-                chromiumDownloading ? (
-                  <Spinner size={12} className={styles.spinning} />
-                ) : (
-                  <Download size={12} />
-                )
-              }
-            >
-              {chromiumDownloading ? '下载中…' : '下载浏览器组件'}
-            </Button>
-          </div>
+          <DependencyDownloadNotice
+            kind="chromium"
+            onSuccess={() => {
+              setChromiumInstalled(true);
+              setLoginMsg({ text: '浏览器组件安装完成，可以登录/发布了', isError: false });
+            }}
+            onError={(msg) => setLoginMsg({ text: msg, isError: true })}
+          />
         ) : null}
 
         {loginMsg ? (

@@ -193,19 +193,37 @@ function downloadToFile(
   destPath: string,
   onProgress?: (p: DownloadProgress) => void,
   redirectCount = 0,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (redirectCount > 5) {
     return Promise.reject(new Error(`重定向次数超过上限: ${url}`));
   }
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('已取消'));
+      return;
+    }
+    let onAbort: (() => void) | null = null;
+    const cleanup = () => {
+      if (onAbort && signal) signal.removeEventListener('abort', onAbort);
+    };
+    const ok = () => {
+      cleanup();
+      resolve();
+    };
+    const fail = (err: unknown) => {
+      cleanup();
+      reject(err instanceof Error ? err : new Error(String(err)));
+    };
     const req = https.get(url, { headers: { 'User-Agent': 'lingji-biliup-install' } }, (res) => {
       const status = res.statusCode ?? 0;
       if (status >= 300 && status < 400 && res.headers.location) {
-        resolve(downloadToFile(res.headers.location, destPath, onProgress, redirectCount + 1));
+        cleanup();
+        resolve(downloadToFile(res.headers.location, destPath, onProgress, redirectCount + 1, signal));
         return;
       }
       if (status !== 200) {
-        reject(new Error(`HTTP ${status} 下载 ${url}`));
+        fail(new Error(`HTTP ${status} 下载 ${url}`));
         return;
       }
       const total = Number(res.headers['content-length']) || undefined;
@@ -229,12 +247,16 @@ function downloadToFile(
       out.on('finish', () => {
         // 收尾再补一帧 100%，确保 UI 不停在中途百分比
         onProgress?.({ phase: 'download', received, total: total ?? received, speed: 0 });
-        resolve();
+        ok();
       });
-      out.on('error', reject);
-      res.on('error', reject);
+      out.on('error', fail);
+      res.on('error', fail);
     });
-    req.on('error', reject);
+    req.on('error', fail);
+    if (signal) {
+      onAbort = () => req.destroy(new Error('已取消'));
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
   });
 }
 
@@ -295,12 +317,13 @@ function findBiliupExecutable(extractDir: string): string {
 // ---------------------------------------------------------------------------
 
 /** 解析当前平台资产：API 优先（代理→直连），失败回退 pin 直链。 */
-async function resolveAsset(platformKey: string): Promise<ResolvedAsset> {
+async function resolveAsset(platformKey: string, signal?: AbortSignal): Promise<ResolvedAsset> {
   const apiCandidates = [
     ...PROXY_CANDIDATES.map((p) => withProxy(p, GITHUB_RELEASE_API)),
     GITHUB_RELEASE_API,
   ];
   for (const apiUrl of apiCandidates) {
+    if (signal?.aborted) break;
     try {
       const buf = await httpsGetBuffer(apiUrl);
       const release = JSON.parse(buf.toString('utf-8')) as { assets?: ReleaseAsset[] };
@@ -324,9 +347,11 @@ export interface DownloadBiliupResult {
 /**
  * 下载并安装 biliup 到用户目录。始终 resolve（不 reject），失败经 result.error 返回。
  * @param onProgress 进度回调（resolve / download / extract / install 各阶段）。
+ * @param signal 取消信号；中途 abort 时清理临时文件并以 error='已取消' 返回。
  */
 export async function downloadBiliup(
   onProgress?: (p: DownloadProgress) => void,
+  signal?: AbortSignal,
 ): Promise<DownloadBiliupResult> {
   const platform = process.platform;
   const platformKey = buildPlatformKey();
@@ -337,8 +362,9 @@ export async function downloadBiliup(
 
   const tmpDir = await fsp.mkdtemp(join(os.tmpdir(), 'lingji-biliup-dl-'));
   try {
+    if (signal?.aborted) throw new Error('已取消');
     onProgress?.({ phase: 'resolve' });
-    const { assetName, downloadUrl } = await resolveAsset(platformKey);
+    const { assetName, downloadUrl } = await resolveAsset(platformKey, signal);
 
     // 代理优先依次尝试下载
     const archivePath = join(tmpDir, basename(assetName));
@@ -346,14 +372,17 @@ export async function downloadBiliup(
     let downloaded = false;
     let lastErr: unknown = null;
     for (const url of candidates) {
+      if (signal?.aborted) break;
       try {
-        await downloadToFile(url, archivePath, onProgress);
+        await downloadToFile(url, archivePath, onProgress, 0, signal);
         downloaded = true;
         break;
       } catch (err) {
+        if (signal?.aborted) throw err; // 取消则不再尝试其他候选
         lastErr = err;
       }
     }
+    if (signal?.aborted) throw new Error('已取消');
     if (!downloaded) {
       throw new Error(
         `下载失败（代理与直连均不可达）：${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
@@ -381,6 +410,7 @@ export async function downloadBiliup(
 
     return { success: true, path: binaryDest };
   } catch (err) {
+    if (signal?.aborted) return { success: false, error: '已取消' };
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   } finally {
     await fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
