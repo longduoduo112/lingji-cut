@@ -8,6 +8,7 @@ const {
   buildReleaseManifest,
   shouldStageProjectPath,
 } = require('./package-mac-helpers.cjs');
+const { createWindowsInstaller } = require('./package-windows-installer.cjs');
 
 const rootDir = path.resolve(__dirname, '..');
 const packageJsonPath = path.join(rootDir, 'package.json');
@@ -379,6 +380,24 @@ async function packageWindows() {
     appPaths.forEach((appPath) => {
       console.log(`- ${path.relative(rootDir, appPath)}`);
     });
+
+    // 默认在免安装文件夹基础上生成 NSIS 安装包（安装到 Program Files 短路径，
+    // 规避用户自行解压到深目录的 MAX_PATH 问题）。SKIP_WIN_INSTALLER=1 可仅出文件夹。
+    if (process.env.SKIP_WIN_INSTALLER === '1') {
+      console.log('已跳过安装包生成（SKIP_WIN_INSTALLER=1）。');
+    } else {
+      console.log('开始生成 Windows 安装包（NSIS）...');
+      const installerPath = await createWindowsInstaller({
+        appName,
+        version: packageJson.version,
+        arch,
+        appDir: appPaths[0],
+        iconPath: resolvedIconPath || iconPath,
+        releaseDir,
+        tmpDir: path.join(rootDir, '.tmp', `win-installer-${arch}`),
+      });
+      console.log(`安装包生成完成：- ${path.relative(rootDir, installerPath)}`);
+    }
   } finally {
     await fsp.rm(stageDir, { recursive: true, force: true });
   }
