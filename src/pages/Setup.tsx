@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { m } from 'framer-motion';
-import { Plus, FileText, Music, Video, FileVideo, FolderOpen, FolderSearch, FolderInput, CheckCircle2, AlertCircle, Link, Loader2, Upload } from 'lucide-react';
+import { Plus, FileText, Music, Video, FileVideo, FolderOpen, FolderSearch, FolderInput, CheckCircle2, AlertCircle, Link, Loader2, Upload, Heart, MessageCircle } from 'lucide-react';
 import { springs } from '../ui/lib/motion';
 import { getFileNameFromPath } from '../lib/utils';
 import type { RecentProjectEntry } from '../lib/electron-api';
@@ -38,6 +38,8 @@ import { useScriptStore } from '../store/script';
 import { loadAISettings, type AutoWorkflowParams } from '../store/ai';
 import { getAllRoles } from '../lib/script-templates';
 import heroBg from '../assets/hero-bg.png';
+import { DonateDialog } from '../components/Donate';
+import { ContactDialog } from '../components/Contact';
 import styles from './Setup.module.css';
 
 interface SetupProps {
@@ -99,6 +101,8 @@ export function Setup({
 
   // ── 导入文稿弹窗状态 ──
   const [importScriptOpen, setImportScriptOpen] = useState(false);
+  const [donateOpen, setDonateOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   const [importScriptCreating, setImportScriptCreating] = useState(false);
   const [importScriptError, setImportScriptError] = useState<string | null>(null);
   // ── 待创作箱触发的预填项（非空表示当前弹窗服务于某条 inbox 素材）──
@@ -429,6 +433,15 @@ export function Setup({
           )}
           <button
             type="button"
+            className={styles.donateBadge}
+            onClick={() => setDonateOpen(true)}
+            title="支持作者"
+          >
+            <Heart size={13} strokeWidth={1.8} />
+            支持作者
+          </button>
+          <button
+            type="button"
             className={styles.createButton}
             onClick={handleOpenImportScript}
           >
@@ -513,6 +526,28 @@ export function Setup({
             />
           </div>
         </div>
+          {/* 底部常驻：联系作者与赞赏支持 */}
+          <div className={styles.supportBar}>
+            <span className={styles.supportBarText}>喜欢灵机剪影？欢迎联系作者交流，或赞赏支持作者持续维护</span>
+            <div className={styles.supportBarActions}>
+              <button
+                type="button"
+                className={styles.supportBarButton}
+                onClick={() => setContactOpen(true)}
+              >
+                <MessageCircle size={14} strokeWidth={1.8} />
+                联系作者
+              </button>
+              <button
+                type="button"
+                className={styles.supportBarButton}
+                onClick={() => setDonateOpen(true)}
+              >
+                <Heart size={14} strokeWidth={1.8} />
+                赞赏支持
+              </button>
+            </div>
+          </div>
       </div>
 
       {/* ── 导入弹窗 ── */}
@@ -879,6 +914,9 @@ export function Setup({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DonateDialog open={donateOpen} onOpenChange={setDonateOpen} />
+      <ContactDialog open={contactOpen} onOpenChange={setContactOpen} />
     </div>
   );
 }

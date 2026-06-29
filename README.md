@@ -338,6 +338,14 @@ docs/superpowers/        设计规格与实施计划沉淀
 | --- | --- |
 | <img src="https://raw.githubusercontent.com/yoqu/lingji-cut/main/docs/assets/wechat-group-qr.jpg" alt="灵机剪影微信群二维码" width="220" /> | <img src="https://raw.githubusercontent.com/yoqu/lingji-cut/main/docs/assets/wechat-author-qr.png" alt="作者微信二维码" width="220" /> |
 
+## 赞赏支持
+
+灵机剪影是免费开源项目。如果它帮你节省了时间，欢迎扫码请作者喝杯咖啡 ☕，这是项目持续维护的最大动力。
+
+| 微信支付 | 支付宝 |
+| --- | --- |
+| <img src="https://raw.githubusercontent.com/yoqu/lingji-cut/main/docs/assets/donate-wechat.jpg" alt="微信收款码" width="220" /> | <img src="https://raw.githubusercontent.com/yoqu/lingji-cut/main/docs/assets/donate-alipay.jpg" alt="支付宝收款码" width="220" /> |
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).

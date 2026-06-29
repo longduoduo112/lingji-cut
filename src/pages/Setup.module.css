@@ -66,6 +66,32 @@
   z-index: 2;
 }
 
+.donateBadge {
+  position: absolute;
+  top: 14px;
+  right: var(--space-8);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-text-primary) 12%, transparent);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border: none;
+  color: color-mix(in srgb, var(--color-text-primary) 85%, transparent);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  cursor: pointer;
+  z-index: 3;
+  transition: background-color var(--motion-fast);
+}
+
+.donateBadge:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
+}
+
 .createButton {
   position: relative;
   z-index: 2;
@@ -322,4 +348,49 @@
 
 .spinIcon {
   animation: spin 1s linear infinite;
+}
+
+.supportBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  flex-shrink: 0;
+  margin: 0 20px 20px;
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+}
+
+.supportBarText {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
+}
+
+.supportBarActions {
+  display: inline-flex;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+.supportBarButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--color-text-primary) 15%, transparent);
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-fast);
+}
+
+.supportBarButton:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 14%, transparent);
 }
